@@ -75,7 +75,8 @@ struct EffectInfo
     int trackId = 0;                           // 0 = master
     std::string key;
     bool enabled = true;
-    std::vector<float> values;                 // en el orden de EffectTypeInfo::params
+    std::vector<float> values;                 // en el orden de EffectTypeInfo::params (siguen la automatización)
+    std::vector<std::string> automated;        // parámetros con curva de automatización
     double latencySeconds = 0;
 };
 
@@ -130,7 +131,9 @@ public:
 
     // Grabación (Tracktion graba en disco desde su propio hilo; el callback de audio no hace E/S)
     std::vector<std::string> recordInputs() const;                      // entradas mono/estéreo disponibles
-    TrackInfo addRecordTrack (const std::string& name);                 // pista de audio vacía para grabar
+    TrackInfo addRecordTrack (const std::string& name);
+    // Pone un audio ya grabado en una pista (al abrir un proyecto): sustituye sus clips
+    TrackInfo setTrackAudio (int trackId, const std::string& path, double startSeconds);                 // pista de audio vacía para grabar
     // Arma la pista con una entrada ("" = la primera). monitor: escuchar la entrada mientras está armada.
     std::string armTrack (int trackId, const std::string& input, bool monitor);
     void disarm();
@@ -165,6 +168,11 @@ public:
     bool setEffectParam (int effectId, const std::string& paramId, float value);
     void setEffectEnabled (int effectId, bool enabled);
     std::vector<EffectInfo> effects (int trackId) const;
+    EffectInfo effectInfo (int effectId) const;
+    // Automatización de un parámetro: puntos (segundos, valor en su rango) unidos en línea recta.
+    // Lista vacía = sin automatización (el parámetro vuelve a su valor fijo).
+    bool setEffectAutomation (int effectId, const std::string& paramId, const std::vector<std::pair<double, float>>& points);
+    std::vector<std::pair<double, float>> effectAutomation (int effectId, const std::string& paramId) const;
     std::vector<float> effectMeters (int effectId);                   // [entrada dB, salida dB, propias...]
     std::vector<float> effectSpectrum (int effectId, int bands);      // espectro de la salida (dBFS)
 

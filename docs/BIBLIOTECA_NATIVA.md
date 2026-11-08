@@ -3,7 +3,7 @@
 Especificación de origen: *AllForOne — Biblioteca Nativa, 96 plugins* (noviembre 2026): 96 módulos
 C++ (AF-01 … AF-96) en 6 secciones y 20 carpetas, construidos por hitos. Este documento dice qué
 existe de verdad y cómo está hecho; el mapa completo del navegador está en
-`app/allforone/qml/fxlibrary.js`.
+`app/allforone/qml/state/fxlibrary.js`.
 
 ## Reglas (de la especificación, aplicadas aquí)
 
@@ -21,17 +21,19 @@ existe de verdad y cómo está hecho; el mapa completo del navegador está en
 | DSP compartida (biquad RBJ, líneas de retardo con Lagrange, compresor con rodilla, puerta, FDN de 8 líneas, FIFO de osciloscopio) | `native/src/fx/FxDsp.h` |
 | Los 9 módulos, sus parámetros y `registerFx` | `native/src/fx/FxPlugins.h` |
 | Cadena por pista y en el master (insertar, mover, puentear, quitar, medidores, espectro) | `native/src/AfoEngine.cpp` (`addEffect` … `effectSpectrum`) |
-| API Python | `afo_audio.effect_catalog()`, `Engine.add_effect`, `move_effect`, `set_effect_param`, `set_effect_enabled`, `effects`, `effect_meters`, `effect_spectrum` |
-| Slots de la interfaz | `bridge.py`: `fxCatalog`, `fxAdd`, `fxList`, `fxMove`, `fxRemove`, `fxParam`, `fxEnable`, `fxMeters`, `fxSpectrum` |
-| Módulo «Efectos» (Rack FX-96) | `app/allforone/qml/FxBody.qml` |
-| Pruebas de señal | `tests/test_engine_fx.py`; en la interfaz, `--selftest` |
+| API Python | `afo_audio.effect_catalog()`, `Engine.add_effect`, `move_effect`, `set_effect_param`, `set_effect_enabled`, `effects`, `effect_info`, `effect_meters`, `effect_spectrum`, `set_effect_automation`, `effect_automation` |
+| Presets (de fábrica y del usuario) | `app/allforone/fx_presets.py`; los del usuario en `datos/presets/fx/<efecto>.json` |
+| Proyecto `.afo` | `app/allforone/project.py` (efectos, automatización y rutas) y `qml/state/Project.qml` (pistas, tempo, master) |
+| Slots de la interfaz | `bridge.py`: `fxCatalog`, `fxAdd`, `fxList`, `fxMove`, `fxRemove`, `fxParam`, `fxEnable`, `fxMeters`, `fxSpectrum`, `fxInfo`, `fxPresets`, `fxApplyPreset`, `fxSavePreset`, `fxDeletePreset`, `fxAutomation`, `fxSetAutomation`, `fxRestore`, `projectSave`, `projectOpen` |
+| Módulo «Efectos» (Rack FX-96) | `app/allforone/qml/modules/FxBody.qml` |
+| Pruebas de señal | `tests/test_engine_fx.py`, `tests/test_project.py`; en la interfaz, `--selftest` |
 
 Todos derivan de `FxBase`: parámetros `ParameterWithStateValue` (automatizables y guardados en el
 Edit de Tracktion), suavizado en bloques de 32 muestras, `ScopedNoDenormals`, sin reservar memoria
 en el hilo de audio, medidores de entrada/salida atómicos. Los efectos se insertan **antes del
 fader** de la pista (o del master) y Tracktion compensa la latencia que informan.
 
-## Hito 1 — base real de mezcla (hecho)
+## Hito 1 — base real de mezcla (completo)
 
 | AF | Módulo | Qué hace | Prueba de señal |
 |---|---|---|---|
@@ -48,9 +50,27 @@ fader** de la pista (o del master) y Tracktion compensa la latencia que informan
 También se comprueba: orden de la cadena, mover, quitar, bypass, insertar en el master, y que un
 impulso no deje colas denormales (el render termina en tiempo normal).
 
-**Pendiente para cerrar el Hito 1 tal como lo pide la especificación:** presets por módulo, dibujar
-y editar la automatización en la interfaz (los parámetros ya son automatizables en Tracktion) y
-Abrir / Guardar proyecto en AllForOne para que la sesión con sus efectos sea recuperable.
+### Cierre del Hito 1: presets, automatización y proyecto recuperable
+
+- **Presets:** cada módulo trae de 3 a 5 de fábrica (`fx_presets.FACTORY`, validados contra el
+  catálogo del motor) y se guardan los propios (★) por efecto. Un preset nombra solo algunos
+  parámetros; el resto vuelve a su valor por defecto, así que aplicar uno siempre deja el mismo sonido.
+- **Automatización:** la línea del editor dibuja la curva de un parámetro sobre los 16 compases
+  (clic añade, arrastrar mueve, clic derecho borra). Es la `AutomationCurve` de Tracktion: suena al
+  reproducir y en el render, y las perillas la siguen. `setEffectAutomation` fuerza
+  `AutomatableParameter::updateStream()` porque Tracktion recalcula la curva con un temporizador
+  de 10 ms y el render siguiente usaría la anterior. Quitar la curva devuelve el valor fijo.
+- **Proyecto (`.afo`, JSON):** Abrir / Guardar en la cabecera (Ctrl+O, Ctrl+S, Ctrl+Mayús+S).
+  Guarda tempo, master, módulos ocultos, pistas (notas, patrones, ajustes, volumen, paneo, mute,
+  solo, clasificación del mezclador) y por pista y en el master la cadena con valores, puenteo y
+  automatización. Los audios se referencian (ruta absoluta y relativa al proyecto: se puede mover la
+  carpeta entera); si falta uno se avisa al abrir.
+
+Criterio de aceptación de la especificación — *una mezcla sencilla con efectos reales, A/B,
+automatización y proyecto recuperable* — comprobado en `tests/test_project.py`: se guarda una
+sesión con EQ automatizada, un efecto puenteado y un efecto en el master, se borra todo, se abre y
+el render coincide (±0,05 dB por segundo). El A/B es el del módulo Antes / Después y el bypass de
+cada efecto. `--selftest` repite el ciclo desde la interfaz con todas las pistas de la autoprueba.
 
 ## Siguientes hitos (metas, no funciones existentes)
 

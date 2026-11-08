@@ -34,6 +34,10 @@ Todo lo que AllForOne escribe (datos, registros, cachés, temporales) queda dent
    ● Grabar (graba el motor). Si tu dispositivo no tiene entradas, pulsa **Audio** en la cabecera y
    elige otro driver (por ejemplo ASIO4ALL).
 7. **Efectos:** en el módulo **Efectos** elige la pista o el master e inserta los de la biblioteca.
+   En el editor de cada efecto: **Preset** (de fábrica o tuyos) y **Automatización** (dibuja la
+   curva de un parámetro sobre los 16 compases; suena al reproducir y al exportar).
+8. **Proyecto:** **Guardar** / **Abrir** en la cabecera (Ctrl+S / Ctrl+O) guardan y recuperan la
+   sesión entera en un archivo `.afo`: pistas, notas, tomas, efectos con su automatización y master.
 
 **Interfaz (Qt Quick, sin navegador interno):** `python -m allforone` desde `app/`. Funcionan el
 lienzo, Pistas, Audios, la consola Mezcla con la mezcla automática, Mezcla final, Afinador, Master
@@ -41,7 +45,8 @@ IA, Antes / Después, Piano roll, Instrumentos, Batería (con el sintetizador de
 IA (demo), el **Grabador de cintas** (graba el motor), la
 **configuración de audio** (botón «Audio»: Windows Audio, DirectSound o cualquier driver ASIO como
 ASIO4ALL) y el módulo **Efectos** con la Biblioteca nativa (Hito 1: Gain, Channel Strip, Parametric
-EQ, Compressor, Gate, Saturator, Space, Digital Delay y Spectrum Analyzer)
+EQ, Compressor, Gate, Saturator, Space, Digital Delay y Spectrum Analyzer, con presets y
+automatización), y Abrir / Guardar proyecto
 (`docs/INTERFAZ_NATIVA.md`, `docs/BIBLIOTECA_NATIVA.md`).
 
 ## Estructura
@@ -59,6 +64,7 @@ tests/                      pruebas Python (pytest)
 app/allforone/mixer_v42/    Mezclador Automático V4.2 original (sin cambios)
 app/allforone/mixer_service.py  adaptador del mezclador para los paneles
 app/allforone/audio_import.py    formatos que el motor no lee (WAV de 64 bits): copia convertida
+app/allforone/project.py    proyecto .afo (guardar / abrir); fx_presets.py: presets de efectos
 tools/                      build.ps1, package.ps1, native_compare.py (plantilla vs interfaz)
 docs/                       especificación, cambios de la plantilla e interfaz nativa
 ```

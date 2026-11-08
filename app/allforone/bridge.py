@@ -19,7 +19,7 @@ from PySide6.QtCore import QObject, QTimer, QUrl, Signal, Slot
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import QFileDialog, QWidget
 
-from . import audio_import, paths
+from . import audio_import, fx_presets, paths, project
 from .engine_host import EngineHost, fader_to_db
 from .mixer_service import AUDIO_EXT, REF_LABEL, MixerService
 
@@ -363,6 +363,161 @@ class Bridge(QObject):
             return _ok(bands=[round(v, 1) for v in self.host.engine.effect_spectrum(effect_id, max(8, min(256, bands)))])
         except Exception as exc:
             return _err(str(exc))
+
+    # --- presets y automatización de efectos --------------------------------------
+    def _fx_desc(self, key: str) -> dict:
+        for d in self.host.effect_catalog():
+            if d["key"] == key:
+                return d
+        raise KeyError(f"Efecto desconocido: {key}")
+
+    @Slot(str, result=str)
+    def fxPresets(self, key: str) -> str:
+        try:
+            return _ok(presets=fx_presets.listing(key))
+        except Exception as exc:
+            return _err(str(exc))
+
+    @Slot(int, str, result=str)
+    def fxApplyPreset(self, effect_id: int, name: str) -> str:
+        """Pone todos los parámetros del efecto con los valores del preset (los que no nombra, por defecto)."""
+        if (g := self._guard()):
+            return g
+        try:
+            eng = self.host.engine
+            key = eng.effect_info(effect_id)["key"]
+            for pid, v in fx_presets.resolve(key, name, self._fx_desc(key)).items():
+                eng.set_effect_param(effect_id, pid, v)
+            return _ok(effect=eng.effect_info(effect_id))
+        except Exception as exc:
+            return _err(f"No se pudo aplicar el preset: {exc}")
+
+    @Slot(int, str, result=str)
+    def fxSavePreset(self, effect_id: int, name: str) -> str:
+        if (g := self._guard()):
+            return g
+        try:
+            info = self.host.engine.effect_info(effect_id)
+            desc = self._fx_desc(info["key"])
+            fx_presets.save(info["key"], name, {p["id"]: v for p, v in zip(desc["params"], info["values"])})
+            return _ok(presets=fx_presets.listing(info["key"]))
+        except Exception as exc:
+            return _err(str(exc))
+
+    @Slot(str, str, result=str)
+    def fxDeletePreset(self, key: str, name: str) -> str:
+        try:
+            if not fx_presets.delete(key, name):
+                return _err(f"«{name}» no es un preset del usuario")
+            return _ok(presets=fx_presets.listing(key))
+        except Exception as exc:
+            return _err(str(exc))
+
+    @Slot(int, str, result=str)
+    def fxAutomation(self, effect_id: int, param: str) -> str:
+        if (g := self._guard()):
+            return g
+        try:
+            return _ok(points=[[round(t, 4), v] for t, v in self.host.engine.effect_automation(effect_id, param)])
+        except Exception as exc:
+            return _err(str(exc))
+
+    @Slot(int, str, str, result=str)
+    def fxSetAutomation(self, effect_id: int, param: str, points_json: str) -> str:
+        """Puntos [[segundos, valor], …] de la automatización de un parámetro; [] la quita."""
+        if (g := self._guard()):
+            return g
+        try:
+            pts = sorted((max(0.0, float(t)), float(v)) for t, v in json.loads(points_json or "[]"))
+            if not self.host.engine.set_effect_automation(effect_id, param, pts):
+                return _err(f"Parámetro desconocido: {param}")
+            return _ok(effect=self.host.engine.effect_info(effect_id))
+        except Exception as exc:
+            return _err(f"No se pudo guardar la automatización: {exc}")
+
+    @Slot(int, result=str)
+    def fxInfo(self, effect_id: int) -> str:
+        if (g := self._guard()):
+            return g
+        try:
+            return _ok(effect=self.host.engine.effect_info(effect_id))
+        except Exception as exc:
+            return _err(str(exc))
+
+    @Slot(int, str, result=str)
+    def fxRestore(self, track_id: int, chain_json: str) -> str:
+        """Sustituye la cadena de efectos de una pista por una guardada (al abrir un proyecto)."""
+        if (g := self._guard()):
+            return g
+        try:
+            warn = project.restore_chain(self.host.engine, self.host.effect_catalog(), track_id, json.loads(chain_json or "[]"))
+            return _ok(chain=self.host.engine.effects(track_id), warnings=warn)
+        except Exception as exc:
+            return _err(f"No se pudo recuperar la cadena de efectos: {exc}")
+
+    # --- proyecto -----------------------------------------------------------------
+    def _project_dir(self) -> str:
+        p = paths.user_data_dir() / "proyectos"
+        p.mkdir(parents=True, exist_ok=True)
+        return str(p)
+
+    @Slot(str, str, result=str)
+    def projectSave(self, doc_json: str, path: str) -> str:
+        """Guarda la sesión. `path` vacío = elegir archivo; la interfaz recuerda el último."""
+        if (g := self._guard()):
+            return g
+        if not path:
+            path, _ = QFileDialog.getSaveFileName(self.parent_widget, "Guardar proyecto",
+                                                  str(Path(self._project_dir()) / "Proyecto.afo"),
+                                                  "Proyecto AllForOne (*.afo)")
+            if not path:
+                return _err("", cancelled=True)
+        try:
+            eng = self.host.engine
+            sources = {t["id"]: t.get("source_path", "") for t in eng.tracks()}
+            sources.update({tid: info.get("originalPath") or sources.get(tid, "") for tid, info in self.host.tracks.items()})
+            doc = project.collect(json.loads(doc_json), eng, self.host.effect_catalog(), sources)
+            out = project.save(path, doc)
+            return _ok(path=str(out), name=out.stem)
+        except Exception as exc:
+            return _err(f"No se pudo guardar el proyecto: {exc}")
+
+    @Slot(str, result=str)
+    def projectOpen(self, path: str) -> str:
+        """Lee un proyecto; la interfaz recrea la sesión con él (ver qml/state/Project.qml)."""
+        if not path:
+            path, _ = QFileDialog.getOpenFileName(self.parent_widget, "Abrir proyecto", self._project_dir(),
+                                                  "Proyecto AllForOne (*.afo)")
+            if not path:
+                return _err("", cancelled=True)
+        try:
+            doc = project.load(path)
+            return _ok(doc=doc, path=doc["file"], name=Path(path).stem)
+        except Exception as exc:
+            return _err(f"No se pudo abrir el proyecto: {exc}")
+
+    @Slot(str, str, result=str)
+    def addAudioPath(self, path: str, name: str) -> str:
+        """Pista de audio desde una ruta conocida (al abrir un proyecto), sin diálogo."""
+        if (g := self._guard()):
+            return g
+        try:
+            return _ok(track=self.host.add_audio(path, name))
+        except Exception as exc:
+            return _err(f"No se pudo cargar {Path(path).name}: {exc}")
+
+    @Slot(int, str, float, result=str)
+    def setTrackAudio(self, track_id: int, path: str, start: float) -> str:
+        """Pone una toma guardada en una pista de voz."""
+        if (g := self._guard()):
+            return g
+        try:
+            info = dict(self.host.engine.set_track_audio(track_id, path, start))
+            info["peaks"] = [round(v, 4) for v in self.host.engine.track_peaks(track_id, 600)]
+            self.host.tracks[track_id] = {**info, "originalPath": path, "note": ""}
+            return _ok(track=info)
+        except Exception as exc:
+            return _err(f"No se pudo cargar la toma {Path(path).name}: {exc}")
 
     # --- pistas -------------------------------------------------------------------
     @Slot(result=str)

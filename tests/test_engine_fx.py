@@ -297,3 +297,30 @@ def test_grabacion_real(host, tmp_path):
         if before["open"] and (now["type"], now["output"]) != (before["type"], before["output"]):
             assert eng.set_audio_device(before["type"], before["output"], before["input"],
                                         before["sample_rate"], before["buffer_size"]) == ""
+
+
+def test_automatizacion_sigue_la_curva_en_el_render(host, tmp_path):
+    eng = host.engine
+    tid, fx = with_fx(eng, tone(tmp_path, amp_db=-18, seconds=4.0), "gain")
+    assert eng.set_effect_automation(fx, "output", [(0.0, -24.0), (2.0, -24.0), (2.0001, 0.0), (4.0, 0.0)])
+    assert [round(t, 3) for t, _ in eng.effect_automation(fx, "output")] == [0.0, 2.0, 2.0, 4.0]
+    assert eng.effect_info(fx)["automated"] == ["output"]
+    y = render(eng, tmp_path)[:, 0]
+    early, late = db(rms(y[int(0.5 * SR): int(1.5 * SR)])), db(rms(y[int(2.5 * SR): int(3.5 * SR)]))
+    assert early == pytest.approx(-18 - 3.01 - 24, abs=0.5)   # RMS de un seno = pico − 3 dB
+    assert late == pytest.approx(-18 - 3.01, abs=0.5)
+    # Sin curva el parámetro vuelve a su valor fijo
+    assert eng.set_effect_automation(fx, "output", [])
+    assert eng.effect_info(fx)["automated"] == []
+    y = render(eng, tmp_path, "out2.wav")[:, 0]
+    assert db(rms(y[int(0.5 * SR): int(1.5 * SR)])) == pytest.approx(-21.01, abs=0.5)
+
+
+def test_audio_de_un_proyecto_en_pista_de_voz(host, tmp_path):
+    eng = host.engine
+    tid = eng.add_record_track("Voz 1")["id"]
+    info = eng.set_track_audio(tid, tone(tmp_path, amp_db=-18, seconds=1.0), 1.5)
+    assert info["start_seconds"] == pytest.approx(1.5) and info["length_seconds"] == pytest.approx(1.0, abs=0.01)
+    y = render(eng, tmp_path)[:, 0]
+    assert db(np.abs(y[: int(1.4 * SR)]).max()) < -80                 # silencio antes de la toma
+    assert db(np.abs(y[int(1.6 * SR): int(2.4 * SR)]).max()) == pytest.approx(-18, abs=0.5)

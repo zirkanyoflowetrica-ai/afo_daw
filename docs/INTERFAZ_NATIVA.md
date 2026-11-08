@@ -188,3 +188,14 @@ tiene; el chip de Efectos va en la primera fila para no añadir otra fila de chi
   botón de tema: los chips se recolocan), lienzo 23,5 % (módulos que la plantilla no tiene, como
   Audios, Afinador y Mezcla, y el texto de las pistas reales).
 
+
+## Después de la fase 5: cierre del Hito 1 en la interfaz
+
+- Cabecera: **Abrir** y **Guardar** proyecto junto al transporte (Ctrl+O, Ctrl+S, Ctrl+Mayús+S).
+  No están en la plantilla: son funciones nuevas y alargan un poco la primera fila, lo que
+  `tools/native_compare.py` ve como diferencia en la cabecera.
+- `state/Project.qml` reúne la sesión de la interfaz y la reconstruye al abrir (`allforone/project.py`
+  añade del motor los efectos, la automatización y las rutas de los audios).
+- Módulo Efectos: selector de **Preset** con guardar / borrar los propios, y línea de
+  **Automatización** del parámetro elegido con el cursor de reproducción; las perillas automatizadas
+  llevan «∿» y siguen la curva mientras suena.

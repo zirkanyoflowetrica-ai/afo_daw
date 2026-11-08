@@ -15,7 +15,7 @@ Window {
     width: 1600; height: 900
     minimumWidth: 900; minimumHeight: 560
     visible: true
-    title: "AllForOne " + appVersion
+    title: "AllForOne " + appVersion + (pj.name ? " — " + pj.name : "")
     color: Theme.bg
 
     // ---------------- estado ----------------
@@ -55,12 +55,27 @@ Window {
         else if (what === "param") fxBody.setParam(a, b)
         else if (what === "bypass") fxBody.enable(fxBody.sel, !!a)
         else if (what === "remove") fxBody.remove(fxBody.sel)
-        return { chain: fxBody.chain.map(function (e) { return { id: e.id, key: e.key, enabled: e.enabled, values: e.values } }),
-                 sel: fxBody.sel, meters: fxBody.meters, spectrum: fxBody.spectrum, catalog: fxBody.catalog.length }
+        else if (what === "preset") fxBody.applyPreset(a)
+        else if (what === "auto") { fxBody.autoParam = a; fxBody.setAuto(b) }
+        return { chain: fxBody.chain.map(function (e) { return { id: e.id, key: e.key, enabled: e.enabled, values: e.values, automated: e.automated || [] } }),
+                 sel: fxBody.sel, meters: fxBody.meters, spectrum: fxBody.spectrum, catalog: fxBody.catalog.length,
+                 presets: fxBody.presets.length, autoPts: fxBody.autoPts }
     }
     property alias mixer: mx
+    property alias seq: sq
+    property alias project: pj
     Mixer { id: mx; studio: win }
     Sequencer { id: sq; studio: win }
+    Project { id: pj; studio: win }
+    Shortcut { sequences: [StandardKey.Open]; onActivated: pj.open("") }
+    Shortcut { sequences: [StandardKey.Save]; onActivated: pj.save(false) }
+    Shortcut { sequence: "Ctrl+Shift+S"; onActivated: pj.save(true) }
+    // Para la autoprueba: guardar y abrir proyectos sin diálogo
+    function projectCommand(what, path) {
+        if (what === "save") { pj.file = path; return pj.save(false) }
+        if (what === "open") return pj.open(path)
+        return pj.snapshot()
+    }
     onBpmChanged: sq.rerenderAll()                // el patrón depende del tempo: se vuelve a sintetizar
     onHiddenChanged: { syncTrackStates(); sq.arm() }   // módulo quitado = sus pistas desconectadas (no suenan ni graban)
     onTracksChanged: Qt.callLater(function () { win.geomRev++ })   // las filas de Pistas se movieron
@@ -223,6 +238,7 @@ Window {
     function seqSrc(type) { return sq.src[type] }
     function trackLevel(id) { var v = trackDb[String(id)]; return v === undefined ? -100 : v }
     function setMaster(v) { masterPos = v; if (engineOk) call("setMasterVolume", v) }
+    function applyTempo(v) { bpm = v; bpmInput.text = String(v); if (engineOk) call("setTempo", v) }
     function setMasterProcessing(drive, tone, lim) {
         masterDrive = drive; masterTone = tone; limiter = lim
         if (engineOk) call("setMasterProcessing", drive, tone, lim)
@@ -326,6 +342,14 @@ Window {
                         if (!win.engineOk) { win.toast("Motor nativo no disponible"); return }
                         var r = win.call("togglePlay"); if (!r.ok) win.toast(r.error)
                     }
+                }
+                NeoButton {
+                    text: "Abrir"; tip: "Abrir un proyecto .afo (Ctrl+O)"
+                    onClicked: pj.open("")
+                }
+                NeoButton {
+                    text: "Guardar"; tip: "Guardar el proyecto con pistas, efectos y automatización (Ctrl+S; Ctrl+Mayús+S: guardar como)"
+                    onClicked: pj.save(false)
                 }
                 Rectangle {                         // .time
                     width: timeLbl.implicitWidth + 26; height: 35

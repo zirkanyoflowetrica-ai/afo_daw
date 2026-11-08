@@ -18,6 +18,10 @@ Column {
     property int family: 1                      // «Efectos de audio»
     property var meters: []
     property var spectrum: []
+    property var presets: []                    // [{name, factory}] del efecto abierto
+    property string presetName: ""
+    property string autoParam: ""               // parámetro de la línea de automatización
+    property var autoPts: []                    // [[segundos, valor], …] de ese parámetro
     width: parent ? parent.width : 700
     spacing: 0
 
@@ -35,6 +39,13 @@ Column {
     onTargetsChanged: if (targets.map(function (o) { return o[0] }).indexOf(String(target)) < 0) pickTarget(0)
     readonly property var cur: { for (var i = 0; i < chain.length; i++) if (chain[i].id === sel) return chain[i]; return null }
     readonly property var type: cur ? typeOf(cur.key) : null
+    readonly property string curKey: cur ? cur.key : ""
+    readonly property int curId: cur ? cur.id : -1
+    onCurKeyChanged: loadPresets()
+    onCurIdChanged: { presetName = ""; autoParam = type && type.params.length ? pickAutoParam() : ""; loadAuto() }
+    onAutoParamChanged: loadAuto()
+    readonly property var autoDesc: { if (!type) return null; for (var i = 0; i < type.params.length; i++) if (type.params[i].id === autoParam) return type.params[i]; return null }
+    readonly property real span: studio.bar16                   // la línea abarca los 16 compases del lienzo
 
     function typeOf(key) { for (var i = 0; i < catalog.length; i++) if (catalog[i].key === key) return catalog[i]; return null }
     function setChain(c) {
@@ -59,6 +70,51 @@ Column {
     function enable(id, b) {
         var r = studio.call("fxEnable", id, b)
         if (r.ok) setChain(chain.map(function (e) { return e.id === id ? Object.assign({}, e, { enabled: b }) : e }))
+    }
+    function patch(e) { chain = chain.map(function (x) { return x.id === e.id ? Object.assign({}, x, e) : x }) }
+    function isAuto(pid) { return !!cur && (cur.automated || []).indexOf(pid) >= 0 }
+    function pickAutoParam() {                  // el primero ya automatizado, o la salida/mezcla, o el primero
+        var a = cur.automated || []
+        if (a.length) return a[0]
+        for (var i = 0; i < type.params.length; i++) if (type.params[i].id === "output" || type.params[i].id === "mix") return type.params[i].id
+        return type.params[0].id
+    }
+
+    // ---------------- presets ----------------
+    function loadPresets() {
+        if (!curKey) { presets = []; return }
+        var r = studio.call("fxPresets", curKey)
+        presets = r.ok ? r.presets : []
+    }
+    function applyPreset(name) {
+        var r = studio.call("fxApplyPreset", cur.id, name)
+        if (!r.ok) { studio.toast(r.error); return }
+        patch(r.effect); presetName = name
+    }
+    function savePreset(name) {
+        var r = studio.call("fxSavePreset", cur.id, name)
+        if (!r.ok) { studio.toast(r.error); return }
+        presets = r.presets; presetName = name.trim()
+        studio.toast("Preset «" + presetName + "» guardado")
+    }
+    function deletePreset() {
+        var r = studio.call("fxDeletePreset", curKey, presetName)
+        if (!r.ok) { studio.toast(r.error); return }
+        presets = r.presets; presetName = ""
+    }
+
+    // ---------------- automatización ----------------
+    function loadAuto() {
+        if (!cur || !autoParam || !studio.engineOk) { autoPts = []; return }
+        var r = studio.call("fxAutomation", cur.id, autoParam)
+        autoPts = r.ok ? r.points : []
+    }
+    function setAuto(pts) {
+        pts = pts.slice().sort(function (a, b) { return a[0] - b[0] })
+        var r = studio.call("fxSetAutomation", cur.id, autoParam, JSON.stringify(pts))
+        if (!r.ok) { studio.toast(r.error); return }
+        autoPts = pts
+        patch(r.effect)
     }
     function setParam(i, v) {
         var p = type.params[i]
@@ -86,6 +142,10 @@ Column {
             var r = root.studio.call("fxMeters", root.cur.id)
             if (r.ok) root.meters = r.m
             if (root.cur.key === "analyzer") { var s = root.studio.call("fxSpectrum", root.cur.id, 96); if (s.ok) root.spectrum = s.bands }
+            if (root.studio.playing && (root.cur.automated || []).length) {   // las perillas siguen la curva
+                var f = root.studio.call("fxInfo", root.cur.id)
+                if (f.ok) root.patch({ id: f.effect.id, values: f.effect.values })
+            }
         }
     }
 
@@ -125,6 +185,7 @@ Column {
                                 onClicked: root.enable(slot.modelData.id, !slot.on) }
                     Text { anchors.verticalCenter: parent.verticalCenter
                            text: (slot.index + 1) + ". " + (root.typeOf(slot.modelData.key) || { name: slot.modelData.key }).name.replace("AFO ", "")
+                                 + ((slot.modelData.automated || []).length ? " ∿" : "")
                            color: slot.picked ? Theme.pressedInk : Theme.ink; font.family: Theme.font; font.pixelSize: 12; font.weight: 700 }
                     NeoButton { text: "◀"; fontSize: 10; padX: 4; padY: 0; shadow: 0; visible: slot.index > 0; tip: "Antes en la cadena"
                                 onClicked: root.move(slot.modelData.id, slot.index - 1) }
@@ -190,6 +251,106 @@ Column {
                            color: "#bdb398"; font.family: Theme.font; font.pixelSize: 10; font.weight: 600 }
                 }
             }
+            Row {                               // presets
+                width: ed.width; spacing: 8
+                Text { text: "Preset"; height: 28; verticalAlignment: Text.AlignVCenter; color: "#f3e7c4"
+                       font.family: Theme.font; font.pixelSize: 12; font.weight: 700 }
+                Select {
+                    width: Math.min(230, ed.width * 0.35); fontSize: 12; padY: 4
+                    options: [["", "— elegir —"]].concat(root.presets.map(function (p) { return [p.name, p.name + (p.factory ? "" : " ★")] }))
+                    current: root.presetName
+                    tip: "Presets de fábrica y los tuyos (★). Los parámetros que no nombra vuelven a su valor por defecto."
+                    onPicked: function (v) { if (v) root.applyPreset(v) }
+                }
+                Rectangle {
+                    width: 150; height: 28; color: "#fff"; border.width: 2; border.color: "#000"
+                    TextInput {
+                        id: presetIn
+                        x: 6; width: parent.width - 12; anchors.verticalCenter: parent.verticalCenter
+                        color: "#000"; font.family: Theme.font; font.pixelSize: 12; selectByMouse: true; clip: true
+                        onAccepted: if (text.trim()) { root.savePreset(text); text = "" }
+                        Text { visible: !presetIn.text && !presetIn.activeFocus; text: "nombre del preset"; color: "#888"
+                               font: presetIn.font; anchors.verticalCenter: parent.verticalCenter }
+                    }
+                }
+                NeoButton { text: "Guardar"; fontSize: 12; padX: 8; padY: 2; shadow: 2; tip: "Guardar los valores actuales como preset tuyo"
+                            onClicked: { if (presetIn.text.trim()) { root.savePreset(presetIn.text); presetIn.text = "" } else root.studio.toast("Escribe un nombre para el preset") } }
+                NeoButton { text: "Borrar"; fontSize: 12; padX: 8; padY: 2; shadow: 2
+                            visible: root.presets.some(function (p) { return p.name === root.presetName && !p.factory })
+                            tip: "Borrar este preset tuyo"; onClicked: root.deletePreset() }
+            }
+            Column {                            // línea de automatización del parámetro elegido
+                width: ed.width; spacing: 4
+                Row {
+                    spacing: 8
+                    Text { text: "Automatización"; height: 26; verticalAlignment: Text.AlignVCenter; color: "#f3e7c4"
+                           font.family: Theme.font; font.pixelSize: 12; font.weight: 700 }
+                    Select {
+                        width: 170; fontSize: 11; padY: 3
+                        options: root.type ? root.type.params.map(function (p) { return [p.id, p.name + (root.isAuto(p.id) ? " ∿" : "")] }) : []
+                        current: root.autoParam
+                        onPicked: function (v) { root.autoParam = v }
+                    }
+                    Text { height: 26; verticalAlignment: Text.AlignVCenter; color: "#bdb398"
+                           text: root.autoPts.length ? root.autoPts.length + " puntos · sigue la curva al reproducir y al exportar"
+                                                     : "Sin curva: clic en la línea para añadir un punto"
+                           font.family: Theme.font; font.pixelSize: 10; font.weight: 600 }
+                    NeoButton { text: "Quitar curva"; fontSize: 11; padX: 6; padY: 1; shadow: 2; visible: root.autoPts.length > 0
+                                tip: "El parámetro vuelve a su valor fijo"; onClicked: root.setAuto([]) }
+                }
+                Canvas {
+                    id: lane
+                    width: ed.width; height: 84
+                    property int drag: -1
+                    property var pts: root.autoPts
+                    readonly property real playX: root.studio.step < 0 ? -1 : width * (root.studio.step % 256) / 256
+                    onPtsChanged: requestPaint()
+                    onPlayXChanged: requestPaint()
+                    onWidthChanged: requestPaint()
+                    function xOf(t) { return width * t / root.span }
+                    function yOf(v) { var d = root.autoDesc; return d ? height - 6 - (height - 12) * root.toPos(d, v) / 100 : height / 2 }
+                    function tOf(x) { return Math.max(0, Math.min(root.span, x / width * root.span)) }
+                    function vOf(y) { return root.fromPos(root.autoDesc, Math.max(0, Math.min(100, 100 * (height - 6 - y) / (height - 12)))) }
+                    function hit(x, y) { for (var i = 0; i < pts.length; i++) if (Math.abs(xOf(pts[i][0]) - x) < 7 && Math.abs(yOf(pts[i][1]) - y) < 7) return i; return -1 }
+                    onPaint: {
+                        var ctx = getContext("2d"); ctx.reset()
+                        ctx.fillStyle = "#0c0a07"; ctx.fillRect(0, 0, width, height)
+                        ctx.strokeStyle = "rgba(255,255,255,0.10)"; ctx.lineWidth = 1
+                        for (var b = 0; b <= 16; b++) { var gx = width * b / 16; ctx.beginPath(); ctx.moveTo(gx, 0); ctx.lineTo(gx, height); ctx.stroke() }
+                        var p = pts || []
+                        if (p.length) {
+                            ctx.beginPath(); ctx.moveTo(0, yOf(p[0][1]))
+                            for (var i = 0; i < p.length; i++) ctx.lineTo(xOf(p[i][0]), yOf(p[i][1]))
+                            ctx.lineTo(width, yOf(p[p.length - 1][1]))
+                            ctx.strokeStyle = "#ffcf9e"; ctx.lineWidth = 2; ctx.stroke()
+                            ctx.fillStyle = "#ffb000"
+                            for (var j = 0; j < p.length; j++) ctx.fillRect(xOf(p[j][0]) - 4, yOf(p[j][1]) - 4, 8, 8)
+                        }
+                        if (playX >= 0) { ctx.strokeStyle = "#ff4d3d"; ctx.beginPath(); ctx.moveTo(playX, 0); ctx.lineTo(playX, height); ctx.stroke() }
+                        ctx.fillStyle = "#bdb398"; ctx.font = "10px sans-serif"
+                        ctx.fillText("16 compases · clic: añadir · arrastrar: mover · clic derecho: borrar", 6, 12)
+                    }
+                    MouseArea {
+                        anchors.fill: parent
+                        enabled: !!root.autoDesc
+                        acceptedButtons: Qt.LeftButton | Qt.RightButton
+                        onPressed: function (m) {
+                            var i = lane.hit(m.x, m.y), p = lane.pts.slice()
+                            if (m.button === Qt.RightButton) { if (i >= 0) { p.splice(i, 1); root.setAuto(p) } return }
+                            if (i < 0) {
+                                p.push([lane.tOf(m.x), lane.vOf(m.y)]); p.sort(function (a, b) { return a[0] - b[0] })
+                                root.autoPts = p; i = lane.hit(m.x, m.y)
+                            }
+                            lane.drag = i
+                        }
+                        onPositionChanged: function (m) {
+                            if (lane.drag < 0) return
+                            var p = root.autoPts.slice(); p[lane.drag] = [lane.tOf(m.x), lane.vOf(m.y)]; root.autoPts = p
+                        }
+                        onReleased: { if (lane.drag >= 0) { lane.drag = -1; root.setAuto(root.autoPts) } }
+                    }
+                }
+            }
             Canvas {                            // curva real del EQ o espectro del Analizador
                 id: plot
                 readonly property bool eq: !!root.cur && (root.cur.key === "eq")
@@ -235,8 +396,8 @@ Column {
                             visible: !pc.modelData.choices.length
                             anchors.horizontalCenter: parent.horizontalCenter
                             value: root.toPos(pc.modelData, pc.v)
-                            label: pc.modelData.name
-                            labelColor: "#f3e7c4"
+                            label: pc.modelData.name + (root.isAuto(pc.modelData.id) ? " ∿" : "")
+                            labelColor: root.isAuto(pc.modelData.id) ? "#ffcf9e" : "#f3e7c4"
                             tip: pc.modelData.help
                             onMoved: function (pos) { root.setParam(pc.index, root.fromPos(pc.modelData, pos)) }
                         }
@@ -317,7 +478,7 @@ Column {
     }
     Text {
         width: root.width; topPadding: 8; wrapMode: Text.Wrap
-        text: "Disponibles: " + root.catalog.length + " de 96 (Hito 1). Los efectos suenan en el motor C++, se guardan con la sesión y su latencia se compensa. Los marcados «por construir» aún no existen."
+        text: "Disponibles: " + root.catalog.length + " de 96 (Hito 1). Los efectos suenan en el motor C++, tienen presets y automatización, se guardan en el proyecto (Guardar / Abrir) y su latencia se compensa. Los marcados «por construir» aún no existen."
         color: Theme.ink; font.family: Theme.font; font.pixelSize: 12; font.weight: 500
     }
 

@@ -164,6 +164,20 @@ public:
             if (id == desc.params[i].id) return params[i].getCurrentValue();
         return 0.0f;
     }
+    // Parámetro de Tracktion (automatizable) por su id, o nullptr
+    te::AutomatableParameter* parameter (const juce::String& id)
+    {
+        for (size_t i = 0; i < params.size(); ++i)
+            if (id == desc.params[i].id) return params[i].parameter.get();
+        return nullptr;
+    }
+    // Valor fijo guardado en el estado del plugin (el que manda cuando no hay automatización)
+    float storedValue (const juce::String& id)
+    {
+        for (size_t i = 0; i < params.size(); ++i)
+            if (id == desc.params[i].id) return params[i].getCachedValue().get();
+        return 0.0f;
+    }
     bool setValue (const juce::String& id, float v)
     {
         for (size_t i = 0; i < params.size(); ++i)

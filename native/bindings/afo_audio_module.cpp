@@ -26,7 +26,7 @@ py::dict toDict (const afo::EffectInfo& e)
 {
     py::dict d;
     d["id"] = e.id; d["track_id"] = e.trackId; d["key"] = e.key; d["enabled"] = e.enabled;
-    d["values"] = e.values; d["latency_seconds"] = e.latencySeconds;
+    d["values"] = e.values; d["latency_seconds"] = e.latencySeconds; d["automated"] = e.automated;
     return d;
 }
 
@@ -41,7 +41,7 @@ afo::SynthSettings settings (int mode, int wave, float vel, float bri, bool sus,
 PYBIND11_MODULE (afo_audio, m)
 {
     m.doc() = "AllForOne: motor de audio nativo (JUCE + Tracktion Engine)";
-    m.attr("API_VERSION") = 5;
+    m.attr("API_VERSION") = 6;
 
     m.def ("version", &afo::version);
     m.def ("juce_version", &afo::juceVersion);
@@ -127,6 +127,12 @@ PYBIND11_MODULE (afo_audio, m)
         .def ("set_effect_enabled", &afo::Engine::setEffectEnabled, py::arg ("effect_id"), py::arg ("enabled"))
         .def ("effects", [] (const afo::Engine& e, int track)
               { py::list l; for (auto& f : e.effects (track)) l.append (toDict (f)); return l; }, py::arg ("track_id"))
+        .def ("effect_info", [] (const afo::Engine& e, int id) { return toDict (e.effectInfo (id)); }, py::arg ("effect_id"))
+        .def ("set_effect_automation", &afo::Engine::setEffectAutomation, py::arg ("effect_id"), py::arg ("param"), py::arg ("points"),
+              "Puntos (segundos, valor) de la automatización de un parámetro; [] la quita.")
+        .def ("effect_automation", &afo::Engine::effectAutomation, py::arg ("effect_id"), py::arg ("param"))
+        .def ("set_track_audio", [] (afo::Engine& e, int id, const std::string& path, double start)
+              { return toDict (e.setTrackAudio (id, path, start)); }, py::arg ("track_id"), py::arg ("path"), py::arg ("start_seconds") = 0.0)
         .def ("effect_meters", &afo::Engine::effectMeters, py::arg ("effect_id"))
         .def ("effect_spectrum", &afo::Engine::effectSpectrum, py::arg ("effect_id"), py::arg ("bands") = 64)
         .def ("add_audio_track", [] (afo::Engine& e, const std::string& path, const std::string& name)

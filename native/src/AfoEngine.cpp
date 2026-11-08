@@ -200,7 +200,12 @@ struct Engine::Impl
     {
         EffectInfo e;
         e.id = f.id; e.trackId = f.trackId; e.key = f.fx->desc.key; e.enabled = f.plugin->isEnabled();
-        for (auto& p : f.fx->desc.params) e.values.push_back (f.fx->value (p.id));
+        for (auto& p : f.fx->desc.params)
+        {
+            e.values.push_back (f.fx->value (p.id));
+            if (auto* ap = f.fx->parameter (p.id); ap != nullptr && ap->hasAutomationPoints())
+                e.automated.push_back (p.id);
+        }
         e.latencySeconds = f.plugin->getLatencySeconds();
         return e;
     }
@@ -818,6 +823,29 @@ std::string Engine::startRecording()
     return {};
 }
 
+TrackInfo Engine::setTrackAudio (int trackId, const std::string& path, double startSeconds)
+{
+    requireMessageThread();
+    auto& slot = impl->slot (trackId);
+    auto file = toFile (path);
+    te::AudioFile af (*impl->engine, file);
+    if (! file.existsAsFile() || ! af.isValid())
+        throw std::runtime_error ("afo_audio: no se puede leer el audio: " + path);
+    for (auto* c : slot.track->getClips())
+        c->removeFromParent();
+    const auto start = te::TimePosition::fromSeconds (std::max (0.0, startSeconds));
+    const auto len = te::TimeDuration::fromSeconds (af.getLength());
+    if (slot.track->insertWaveClip (file.getFileNameWithoutExtension(), file, { { start, start + len }, te::TimeDuration() }, false) == nullptr)
+        throw std::runtime_error ("afo_audio: Tracktion no pudo crear el clip");
+    slot.info.sourcePath = path;
+    slot.info.startSeconds = start.inSeconds();
+    slot.info.lengthSeconds = af.getLength();
+    slot.info.sampleRate = af.getSampleRate();
+    slot.info.numChannels = af.getNumChannels();
+    impl->edit->getTransport().ensureContextAllocated();
+    return slot.info;
+}
+
 TrackInfo Engine::stopRecording (bool discard)
 {
     requireMessageThread();
@@ -960,6 +988,51 @@ std::vector<EffectInfo> Engine::effects (int trackId) const
     std::vector<EffectInfo> r;
     for (auto* f : impl->chain (trackId))
         r.push_back (impl->describe (*f));
+    return r;
+}
+
+EffectInfo Engine::effectInfo (int effectId) const
+{
+    auto it = impl->fxSlots.find (effectId);
+    if (it == impl->fxSlots.end())
+        throw std::out_of_range ("afo_audio: efecto inexistente " + std::to_string (effectId));
+    return impl->describe (it->second);
+}
+
+bool Engine::setEffectAutomation (int effectId, const std::string& paramId, const std::vector<std::pair<double, float>>& points)
+{
+    requireMessageThread();
+    auto& f = impl->fxSlot (effectId);
+    auto* ap = f.fx->parameter (juce::String::fromUTF8 (paramId.c_str()));
+    if (ap == nullptr)
+        return false;
+    const auto range = ap->getValueRange();
+    auto& curve = ap->getCurve();
+    curve.clear();
+    for (auto& [t, v] : points)
+        curve.addPoint (te::TimePosition::fromSeconds (std::max (0.0, t)), range.clipValue (v), 0.0f);
+    // Tracktion recalcula la curva con un temporizador de 10 ms: se fuerza ya para que el
+    // siguiente render o bloque de reproducción use la curva nueva
+    ap->updateStream();
+    if (points.empty())                         // sin curva: vuelve a su valor fijo
+        ap->setParameter (f.fx->storedValue (juce::String::fromUTF8 (paramId.c_str())), juce::sendNotification);
+    else
+        ap->updateToFollowCurve (impl->edit->getTransport().getPosition());
+    return true;
+}
+
+std::vector<std::pair<double, float>> Engine::effectAutomation (int effectId, const std::string& paramId) const
+{
+    std::vector<std::pair<double, float>> r;
+    auto it = impl->fxSlots.find (effectId);
+    if (it == impl->fxSlots.end())
+        throw std::out_of_range ("afo_audio: efecto inexistente " + std::to_string (effectId));
+    if (auto* ap = it->second.fx->parameter (juce::String::fromUTF8 (paramId.c_str())))
+    {
+        auto& curve = ap->getCurve();
+        for (int i = 0; i < curve.getNumPoints(); ++i)
+            r.emplace_back (curve.getPointTime (i).inSeconds(), curve.getPointValue (i));
+    }
     return r;
 }
 

@@ -120,9 +120,51 @@ def _native_fx_checks(rep, app, host, window, bridge, track_id: int) -> None:
         json.loads(bridge.stop())
     st = fx("bypass", False)
     rep.check("bypass del efecto abierto en el motor", not host.engine.effects(track_id)[-1]["enabled"])
+    st = fx("preset", "Lateral (Side)")
+    an = host.engine.effects(track_id)[-1]
+    rep.check("Efectos: preset de fábrica aplicado en el motor", st["presets"] >= 3 and an["values"][2] == 4,
+              {"presets": st["presets"], "valores": an["values"]})
+    st = fx("auto", "averaging", [[0, 10], [2, 90]])
+    rep.check("Efectos: automatización dibujada llega al motor",
+              len(host.engine.effect_automation(an["id"], "averaging")) == 2 and st["chain"][-1]["automated"] == ["averaging"],
+              st["autoPts"])
     fx("remove")
     st = fx("remove")
     rep.check("quitar los efectos vacía la cadena", not st["chain"] and not host.engine.effects(track_id))
+
+
+def _native_project_checks(rep, app, host, window) -> None:
+    """Guardar y abrir proyecto desde la interfaz: la sesión vuelve con sus pistas, efectos y automatización."""
+    from PySide6.QtCore import QMetaObject, Q_ARG, Q_RETURN_ARG
+
+    def call(fn, *args):
+        v = QMetaObject.invokeMethod(window, fn, Q_RETURN_ARG("QVariant"), *[Q_ARG("QVariant", a) for a in args])
+        return v.toVariant() if hasattr(v, "toVariant") else v
+
+    call("fxCommand", "target", 0, None)
+    call("fxCommand", "add", "gain", None)
+    call("fxCommand", "auto", "output", [[0, -6], [4, 0]])
+    before = call("projectCommand", "snapshot", "")
+    shape = lambda snap: [(t["type"], t["name"]) for t in snap["tracks"]]   # noqa: E731
+    path = paths.user_data_dir() / "proyectos" / "autoprueba.afo"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    ok = call("projectCommand", "save", str(path))
+    doc = json.loads(path.read_text(encoding="utf-8")) if path.is_file() else {}
+    mfx = doc.get("master_fx", [])
+    rep.check("Proyecto: guardado con pistas, efectos y automatización",
+              bool(ok) and len(doc.get("tracks", [])) == len(before["tracks"]) and mfx and mfx[-1]["automation"].get("output"),
+              {"pistas": len(doc.get("tracks", [])), "master_fx": [f["key"] for f in mfx]})
+    ok = call("projectCommand", "open", str(path))
+    after = call("projectCommand", "snapshot", "")
+    master = host.engine.effects(0)
+    rep.check("Proyecto: abrir recrea la sesión", bool(ok) and shape(after) == shape(before), shape(after))
+    rep.check("Proyecto: efectos del master y su automatización recuperados en el motor",
+              [e["key"] for e in master][-1:] == ["gain"] and master[-1]["automated"] == ["output"],
+              [(e["key"], e["automated"]) for e in master])
+    notes = lambda snap: [(t["name"], sorted(t["roll"]), sorted(t["pat"]), t["cfg"]) for t in snap["tracks"] if t["type"] in ("inst", "drum")]  # noqa: E731
+    rep.check("Proyecto: notas, patrones y ajustes de los sintetizadores recuperados",
+              notes(after) == notes(before) and any(n[1] or n[2] for n in notes(after)), len(notes(after)))
+    path.unlink(missing_ok=True)
 
 
 def run_native_selftest(app, host, report_path: str | None, screenshot_path: str | None, rep=None) -> int:
@@ -185,6 +227,7 @@ def run_native_selftest(app, host, report_path: str | None, screenshot_path: str
         rep.add("transporte del motor visible en QML", "omitido", "sin dispositivo de salida abierto")
 
     _native_mixer_checks(rep, app, host, window, bridge, prop)
+    _native_project_checks(rep, app, host, window)
 
     QMetaObject.invokeMethod(window, "setDark", Q_ARG("QVariant", True))
     QMetaObject.invokeMethod(window, "saveLayout")
