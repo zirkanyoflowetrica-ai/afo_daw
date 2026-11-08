@@ -1,11 +1,42 @@
 // Pruebas nativas mínimas del motor (sin dispositivo de audio: usan render offline).
 #include "AfoEngine.h"
 
+#include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <chrono>
+#include <cstring>
 #include <filesystem>
+#include <fstream>
 #include <string>
+#include <vector>
+
+/** Escribe un WAV en coma flotante de 64 bits, como los que exportan muchos DAW.
+    JUCE no los lee (acepta hasta 32 bits): AllForOne registra su propio lector. */
+static bool write_float64_wav (const std::string& path, double seconds, double freq, double amp,
+                               unsigned channels = 2, unsigned rate = 48000)
+{
+    const auto frames = (uint32_t) (seconds * rate);
+    const uint32_t bytes = frames * channels * 8;
+    std::ofstream f (path, std::ios::binary);
+    if (! f) return false;
+    auto u32 = [&f] (uint32_t v) { f.write (reinterpret_cast<const char*> (&v), 4); };
+    auto u16 = [&f] (uint16_t v) { f.write (reinterpret_cast<const char*> (&v), 2); };
+    f.write ("RIFF", 4); u32 (36 + bytes); f.write ("WAVEfmt ", 8);
+    u32 (16); u16 (3); u16 ((uint16_t) channels); u32 (rate);
+    u32 (rate * channels * 8); u16 ((uint16_t) (channels * 8)); u16 (64);
+    f.write ("data", 4); u32 (bytes);
+    std::vector<double> frame (channels);
+    for (uint32_t i = 0; i < frames; ++i)
+    {
+        const double v = amp * std::sin (2.0 * 3.14159265358979323846 * freq * i / rate);
+        for (unsigned c = 0; c < channels; ++c) frame[c] = v;
+        f.write (reinterpret_cast<const char*> (frame.data()), (std::streamsize) channels * 8);
+    }
+    return f.good();
+}
 
 static int failures = 0;
 static bool juce_file_size_ok (const std::string& p)
@@ -80,6 +111,26 @@ int main (int argc, char** argv)
         CHECK (! engine.previewPlaying(), "previsualización detenida");
         CHECK (engine.removeTrack (t.id), "elimina pista");
         CHECK (engine.tracks().empty(), "sin pistas tras eliminar");
+
+        // --- WAV en coma flotante de 64 bits (el caso de los stems del usuario) ----------
+        // JUCE lee hasta 32 bits y Tracktion necesita además un lector mapeado en memoria para
+        // reproducir, así que estos archivos NO entran al motor: debe rechazarlos de inmediato y
+        // con un mensaje claro, que es lo que dispara la conversión automática en engine_host.py.
+        // (Se probó un lector propio de 64 bits: abre y mide bien, pero el render de Tracktion se
+        //  queda esperando bloques para siempre. Un cuelgue es peor que una conversión de 1 s.)
+        const auto f64 = (out / "stem_float64.wav").string();
+        CHECK (write_float64_wav (f64, 2.0, 440.0, 0.25), "escribe WAV float de 64 bits");
+        bool rejected = false;
+        std::string why;
+        const auto t0 = std::chrono::steady_clock::now();
+        try { engine.addAudioTrack (f64, "Stem 64 bits"); }
+        catch (const std::exception& e) { rejected = true; why = e.what(); }
+        const auto ms = std::chrono::duration_cast<std::chrono::milliseconds> (std::chrono::steady_clock::now() - t0).count();
+        std::printf ("       float64: rechazado en %lld ms -> %s\n", (long long) ms, why.c_str());
+        CHECK (rejected && why.find ("no se puede leer el audio") != std::string::npos,
+               "el motor rechaza el WAV de 64 bits con un error claro (no se cuelga)");
+        CHECK (ms < 2000, "lo rechaza al momento, sin bloquearse");
+        CHECK (engine.tracks().empty(), "una pista rechazada no deja restos");
     }
 
     std::printf ("%s (%d fallos)\n", failures ? "PRUEBAS NATIVAS FALLIDAS" : "PRUEBAS NATIVAS OK", failures);

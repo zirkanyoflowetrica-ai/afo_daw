@@ -9,8 +9,9 @@ import logging
 import math
 import sys
 from dataclasses import dataclass, field
+from pathlib import Path
 
-from . import paths
+from . import audio_import, paths
 
 log = logging.getLogger("allforone.engine")
 
@@ -81,9 +82,32 @@ class EngineHost:
         }
 
     # --- pistas -------------------------------------------------------------
-    def add_audio(self, path: str, name: str = "", buckets: int = 600) -> dict:
-        info = dict(self.engine.add_audio_track(path, name))
+    def add_audio(self, path: str, name: str = "", buckets: int = 600, convert: bool = True) -> dict:
+        """Importa un archivo como pista.
+
+        Si el motor no sabe leer el formato (p. ej. WAV en coma flotante de 64 bits,
+        que JUCE rechaza) y `convert`, se carga una copia convertida y se avisa; el
+        original no se toca. Con `convert=False` se propaga el error: así quien llama
+        puede convertir en otro hilo sin bloquear la ventana (ver bridge.importPaths).
+        """
+        original = str(path)
+        try:
+            return self.add_prepared(original, original, "", name, buckets)
+        except Exception as exc:
+            if not convert:
+                raise
+            try:
+                readable, note = audio_import.to_engine_wav(original)
+            except Exception as conv:
+                raise RuntimeError(f"{exc} [{conv}]") from exc
+            return self.add_prepared(original, str(readable), note, name, buckets)
+
+    def add_prepared(self, original: str, readable: str, note: str = "", name: str = "", buckets: int = 600) -> dict:
+        """Crea la pista a partir de un archivo que el motor ya sabe leer (hilo principal)."""
+        info = dict(self.engine.add_audio_track(readable, name or (Path(original).stem if note else "")))
         info["peaks"] = [round(v, 4) for v in self.engine.track_peaks(info["id"], buckets)]
+        info["originalPath"] = original
+        info["note"] = note
         self.tracks[info["id"]] = info
         return info
 

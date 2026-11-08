@@ -118,7 +118,7 @@ def run_selftest(app, host, report_path: str | None, screenshot_path: str | None
     original_ids = ["p-piano", "p-inst", "p-drums", "p-cinta", "p-ia", "p-pistas", "p-mezcla", "p-master"]
     ids = p.get("ids") or []
     rep.check("8 módulos originales de la plantilla presentes", all(i in ids for i in original_ids), ids[:8])
-    rep.check("4 módulos del Mezclador V4.2 en el lienzo", all(i in ids for i in ["p-mixia", "p-afina", "p-mastia", "p-antes"]), ids[8:])
+    rep.check("4 módulos del Mezclador V4.2 en el lienzo", all(i in ids for i in ["p-audios", "p-afina", "p-mastia", "p-antes"]), ids[8:])
     rep.check("fondo crema #fff1c9", p.get("bg") == "rgb(255, 241, 201)", p.get("bg"))
     rep.check("tipografía Space Grotesk local cargada", bool(p.get("fontLoaded")), p.get("font"))
     rep.check("cabeceras negras", p.get("header") == "rgb(0, 0, 0)", p.get("header"))
@@ -176,7 +176,11 @@ def _finish(rep: Report, report_path: str | None) -> int:
 
 
 def _write_demo_stems(folder: Path) -> list[str]:
-    """Stems SINTÉTICOS de prueba (voz con vibrato, 808, kick), 6 s a 44,1 kHz."""
+    """Stems SINTÉTICOS de prueba (voz con vibrato, 808, kick), 6 s a 44,1 kHz.
+
+    La voz principal se escribe en **coma flotante de 64 bits**, igual que los stems reales
+    que exportan muchos DAW: JUCE no los sabe leer y AllForOne debe convertirlos al importar.
+    """
     import numpy as np
     import soundfile as sf
     folder.mkdir(parents=True, exist_ok=True)
@@ -191,7 +195,10 @@ def _write_demo_stems(folder: Path) -> list[str]:
     out = []
     for name, x in stems.items():
         p = folder / f"{name}.wav"
-        sf.write(str(p), x.astype("float32"), sr)
+        if name == "Voz_Principal":
+            sf.write(str(p), x.astype("float64"), sr, subtype="DOUBLE")
+        else:
+            sf.write(str(p), x.astype("float32"), sr)
         out.append(str(p))
     return out
 
@@ -205,11 +212,12 @@ def run_mixer_checks(rep, app, host, view, bridge, run_js):
     if not rep.check("Mezclador V4.2 cargado (módulos originales)", info.get("ok", False), info.get("error", f"{len(info.get('profiles', []))} plantillas, {len(info.get('masters', []))} masters")):
         return
     stems = _write_demo_stems(paths.user_data_dir() / "autoprueba" / "stems")
+    before_tracks = len(host.engine.tracks())
 
-    # Soltar los archivos sobre el panel Mezcla IA con un evento de arrastre real de Qt
-    run_js("fit(['mixia']);", "fit")
+    # Soltar los archivos sobre el panel Audios con un evento de arrastre real de Qt
+    run_js("fit(['audios']);", "fit")
     _wait(app, lambda: False, 0.6, host)
-    box = json.loads(run_js("JSON.stringify((()=>{const r=document.querySelector('#p-mixia .afo-drop').getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}})())", "box") or "{}")
+    box = json.loads(run_js("JSON.stringify((()=>{const r=document.querySelector('#p-audios .afo-drop').getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}})())", "box") or "{}")
     target = view.focusProxy() or view
     md = QMimeData()
     md.setUrls([QUrl.fromLocalFile(p) for p in stems])
@@ -221,12 +229,29 @@ def run_mixer_checks(rep, app, host, view, bridge, run_js):
     got = {}
 
     def stems_loaded():
-        got["n"] = run_js("AFO_MX.stems.length", "n", 2)
+        got["n"] = run_js("AFO_MX.items.filter(i=>i.track).length", "n", 2)
         return (got.get("n") or 0) >= 3
-    if not rep.check("soltar 3 stems sobre Mezcla IA (arrastre de Qt con ruta real)", _wait(app, stems_loaded, 10, host), f"stems en el panel: {got.get('n')}"):
+    if not rep.check("soltar 3 audios sobre «Audios» (arrastre de Qt con ruta real)", _wait(app, stems_loaded, 15, host), f"audios con pista: {got.get('n')}"):
         return
-    kinds = run_js("JSON.stringify(AFO_MX.stems.map(s=>s.name+':'+s.kind))", "kinds")
+    kinds = run_js("JSON.stringify(AFO_MX.items.map(s=>s.name+':'+s.kind+':'+s.role))", "kinds")
     rep.add("clasificación por nombre", "info", kinds)
+
+    # El audio de voz es WAV float de 64 bits: JUCE no lo lee y hay que convertirlo al vuelo
+    rep.check("cada audio crea su pista en el motor", len(host.engine.tracks()) >= before_tracks + 3,
+              f"pistas en el motor: {len(host.engine.tracks())}")
+    conv = run_js("JSON.stringify(AFO_MX.items.filter(i=>i.note).map(i=>i.name))", "conv")
+    rep.check("WAV en coma flotante de 64 bits importado (conversión automática)", bool(conv) and "Voz_Principal" in conv, conv)
+    strips = run_js("document.querySelectorAll('#b-mezcla .strip').length", "strips", 2)
+    roles = run_js("document.querySelectorAll('#b-mezcla .afo-role').length", "roles", 2)
+    rep.check("cada pista tiene su tira en la consola, con selector de rol", (strips or 0) >= 3 and (roles or 0) >= 3,
+              f"{strips} tiras, {roles} selectores de rol")
+    prow = run_js("document.querySelectorAll('#b-pistas .afo-role').length", "prow", 2)
+    rep.check("rol de voz también editable en Pistas", (prow or 0) >= 3, f"{prow} selectores en Pistas")
+
+    # Cables del Afinador a las tiras concretas de las voces que va a afinar
+    wires = run_js("(()=>{KV.tnStr=60;AFO_MX.tune.voices={lead:true,l:false,r:false,b:false};"
+                   "AFO_renderMixer();sync();const n=links().filter(l=>l.f==='afina'&&l.t==='mezcla').length;KV.tnStr=0;return n})()", "wires", 3)
+    rep.check("el Afinador se cablea a la tira de la voz que afina", (wires or 0) >= 1, f"{wires} cable(s) afina→tira")
 
     # MEZCLAR AUTOMÁTICAMENTE (sin afinación: intensidad 0 %)
     run_js("document.querySelector('[data-mx=\"mix\"]').click()", "click")
@@ -248,7 +273,18 @@ def run_mixer_checks(rep, app, host, view, bridge, run_js):
     info_mix = sf.info(run["mix"])
     rep.check("mezcla sin master es audio real", info_mix.frames > info_mix.samplerate * 5, f"{info_mix.frames / info_mix.samplerate:.1f} s, {info_mix.channels} canales")
     rep.check("comparaciones A/B por pista", len(run["review"]) >= 3, f"{len(run['review'])} pistas")
-    rep.check("ZIP de sesión", Path(run["zip"]).stat().st_size > 10000, run["zip"])
+    live = run_js("JSON.stringify(Object.entries(AFO_MX.live).map(([i,v])=>({i:+i,g:v.gain_db,pan:v.pan,fader:+(document.querySelector('#b-mezcla input[data-v=\"'+i+'\"]')||{}).value})))", "live")
+    try:
+        rows = json.loads(live or "[]")
+    except Exception:
+        rows = []
+    moved = [r for r in rows if r.get("fader") and abs(r["fader"] - 70) > 0.5]
+    rep.check("la consola refleja la mezcla: faders movidos a la ganancia real medida",
+              len(rows) >= 3 and bool(moved), f"{len(rows)} tiras con datos, {len(moved)} con fader distinto de 0 dB: {rows}")
+    # El ZIP ya no se crea en cada mezcla (para una canción entera son GB): se arma al pedirlo.
+    rep.check("la mezcla NO deja un ZIP sin pedirlo", not Path(run["zip"]).exists(), run["zip"])
+    zipped = bridge.mixsvc.make_zip(run)
+    rep.check("ZIP de sesión bajo demanda", Path(zipped).stat().st_size > 10000, zipped)
 
     # Enviar el master a Pistas desde el panel Master IA
     before = len(host.engine.tracks())

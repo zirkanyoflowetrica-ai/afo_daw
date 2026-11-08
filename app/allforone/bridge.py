@@ -6,11 +6,14 @@ Todas las respuestas son JSON: {"ok": bool, ...}.
 """
 from __future__ import annotations
 
+import base64
 import json
 import logging
 import math
 import queue
+import re
 import shutil
+import threading
 from datetime import datetime
 from pathlib import Path
 
@@ -18,6 +21,7 @@ from PySide6.QtCore import QObject, QTimer, QUrl, Signal, Slot
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import QFileDialog, QWidget
 
+from . import audio_import, paths
 from .engine_host import EngineHost, fader_to_db
 from .mixer_service import AUDIO_EXT, REF_LABEL, MixerService
 
@@ -89,6 +93,9 @@ class Bridge(QObject):
         self._mixer_timer.setInterval(50)
         self._mixer_timer.timeout.connect(self._drain_mixer_events)
         self._mixer_timer.start()
+        self._takes: dict[str, dict] = {}   # tomas del grabador que están llegando por trozos
+        self._to_convert: list[str] = []    # audios que el motor no lee y hay que convertir
+        self._converting: str | None = None
 
     def _drain_mixer_events(self) -> None:
         for _ in range(200):
@@ -96,6 +103,9 @@ class Bridge(QObject):
                 ev = self._mixer_events.get_nowait()
             except queue.Empty:
                 return
+            if ev.get("type") == "_converted":      # interno: la conversión terminó en su hilo
+                self._finish_import(ev)
+                continue
             self.mixerEvent.emit(_json(ev))
 
     def _tick(self) -> None:
@@ -183,6 +193,52 @@ class Bridge(QObject):
             self.host.engine.set_track_solo(int(tid), bool(solo))
         return _ok()
 
+    # --- tomas del grabador --------------------------------------------------------
+    # El grabador de la plantilla produce un Blob en el navegador. JavaScript lo decodifica,
+    # arma un WAV PCM de 24 bits y lo manda por trozos: aquí solo se escriben los bytes.
+    @Slot(str, result=str)
+    def takeBegin(self, name: str) -> str:
+        token = f"t{len(self._takes) + 1}_{datetime.now():%H%M%S}"
+        safe = re.sub(r"[^\w.\- ]+", "_", name or "toma").strip() or "toma"
+        self._takes[token] = {"name": safe, "parts": [], "bytes": 0}
+        return _ok(token=token)
+
+    @Slot(str, str, result=str)
+    def takeChunk(self, token: str, b64: str) -> str:
+        t = self._takes.get(token)
+        if t is None:
+            return _err("Toma desconocida (vuelve a empezar)")
+        try:
+            data = base64.b64decode(b64, validate=True)
+        except Exception as exc:
+            self._takes.pop(token, None)
+            return _err(f"Trozo de audio inválido: {exc}")
+        t["bytes"] += len(data)
+        if t["bytes"] > 512 * 1024 * 1024:
+            self._takes.pop(token, None)
+            return _err("Toma demasiado larga (más de 512 MB)")
+        t["parts"].append(data)
+        return _ok()
+
+    @Slot(str, result=str)
+    def takeEnd(self, token: str) -> str:
+        t = self._takes.pop(token, None)
+        if t is None:
+            return _err("Toma desconocida (vuelve a empezar)")
+        folder = paths.user_data_dir() / "tomas"
+        folder.mkdir(parents=True, exist_ok=True)
+        dest = folder / f"{t['name']}_{datetime.now():%Y%m%d_%H%M%S}.wav"
+        try:
+            dest.write_bytes(b"".join(t["parts"]))
+        except OSError as exc:
+            return _err(f"No se pudo guardar la toma: {exc}")
+        try:
+            stem = self.mixsvc.describe_paths([str(dest)])[0]
+        except Exception as exc:
+            return _err(f"Toma guardada en {dest}, pero el mezclador no pudo clasificarla: {exc}")
+        log.info("Toma guardada: %s (%.1f MB)", dest, dest.stat().st_size / 1e6)
+        return _ok(stem=stem, path=str(dest))
+
     # --- pistas -------------------------------------------------------------------
     @Slot(result=str)
     def importAudio(self) -> str:
@@ -204,15 +260,58 @@ class Bridge(QObject):
         return self.import_paths(files)
 
     def import_paths(self, files: list[str]) -> str:
-        added, errors = [], []
+        """Importa en varios pasos para no congelar la ventana.
+
+        Lo que el motor lee directamente entra al momento. Lo que no (p. ej. WAV en coma
+        flotante de 64 bits, de cientos de MB) se convierte en un hilo aparte y la pista se
+        crea al volver al hilo principal. Cada archivo avisa por `mixerEvent`.
+        """
+        added, errors, pending = [], [], []
         for f in files:
             try:
-                added.append(self.host.add_audio(f))
+                added.append(self.host.add_audio(f, convert=False))
             except Exception as exc:
-                errors.append(f"{Path(f).name}: {exc}")
-        if not added:
+                pending.append((f, str(exc)))
+        for f, _why in pending:
+            self._to_convert.append(f)
+        self._pump_convert()
+        if not added and not pending:
             return _err("; ".join(errors) or "Ningún archivo importado")
-        return _ok(tracks=added, errors=errors)
+        return _ok(tracks=added, errors=errors, converting=[Path(f).name for f, _ in pending])
+
+    # --- conversión de formatos que el motor no lee (en segundo plano) -----------------
+    def _pump_convert(self) -> None:
+        if self._converting or not self._to_convert:
+            return
+        src = self._converting = self._to_convert.pop(0)
+        self._mixer_events.put({"type": "import", "phase": "convert", "name": Path(src).name,
+                                "left": len(self._to_convert),
+                                "desc": f"Convirtiendo {Path(src).name} para el motor…"})
+
+        def work():
+            try:
+                readable, note = audio_import.to_engine_wav(src)
+                self._mixer_events.put({"type": "_converted", "src": src, "use": str(readable), "note": note})
+            except Exception as exc:
+                self._mixer_events.put({"type": "_converted", "src": src, "error": str(exc)})
+
+        threading.Thread(target=work, name="afo-convert", daemon=True).start()
+
+    def _finish_import(self, ev: dict) -> None:
+        """Hilo principal: ya hay un archivo legible, se crea la pista."""
+        self._converting = None
+        src = ev["src"]
+        if ev.get("error"):
+            self._mixer_events.put({"type": "import", "phase": "error", "name": Path(src).name,
+                                    "error": f"{Path(src).name}: {ev['error']}"})
+        else:
+            try:
+                info = self.host.add_prepared(src, ev["use"], ev.get("note", ""))
+                self._mixer_events.put({"type": "import", "phase": "track", "track": _clean(info)})
+            except Exception as exc:
+                self._mixer_events.put({"type": "import", "phase": "error", "name": Path(src).name,
+                                        "error": f"{Path(src).name}: {exc}"})
+        self._pump_convert()
 
     @Slot(result=str)
     def addTestTone(self) -> str:
@@ -347,12 +446,25 @@ class Bridge(QObject):
         return {"ok": True, "tracks": [info]}
 
     def _mx_zip(self, d):
+        """El ZIP se arma aquí, no al mezclar: para una canción entera son GB y casi un minuto."""
         run = self._run(d)
         target, _ = QFileDialog.getSaveFileName(self.parent_widget, "Guardar sesión de mezcla", str(Path.home() / Path(run["zip"]).name), "ZIP (*.zip)")
         if not target:
             return {"ok": False, "cancelled": True}
-        shutil.copy2(run["zip"], target)
-        return {"ok": True, "path": target}
+        self._mixer_events.put({"type": "progress", "panel": "mezcla", "p": 5, "desc": "Comprimiendo la sesión…"})
+
+        def work():
+            try:
+                src = self.mixsvc.make_zip(run, lambda i, n: self._mixer_events.put(
+                    {"type": "progress", "panel": "mezcla", "p": round(100 * i / max(1, n), 1),
+                     "desc": f"Comprimiendo la sesión… {i}/{n} archivos"}))
+                shutil.copy2(src, target)
+                self._mixer_events.put({"type": "progress", "panel": "mezcla", "p": 100, "desc": f"Sesión guardada: {target}"})
+            except Exception as exc:
+                self._mixer_events.put({"type": "error", "panel": "mezcla", "error": f"No se pudo crear el ZIP: {exc}"})
+
+        threading.Thread(target=work, name="afo-zip", daemon=True).start()
+        return {"ok": True, "pendiente": True, "path": target}
 
     def _mx_folder(self, d):
         run = self._run(d)

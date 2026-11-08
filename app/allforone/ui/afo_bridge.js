@@ -54,7 +54,7 @@
 
   const _sub = sub;
   sub = function (t) {
-    if (t.type === 'audio') return fmt(t.dur || 0) + ' · motor nativo';
+    if (t.type === 'audio') return fmt(t.dur || 0) + ' · motor nativo' + (t.note ? ' · ' + t.note : '');
     const s = _sub(t);
     if (AFO.engineOk && (t.type === 'inst' || t.type === 'drum' || t.type === 'ia')) return 'DEMO · ' + s;
     return s;
@@ -121,6 +121,7 @@
   function addAudioTrack(info) {
     const t = mk('audio', info.name);
     t.engineId = info.id; t.peaks = info.peaks || []; t.dur = info.length_seconds;
+    t.note = info.note || ''; t.srcPath = info.originalPath || info.source_path || '';
     t.vol = 70;
     t.clips = [[0, Math.max(1, Math.min(100, info.length_seconds / BAR16() * 100))]];
     tracks.push(t); pick(t);
@@ -167,12 +168,15 @@
     } else if (d.add === 'audio') {
       e.stopImmediatePropagation();
       const r = await call('importAudio');
-      if (r.ok) { r.tracks.forEach(addAudioTrack); toast(r.tracks.length + ' archivo(s) en el motor'); }
-      else if (!r.cancelled) toast(r.error);
+      if (r.ok) {
+        r.tracks.forEach(t => AFO.addAudioTrack(t));   // los paneles lo envuelven para fichar el stem
+        const conv = r.tracks.filter(t => t.note).length;
+        toast(`${r.tracks.length} archivo(s) en el motor` + (conv ? ` · ${conv} convertido(s) a 32 bits` : ''));
+      } else if (!r.cancelled) toast(r.error);
     } else if (d.afo === 'tone') {
       e.stopImmediatePropagation();
       const r = await call('addTestTone');
-      if (r.ok) { addAudioTrack(r.track); toast('Tono de prueba 440 Hz (sintético) añadido'); } else toast(r.error);
+      if (r.ok) { AFO.addAudioTrack(r.track, { stem: false }); toast('Tono de prueba 440 Hz (sintético) añadido'); } else toast(r.error);
     } else if (d.del !== undefined) {
       const t = tracks[+d.del]; if (t && t.engineId) call('removeTrack', t.engineId);
     }

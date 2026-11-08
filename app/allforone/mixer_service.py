@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import os
 import re
 import shutil
@@ -71,6 +72,26 @@ def load():
 
 def safe_name(name):
     return re.sub(r"[^a-zA-Z0-9_\-]", "_", Path(name).stem)[:55].strip("_") or "pista"
+
+
+#: Posiciones que usa `mixer_engine.stereo()` traducidas al paneo -1..+1 de la consola.
+PAN_VALUE = {"Original / centro": 0.0, "Izquierda": -1.0, "Derecha": 1.0,
+             "50% izquierda": -0.5, "50% derecha": 0.5}
+
+
+def _rms_db(np, x) -> float:
+    """Nivel RMS en dBFS de un bloque de audio (−100 si es silencio)."""
+    if x is None or not getattr(x, "size", 0):
+        return -100.0
+    v = float(np.sqrt(np.mean(np.square(np.asarray(x, dtype="float64")))))
+    return 20.0 * math.log10(v) if v > 1e-9 else -100.0
+
+
+def _peak_db(np, x) -> float:
+    if x is None or not getattr(x, "size", 0):
+        return -100.0
+    v = float(np.max(np.abs(x)))
+    return 20.0 * math.log10(v) if v > 1e-9 else -100.0
 
 
 # ----------------------------------------------------------------------------------------
@@ -236,6 +257,26 @@ class MixerService:
         threading.Thread(target=run, name=f"afo-mixer-{kind}", daemon=True).start()
         return {"ok": True, "started": kind}
 
+    def make_zip(self, run: dict, progress=None) -> str:
+        """Arma el ZIP de la sesión (bajo demanda; ver _mix). Devuelve su ruta."""
+        dest = Path(run["folder"])
+        archive = Path(run["zip"])
+        if archive.is_file() and archive.stat().st_size > 1000:
+            return str(archive)
+        files = [f for f in dest.rglob("*") if f.is_file() and f != archive]
+        tmp = archive.with_suffix(".parcial")
+        try:
+            with zipfile.ZipFile(tmp, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=1, allowZip64=True) as z:
+                for i, f in enumerate(files, 1):
+                    if progress and i % 5 == 0:
+                        progress(i, len(files))
+                    z.write(f, f.relative_to(dest).as_posix())
+            tmp.replace(archive)
+        except BaseException:
+            tmp.unlink(missing_ok=True)
+            raise
+        return str(archive)
+
     def _stage(self, m, stems, dest):
         """Rutas a mezclar: el original, o una copia renombrada si el usuario corrigió tipo/rol."""
         staged, notes = [], []
@@ -277,8 +318,11 @@ class MixerService:
                 i, n = frac
                 p = 5 + 70 * (i / max(1, n))
             except Exception:
-                p = 50
-            self.emit({"type": "progress", "panel": "mixia", "p": round(p, 1), "desc": desc})
+                i, p = None, 50
+            self.emit({"type": "progress", "panel": "mezcla", "p": round(p, 1), "desc": desc})
+            if i is not None:
+                # La consola marca qué tira está procesando el mezclador en este momento.
+                self.emit({"type": "strip", "i": int(i), "phase": "work", "desc": desc})
 
         music_plan = None
         vocal_bpm = 0.0
@@ -292,7 +336,7 @@ class MixerService:
                       tune_right=bool(tune.get("voices", {}).get("r", False)), tune_center_backings=bool(tune.get("voices", {}).get("b", False))
                       ) if strength > 0 else False
 
-        self.emit({"type": "progress", "panel": "mixia", "p": 3, "desc": f"Preparando {len(staged)} stems…"})
+        self.emit({"type": "progress", "panel": "mezcla", "p": 3, "desc": f"Preparando {len(staged)} stems…"})
         mix, report, details = eng.render_mix([{"path": p} for p in staged], reference_path=reference, return_details=True,
                                               progress=progress, tuning=tuning, backing_step_db=step_db,
                                               vocal_space_amount=space, vocal_space_bpm=vocal_bpm, auto_music_bpm=False,
@@ -337,6 +381,14 @@ class MixerService:
                                note=f"{item['kind']} · {item['position']}\n{item['note']}\n{note}. Pista seca antes de buses y efectos compartidos."))
             manifest_tracks.append(dict(name=item["name"], kind=item["kind"], position=item["position"],
                                         file=f"pistas_procesadas_pre_bus/{stem}.wav", decisions=item["note"]))
+            # Lo que la consola muestra en su tira: medido sobre el audio real, no estimado.
+            before, after = _rms_db(np, original), _rms_db(np, item["audio"])
+            self.emit({"type": "strip", "i": i - 1, "phase": "done", "name": item["name"],
+                       "kind": item["kind"], "position": item["position"],
+                       "pan": PAN_VALUE.get(item["position"], 0.0),
+                       "gain_db": round(after - before, 2) if before > -100 else 0.0,
+                       "rms_db": round(after, 2), "peak_db": round(_peak_db(np, item["audio"]), 2),
+                       "note": item["note"]})
         for i, (name, audio) in enumerate(details["buses"].items(), 1):
             eng.save_wav(dest / "buses_finales" / f"{i:02d}_{safe_name(name)}.wav", audio, subtype="FLOAT")
         for i, (lab, audio) in enumerate(details["derived"].items(), 1):
@@ -371,12 +423,9 @@ class MixerService:
                         tuning=(tuning or None), step_db=step_db, vocal_space=space,
                         stems=[{k: s.get(k) for k in ("path", "kind", "role")} for s in stems])
         (dest / "sesion.json").write_text(json.dumps(clean(manifest), ensure_ascii=False, indent=2, allow_nan=False), encoding="utf-8")
-        self.emit({"type": "progress", "panel": "mixia", "p": 99, "desc": "Preparando ZIP de la sesión…"})
+        # El ZIP se arma solo cuando lo pides (Master IA → «Exportar sesión ZIP»): para una
+        # canción de 3-4 minutos duplicaría la carpeta (2,5 GB) y añadiría ~40 s a cada mezcla.
         archive = dest / "sesion_completa.zip"
-        with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=1, allowZip64=True) as z:
-            for f in dest.rglob("*"):
-                if f.is_file() and f != archive:
-                    z.write(f, f.relative_to(dest).as_posix())
 
         run = dict(id=len(self.runs), label=f"{label} · {datetime.now():%H:%M}", folder=str(dest), zip=str(archive), report=report,
                    mix=files["mix"], masters={k: {kk: (float(vv) if isinstance(vv, (int, float)) else vv) for kk, vv in s.items()} for k, s in masters.items()},

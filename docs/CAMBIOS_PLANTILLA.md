@@ -78,3 +78,54 @@ color. El tema claro original no cambia. La preferencia se recuerda en el equipo
 
 `ui/icon.svg` → `icon.ico` (16–256 px): diseño original «todos en uno», ocho señales con los colores
 de los módulos convergiendo en un único conector. Se usa en la ventana y en `AllForOne.exe`.
+
+## V0.3 — Audios y consola, rol de voz, cables del Afinador
+
+`index.html` sigue siendo la plantilla + 3 líneas. Todo lo de abajo lo añade `afo_panels.js`
+envolviendo funciones globales (`pistas`, `mezcla`, `cinta`, `links`, `layoutPorts`,
+`defaultPin`, `refresh`, `setK`); el CSS original sigue intacto.
+
+### El módulo «Mezcla IA» se parte en dos
+
+| Antes (V0.2) | Ahora (V0.3) |
+|---|---|
+| **Mezcla IA**: cargar stems + clasificarlos + mandos de mezcla + MEZCLAR | **Audios** (`#A800FF`… naranja `#ff9f45`): solo cargar y clasificar. Cada audio **crea su pista** en el motor y, con ella, **su tira en la consola**. |
+| | **Mezcla** (la consola 6C de la plantilla): tiras reales + **mandos de mezcla automática fusionados** (plantilla artística, modo, escalón L/R, espacio vocal, MEZCLAR / REMEZCLAR, progreso, historial). |
+
+Al mezclar, la consola **se mueve de verdad**:
+
+- la tira que el mezclador está procesando se enciende (`.strip.afo-work`);
+- al terminar cada pista, su fader va a la **ganancia realmente medida** (RMS de la pista
+  procesada frente a la original) con la ley de fader de la plantilla (70 = 0 dB), y la perilla
+  de Pan va a la **posición real** que decidió el mezclador (`mixer_engine.stereo`: centro,
+  izquierda, derecha, 50 % izquierda, 50 % derecha);
+- un LCD pequeño bajo el fader muestra esa ganancia y la posición.
+
+La EQ, la compresión, la afinación y los efectos **no** están en la consola: solo en el audio
+renderizado (Master IA · Antes/Después). El panel lo dice.
+
+### Rol de voz P/B/L/R/B_L/B_R en Pistas, en la consola y al grabar
+
+- Filas de **Pistas** y tiras de **Mezcla**: etiqueta con el tipo y un selector de rol editable
+  (`.afo-role`). Cambiarlo en cualquiera de los tres sitios cambia el rol en todos.
+- **Grabador de cintas**: selector «Esta toma es …» y botón **⇢ Guardar toma como audio**, que
+  decodifica la toma, la guarda como WAV PCM de 24 bits en `datos/tomas/` y la añade a Audios con
+  ese rol, lista para mezclar. (El sonido de la toma sigue siendo el del navegador: grabar por el
+  motor nativo llega más adelante.)
+
+### Cables del Afinador a la tira concreta
+
+Con intensidad > 0 %, el Afinador tira un cable por cada voz marcada hasta **la tira exacta** de
+esa pista en la consola (`layoutPorts` guarda la posición horizontal de cada tira, igual que la
+plantilla guarda la vertical de cada fila de Pistas en `PRY`). El panel lista a qué tiras está
+conectado.
+
+### Topología de cables
+
+`Audios → Pistas → Mezcla → Master IA → Mezcla final`, `Mezcla → Antes/Después`,
+`Afinador → tira N de Mezcla` (uno por voz).
+
+### Audio que el motor no sabía leer
+
+`PLANTILLA_DAW.html` no cambia, pero sí el comportamiento al soltar archivos: ahora entran los
+WAV en coma flotante de 64 bits (ver `docs/INFORME_V0.3.md`).
