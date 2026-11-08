@@ -37,6 +37,9 @@ class EngineHost:
     engine: object | None = None
     error: str | None = None
     tracks: dict[int, dict] = field(default_factory=dict)
+    # Los medidores nativos son "leer y borrar": este es el ÚNICO lector (ver read_levels)
+    last_levels: dict = field(default_factory=lambda: {"master_l_db": -100.0, "master_r_db": -100.0, "tracks": {}})
+    peak_master_db: float = -100.0
 
     @classmethod
     def create(cls) -> "EngineHost":
@@ -95,9 +98,20 @@ class EngineHost:
         self.tracks.pop(track_id, None)
         return self.engine.remove_track(track_id)
 
+    # --- medición ----------------------------------------------------------------
+    def read_levels(self) -> dict:
+        """Lee (y vacía) los picos del motor. Todo consumidor debe pasar por aquí."""
+        lv = self.engine.read_levels()
+        self.last_levels = lv
+        self.peak_master_db = max(self.peak_master_db, lv["master_l_db"], lv["master_r_db"])
+        return lv
+
+    def reset_peak(self) -> None:
+        self.peak_master_db = -100.0
+
     # --- estado para la interfaz ---------------------------------------------
     def snapshot(self) -> dict:
-        lv = self.engine.read_levels()
+        lv = self.read_levels()
         return {
             "playing": self.engine.is_playing(),
             "position": round(self.engine.position_seconds(), 4),

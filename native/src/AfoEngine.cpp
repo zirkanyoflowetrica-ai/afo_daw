@@ -331,6 +331,9 @@ bool Engine::renderToWav (const std::string& path)
 
     auto file = toFile (path);
     file.getParentDirectory().createDirectory();
+    // Los streams de JUCE no truncan: un archivo existente quedaría con datos viejos/corruptos
+    if (file.exists() && ! file.deleteFile())
+        return false;
     if (edit.getTransport().isPlaying())
         edit.getTransport().stop (false, false);
     return te::Renderer::renderToFile ("AllForOne", file, edit, { te::TimePosition(), edit.getLength() },

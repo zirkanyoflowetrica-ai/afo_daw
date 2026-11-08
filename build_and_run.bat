@@ -3,7 +3,7 @@ rem AllForOne - prepara el entorno, compila el motor C++, prueba e inicia la apl
 rem Registro completo en logs\build_*.log
 setlocal
 cd /d "%~dp0"
-powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0tools\build.ps1" -Run %*
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0tools\build.ps1" -Run -Yes %*
 set RC=%ERRORLEVEL%
 if not "%RC%"=="0" (
   echo.

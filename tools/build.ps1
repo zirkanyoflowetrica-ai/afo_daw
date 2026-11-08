@@ -7,6 +7,7 @@
     -SkipTests    No ejecuta pruebas
     -Clean        Borra build\win-release antes de compilar (las dependencias en .deps se conservan)
     -NoInstall    No ofrece instalar herramientas que falten (solo informa)
+    -Yes          Acepta sin preguntar las instalaciones que hagan falta
 
   Principios: no modifica el PATH global, no borra instalaciones previas, trabaja con rutas
   locales (.venv, .deps, build) y registra todo en logs\.
@@ -15,10 +16,13 @@ param(
     [switch]$Run,
     [switch]$SkipTests,
     [switch]$Clean,
-    [switch]$NoInstall
+    [switch]$NoInstall,
+    [switch]$Yes
 )
 
 $ErrorActionPreference = 'Stop'
+$env:PYTHONIOENCODING = 'utf-8'
+try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch {}
 $Root = Split-Path -Parent $PSScriptRoot
 Set-Location $Root
 $LogDir = Join-Path $Root 'logs'
@@ -38,6 +42,7 @@ function Fail($msg)  {
 }
 function Ask($question) {
     if ($NoInstall) { return $false }
+    if ($Yes) { Write-Host "    $question -> si (-Yes)"; return $true }
     $a = Read-Host "    $question [s/N]"
     return ($a -match '^(s|si|y|yes)$')
 }
@@ -54,6 +59,33 @@ function Invoke-Checked($exe, [string[]]$argList, $what) {
     if ($code -ne 0) { Fail "$what (codigo $code)" }
 }
 function Have-Winget { return [bool](Get-Command winget -ErrorAction SilentlyContinue) }
+$Toolchains = Join-Path $Root '.toolchains'
+# Descarga un ZIP oficial y lo extrae en .toolchains\<nombre> (sin instalador, sin administrador)
+function Get-PortableZip($url, $name) {
+    New-Item -ItemType Directory -Force -Path $Toolchains | Out-Null
+    $zip = Join-Path $Toolchains "$name.zip"
+    $dest = Join-Path $Toolchains $name
+    Write-Host "    Descargando $url"
+    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+    $old = $ProgressPreference; $ProgressPreference = 'SilentlyContinue'
+    Invoke-WebRequest -Uri $url -OutFile $zip -UseBasicParsing
+    $ProgressPreference = $old
+    if (Test-Path $dest) { Remove-Item -Recurse -Force $dest }
+    Expand-Archive -Path $zip -DestinationPath $dest
+    Remove-Item $zip
+    return $dest
+}
+
+# Cierra instancias de AllForOne lanzadas desde esta carpeta (bloquean afo_audio.pyd / dist)
+function Stop-AllForOne {
+    $procs = Get-CimInstance Win32_Process -Filter "Name='python.exe' OR Name='pythonw.exe' OR Name='AllForOne.exe' OR Name='QtWebEngineProcess.exe'" -ErrorAction SilentlyContinue |
+        Where-Object { $_.ExecutablePath -and ($_.ExecutablePath -like "$Root\*" -or $_.CommandLine -like '*-m allforone*') }
+    foreach ($p in $procs) {
+        Write-Host "    Cerrando AllForOne en ejecucion: PID $($p.ProcessId) $($p.ExecutablePath)"
+        Stop-Process -Id $p.ProcessId -Force -ErrorAction SilentlyContinue
+    }
+    if ($procs) { Start-Sleep -Seconds 2 }
+}
 
 Write-Host "AllForOne - build_and_run  ($Stamp)" -ForegroundColor Cyan
 Write-Host "Carpeta del proyecto: $Root"
@@ -69,29 +101,36 @@ if ($freeGB -lt 8) { Warn "Quedan $freeGB GB libres en $($drive.Name):. La prime
 
 # ---------------------------------------------------------------------------
 Step "2/9 Python 3.12 (o 3.13)"
+# Python portatil oficial de python.org (paquete NuGet "python"): sin instalador MSI ni administrador
+$PortablePython = Join-Path $Toolchains 'python312\tools\python.exe'
+$PortablePythonUrl = 'https://www.nuget.org/api/v2/package/python/3.12.10'
 function Find-Python {
+    if (Test-Path $PortablePython) { return $PortablePython }
     foreach ($v in @('3.12', '3.13')) {
         try {
             $p = & py "-$v" -c "import sys;print(sys.executable)" 2>$null
-            if ($LASTEXITCODE -eq 0 -and $p) { return $p.Trim() }
+            if ($LASTEXITCODE -eq 0 -and $p -and (Test-Path $p.Trim())) { return $p.Trim() }
         } catch {}
     }
     foreach ($cand in @("$env:LOCALAPPDATA\Programs\Python\Python312\python.exe",
                         "$env:LOCALAPPDATA\Programs\Python\Python313\python.exe",
                         "$env:ProgramFiles\Python312\python.exe",
                         "$env:ProgramFiles\Python313\python.exe")) {
-        if (Test-Path $cand) { return $cand }
+        if (Test-Path $cand) {
+            & $cand -c "import venv" 2>$null | Out-Null
+            if ($LASTEXITCODE -eq 0) { return $cand }
+        }
     }
     return $null
 }
 $SysPython = Find-Python
 if (-not $SysPython) {
-    Warn "No se encontro Python 3.12/3.13."
-    if ((Have-Winget) -and (Ask "Instalar Python 3.12 desde winget (python.org, solo para tu usuario, sin administrador)?")) {
-        Invoke-Checked winget @('install','-e','--id','Python.Python.3.12','--scope','user','--accept-package-agreements','--accept-source-agreements') "Instalacion de Python"
+    Warn "No se encontro Python 3.12/3.13 utilizable."
+    if (Ask "Descargar Python 3.12.10 portatil (python.org via NuGet, ~40 MB) en .toolchains?") {
+        Get-PortableZip $PortablePythonUrl 'python312' | Out-Null
         $SysPython = Find-Python
     }
-    if (-not $SysPython) { Fail "Instala Python 3.12 x64 desde https://www.python.org/downloads/windows/ y vuelve a ejecutar." }
+    if (-not $SysPython) { Fail "No hay Python 3.12. Instala Python 3.12 x64 desde https://www.python.org/downloads/windows/ y vuelve a ejecutar." }
 }
 $pyver = & $SysPython -c "import sys,platform;print(sys.version.split()[0], platform.architecture()[0])"
 Ok "$SysPython ($pyver)"
@@ -99,13 +138,15 @@ if ($pyver -notmatch '64bit') { Fail "Se requiere Python de 64 bits" }
 
 # ---------------------------------------------------------------------------
 Step "3/9 Git (para descargar JUCE y Tracktion Engine)"
+$PortableGit = Join-Path $Toolchains 'git\cmd\git.exe'
 $Git = (Get-Command git -ErrorAction SilentlyContinue).Source
 if (-not $Git -and (Test-Path "$env:ProgramFiles\Git\cmd\git.exe")) { $Git = "$env:ProgramFiles\Git\cmd\git.exe" }
+if (-not $Git -and (Test-Path $PortableGit)) { $Git = $PortableGit }
 if (-not $Git) {
     Warn "Git no encontrado."
-    if ((Have-Winget) -and (Ask "Instalar Git desde winget (git-scm.com)? Puede pedir permisos de administrador.")) {
-        Invoke-Checked winget @('install','-e','--id','Git.Git','--accept-package-agreements','--accept-source-agreements') "Instalacion de Git"
-        if (Test-Path "$env:ProgramFiles\Git\cmd\git.exe") { $Git = "$env:ProgramFiles\Git\cmd\git.exe" }
+    if (Ask "Descargar MinGit 2.51.2 portatil (git-for-windows, ~40 MB) en .toolchains?") {
+        Get-PortableZip 'https://github.com/git-for-windows/git/releases/download/v2.51.2.windows.1/MinGit-2.51.2-64-bit.zip' 'git' | Out-Null
+        if (Test-Path $PortableGit) { $Git = $PortableGit }
     }
     if (-not $Git) { Fail "Instala Git desde https://git-scm.com/download/win y vuelve a ejecutar." }
 }
@@ -184,6 +225,7 @@ Invoke-Checked $CMake $cfgArgs "Configuracion de CMake"
 
 # ---------------------------------------------------------------------------
 Step "7/9 Compilar motor C++ y extension afo_audio.pyd (la primera vez tarda 10-30 min)"
+Stop-AllForOne
 $sw = [Diagnostics.Stopwatch]::StartNew()
 Invoke-Checked $CMake @('--build', $Build, '--config', 'Release') "Compilacion"
 Ok ("Compilado en {0:N1} min" -f $sw.Elapsed.TotalMinutes)
@@ -194,7 +236,7 @@ Ok "$($pyd.FullName) ($([math]::Round($pyd.Length/1MB,1)) MB)"
 # ---------------------------------------------------------------------------
 Step "8/9 Verificacion"
 $env:PYTHONPATH = Join-Path $Root 'app'
-$code = Run-Native $Py @('-c', "from allforone._native import afo_audio as a; e=a.Engine('AllForOneCheck'); print('    afo_audio', a.version(), '| JUCE', a.juce_version()); print('    dispositivo:', e.device_info())")
+$code = Run-Native $Py @('-c', "from allforone._native import afo_audio as a; e=a.Engine('AllForOneCheck'); print('    afo_audio', a.version(), '| JUCE', a.juce_version()); print('    dispositivo:', e.device_info()); del e")
 if ($code -ne 0) { Fail "Python no puede importar/usar afo_audio" }
 Ok "Python importa afo_audio y crea el motor"
 

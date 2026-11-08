@@ -113,7 +113,10 @@ def main(argv: list[str] | None = None) -> int:
     if args.selftest:
         from .selftest import run_selftest
 
-        return run_selftest(app, host, args.report, args.screenshot)
+        try:
+            return run_selftest(app, host, args.report, args.screenshot)
+        finally:
+            host.engine = None  # cerrar el motor (hilos de audio) antes que Python
 
     window, _view, _bridge = build_window(host)
     window.show()

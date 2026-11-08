@@ -8,6 +8,11 @@
 #include <string>
 
 static int failures = 0;
+static bool juce_file_size_ok (const std::string& p)
+{
+    // 2 s estéreo 24 bits a 44.1/48 kHz: menos de 1 MB. Un archivo con datos añadidos sería mayor.
+    return std::filesystem::file_size (p) < 1000000;
+}
 #define CHECK(cond, msg) do { if (cond) std::printf ("[OK]   %s\n", msg); else { std::printf ("[FAIL] %s\n", msg); ++failures; } } while (0)
 
 int main (int argc, char** argv)
@@ -47,6 +52,12 @@ int main (int argc, char** argv)
         auto [rp, rr] = afo::measureFile (render);
         std::printf ("       render (pista -6 dB): pico %.2f dBFS, RMS %.2f dBFS\n", rp, rr);
         CHECK (std::abs (rp - (tonePeak - 6.0f)) < 0.1f, "ganancia de pista exacta en el render (-12 -6 = -18 dBFS)");
+        engine.setTrackGainDb (t.id, -3.0f);
+        CHECK (engine.renderToWav (render), "render sobre un archivo existente");
+        auto [rp2, rr2] = afo::measureFile (render);
+        CHECK (std::abs (rp2 - (tonePeak - 3.0f)) < 0.1f, "el archivo existente se reemplaza (no se corrompe)");
+        CHECK (afo::measureFile (render).first > -100.0f && juce_file_size_ok (render), "WAV reescrito válido");
+        engine.setTrackGainDb (t.id, -6.0f);
 
         // Segunda pista a -20 dB: solo/mute deben decidir qué se exporta
         auto t2 = engine.addAudioTrack (tone, "Tono 2");

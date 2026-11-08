@@ -11,3 +11,4 @@ app/allforone/ui/_original_localfont.html
 *.build/
 *.dist/
 *.onefile-build/
+.toolchains/

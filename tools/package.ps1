@@ -11,6 +11,8 @@
 param([switch]$SkipBuild)
 
 $ErrorActionPreference = 'Stop'
+$env:PYTHONIOENCODING = 'utf-8'
+try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch {}
 $Root = Split-Path -Parent $PSScriptRoot
 Set-Location $Root
 $LogDir = Join-Path $Root 'logs'
@@ -29,6 +31,17 @@ function Run-Native($exe, [string[]]$argList) {
     return $code
 }
 
+# Cierra instancias de AllForOne lanzadas desde esta carpeta (bloquean afo_audio.pyd / dist)
+function Stop-AllForOne {
+    $procs = Get-CimInstance Win32_Process -Filter "Name='python.exe' OR Name='pythonw.exe' OR Name='AllForOne.exe' OR Name='QtWebEngineProcess.exe'" -ErrorAction SilentlyContinue |
+        Where-Object { $_.ExecutablePath -and ($_.ExecutablePath -like "$Root\*" -or $_.CommandLine -like '*-m allforone*') }
+    foreach ($p in $procs) {
+        Write-Host "    Cerrando AllForOne en ejecucion: PID $($p.ProcessId) $($p.ExecutablePath)"
+        Stop-Process -Id $p.ProcessId -Force -ErrorAction SilentlyContinue
+    }
+    if ($procs) { Start-Sleep -Seconds 2 }
+}
+Stop-AllForOne
 $Py = Join-Path $Root '.venv\Scripts\python.exe'
 if (-not $SkipBuild) {
     Step "Compilando y probando (build.ps1)"
@@ -56,22 +69,23 @@ $nargs = @('-m', 'nuitka',
     '--assume-yes-for-downloads',
     '--enable-plugin=pyside6',
     '--include-package=allforone',
-    '--include-data-dir=' + (Join-Path $Root 'app\allforone\ui') + '=allforone/ui',
+    "--include-data-dir=$Root\app\allforone\ui=allforone/ui",
     '--windows-console-mode=attach',
     '--output-filename=AllForOne.exe',
     '--company-name=AllForOne',
     '--product-name=AllForOne',
     "--file-version=$Version.0",
     "--product-version=$Version.0",
-    '--file-description=AllForOne DAW',
+    '--file-description=AllForOne-DAW',
     "--output-dir=$Dist",
-    '--report=' + (Join-Path $LogDir "nuitka_report_$Stamp.xml"),
-    (Join-Path $Root 'app\AllForOne.py'))
+    "--report=$LogDir\nuitka_report_$Stamp.xml",
+    "$Root\app\AllForOne.py")
 $sw = [Diagnostics.Stopwatch]::StartNew()
 if ((Run-Native $Py $nargs) -ne 0) { Fail "Nuitka fallo" }
 $built = Join-Path $Dist 'AllForOne.dist'
 if (-not (Test-Path (Join-Path $built 'AllForOne.exe'))) { Fail "No se genero AllForOne.exe" }
 Move-Item $built $Out
+Remove-Item -Recurse -Force (Join-Path $Dist 'AllForOne.build') -ErrorAction SilentlyContinue
 Ok ("Empaquetado en {0:N1} min" -f $sw.Elapsed.TotalMinutes)
 
 # Avisos de licencia y documentacion junto al ejecutable

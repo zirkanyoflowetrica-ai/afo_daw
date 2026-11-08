@@ -134,15 +134,15 @@ def run_selftest(app, host, report_path: str | None, screenshot_path: str | None
     # 7-8. Reproducción en tiempo real (requiere dispositivo)
     if dev.get("open"):
         host.engine.set_position_seconds(0)
+        host.reset_peak()
         host.engine.play()
-        peak = {"db": -100.0}
 
         def advancing():
-            lv = host.engine.read_levels()
-            peak["db"] = max(peak["db"], lv["master_l_db"], lv["master_r_db"])
+            host.read_levels()   # mismo lector único que usa la interfaz
             return host.engine.position_seconds() > 1.0
 
         moved = _wait(app, advancing, 5, host)
+        peak = {"db": host.peak_master_db}
         rep.check("transporte avanza en tiempo real", moved, f"{host.engine.position_seconds():.2f}s")
         rep.check("medidor master reacciona a audio real", peak["db"] > -40, f"pico {peak['db']:.1f} dBFS")
         host.engine.stop()

@@ -5,10 +5,10 @@
 ## Consecuencia principal
 
 AllForOne enlaza **JUCE 8** (AGPLv3 o licencia comercial) y **Tracktion Engine** (GPLv3+ o licencia
-comercial). Sin licencias comerciales, distribuir AllForOne —aunque sea gratis— obliga a publicarlo
-bajo una licencia compatible (en la práctica **AGPLv3**) y a ofrecer el código fuente completo
-correspondiente a cada binario distribuido. **Decisión pendiente del propietario:** elegir y añadir
-el archivo `LICENSE` del proyecto antes de la primera publicación.
+comercial). Por eso **AllForOne se publica bajo la AGPLv3** (`LICENSE`), como proyecto gratuito y
+de código abierto en GitHub. Requisito práctico: cada binario que se distribuya (por ejemplo el ZIP
+de una release) debe ir acompañado del código fuente correspondiente, lo que se cumple publicando
+el repositorio y etiquetando cada versión.
 
 | Componente | Versión | Licencia | Uso |
 |---|---|---|---|
