@@ -313,6 +313,33 @@ class Bridge(QObject):
                                         "error": f"{Path(src).name}: {exc}"})
         self._pump_convert()
 
+    # --- Instrumento y Batería: sintetizador del motor (clip MIDI + plugin) --------------
+    @Slot(str, int, result=str)
+    def synthCreate(self, name: str, mode: int) -> str:
+        """Pista nueva con el sintetizador del motor (mode 0 = instrumento, 1 = batería)."""
+        if (g := self._guard()):
+            return g
+        return _ok(track=self.host.add_synth(name, int(mode)))
+
+    @Slot(int, str, result=str)
+    def synthUpdate(self, track_id: int, payload: str) -> str:
+        """Parámetros y patrón de la pista: {type, cfg, clips, roll | pat, sus}. Inmediato (sin renderizar)."""
+        if (g := self._guard()):
+            return g
+        try:
+            return _ok(length=self.host.update_synth(int(track_id), json.loads(payload)))
+        except Exception as exc:
+            return _err(f"Sintetizador: {exc}")
+
+    @Slot(str, result=str)
+    def synthAudition(self, payload: str) -> str:
+        """Escuchar una nota ({type, cfg, note, seconds}) o un golpe ({type: drum, cfg, lane}) al pulsar."""
+        if (g := self._guard()):
+            return g
+        if not self.host.engine.device_info().get("open"):
+            return _err("No hay dispositivo de salida de audio abierto.")
+        return _ok(playing=self.host.audition(json.loads(payload)))
+
     @Slot(result=str)
     def addTestTone(self) -> str:
         if (g := self._guard()):

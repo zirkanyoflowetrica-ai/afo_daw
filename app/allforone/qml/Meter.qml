@@ -26,7 +26,7 @@ Rectangle {
         anchors.bottom: parent.bottom; anchors.bottomMargin: 2
         spacing: 5
         Repeater {
-            model: Math.ceil((root.height - 4) / 7)
+            model: Math.max(0, Math.ceil((root.height - 4) / 7))
             Rectangle { width: parent.width; height: 2; color: "#120f0a" }
         }
     }

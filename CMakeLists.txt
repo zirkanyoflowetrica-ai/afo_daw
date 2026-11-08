@@ -12,7 +12,7 @@ option(AFO_BUILD_TESTS "Compilar las pruebas nativas" ON)
 include(cmake/deps.cmake)
 
 # --- Biblioteca estática del motor ------------------------------------------
-add_library(afo_engine STATIC native/src/AfoEngine.cpp)
+add_library(afo_engine STATIC native/src/AfoEngine.cpp native/src/AfoSynth.cpp)
 target_include_directories(afo_engine PUBLIC native/src)
 target_compile_definitions(afo_engine PUBLIC AFO_VERSION="${PROJECT_VERSION}")
 # JUCE/Tracktion son PRIVADOS: AfoEngine.h no los expone (pimpl), así sus fuentes se

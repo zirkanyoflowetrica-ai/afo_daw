@@ -11,7 +11,8 @@ Especificación completa: `docs/MASTER_PROMPT.md`. Resumen de lo que no se negoc
    solo cuando la nativa haga todo lo que hace ella. Un módulo aún no migrado lo dice en su cuerpo;
    nunca se rellena con controles decorativos.
 2. **Capas:** JS dibuja → QWebChannel (`bridge.py`, objeto `afo`, respuestas JSON) → Python coordina
-   (`engine_host.py`) → C++ (`native/src/AfoEngine.*`, Tracktion + JUCE) procesa. Nunca pasar bloques
+   (`engine_host.py`) → C++ (`native/src/AfoEngine.*` y `AfoSynth.*`, Tracktion + JUCE) procesa.
+   Todo el sonido nuevo (síntesis, grabación) va en el motor C++, no en Python ni en la interfaz. Nunca pasar bloques
    de audio por QWebChannel. Nunca ejecutar Python en el callback de audio.
 3. **El motor se usa desde un solo hilo** (el principal de Qt). En Windows Qt despacha los mensajes
    de JUCE; en Linux `EngineHost.pump()` los procesa.

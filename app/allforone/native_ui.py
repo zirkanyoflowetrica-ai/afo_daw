@@ -124,15 +124,18 @@ def run_native_selftest(app, host, report_path: str | None, screenshot_path: str
     panels = prop("panelItems")
     rep.check("12 módulos en el lienzo", len(panels or {}) == 12, sorted(panels or {}))
     links = prop("cableLinks")
-    rep.check("cables entre módulos", len(links or []) == 7, len(links or []))
+    n_seq = len([t for t in (prop("tracks") or []) if t["type"] in ("inst", "drum", "ia")])
+    rep.check("cables entre módulos (+ uno por pista de Instrumento/Batería/IA)", len(links or []) == 7 + n_seq, len(links or []))
     rep.check("motor conectado desde QML", bool(prop("engineOk")))
     rep.check("encuadre inicial aplicado", abs(float(prop("zoom")) - 1.0) > 1e-6, prop("zoom"))
+
+    _native_sequencer_checks(rep, app, host, window, prop)
 
     tone = json.loads(bridge.addTestTone())
     QMetaObject.invokeMethod(window, "addTrack", Q_ARG("QVariant", tone["track"]), Q_ARG("QVariant", False))
     tracks = prop("tracks") or []
     rep.check("Pistas muestra la pista del motor con su forma de onda",
-              len(tracks) == 1 and len(tracks[0]["peaks"]) == 600, [t["name"] for t in tracks])
+              bool(tracks) and tracks[-1]["type"] == "audio" and len(tracks[-1]["peaks"]) == 600, [t["name"] for t in tracks])
 
     dev = host.engine.device_info()
     if dev.get("open"):
@@ -228,3 +231,65 @@ def _native_mixer_checks(rep, app, host, window, prop) -> None:
         rep.check("parar la escucha", _wait(app, lambda: not host.engine.preview_playing(), 3, host))
     else:
         rep.add("escucha A/B en el motor", "omitido", "sin dispositivo de salida abierto")
+
+
+def _native_sequencer_checks(rep, app, host, window, prop) -> None:
+    """Fase 3: Instrumento y Batería con el sintetizador del motor; IA como demostración sin audio."""
+    import tempfile
+
+    import numpy as np
+    import soundfile as sf
+    from PySide6.QtCore import QMetaObject, Q_ARG, Q_RETURN_ARG
+
+    from .selftest import _wait
+
+    def snap():
+        v = QMetaObject.invokeMethod(window, "mixerSnapshot", Q_RETURN_ARG("QVariant"))
+        return v.toVariant() if hasattr(v, "toVariant") else v
+
+    def cmd(what, a=None, b=None):
+        QMetaObject.invokeMethod(window, "seqCommand", Q_ARG("QVariant", what), Q_ARG("QVariant", a), Q_ARG("QVariant", b))
+
+    def render_peak():
+        out = Path(tempfile.mkdtemp(prefix="afo_seq_")) / "mezcla.wav"
+        if not host.engine.render_to_wav(str(out)):
+            return -100.0
+        y, _sr = sf.read(str(out))
+        return float(20 * np.log10(max(1e-9, np.abs(y).max())))
+
+    tr = snap()["tracks"]
+    synth = [t for t in tr if t["type"] in ("inst", "drum")]
+    rep.check("las 3 pistas de la plantilla, con el sintetizador del motor",
+              [t["name"] for t in synth] == ["Acordes", "Bajo", "Batería 1"] and all(t["id"] >= 0 for t in synth),
+              [(t["name"], t["id"], t["notes"]) for t in synth])
+    peak = render_peak()
+    rep.check("Acordes, Bajo y Batería suenan en el render del motor", peak > -30, f"pico {peak:.1f} dBFS")
+
+    acordes = synth[0]
+    cmd("roll", 2, 15)                                     # A#4 en el último paso
+    after = next(t for t in snap()["tracks"] if t["uid"] == acordes["uid"])
+    rep.check("editar el piano roll cambia el patrón de la pista", after["notes"] == acordes["notes"] + 1,
+              f"{acordes['notes']} → {after['notes']} notas")
+    cmd("roll", 2, 15)
+
+    if host.engine.device_info().get("open"):
+        ok = host.audition({"type": "inst", "cfg": {"v": 0, "vel": 70, "bri": 50}, "note": 69, "seconds": 0.4})
+        rep.check("escuchar una nota al pulsar (sintetizador del motor)", ok and _wait(app, lambda: host.engine.preview_playing(), 1, host))
+        host.engine.preview_stop()
+
+    n = len(snap()["tracks"])
+    cmd("add", "inst")
+    new = snap()["tracks"][-1]
+    rep.check("+ Instrumento crea una pista con sintetizador", len(snap()["tracks"]) == n + 1 and new["type"] == "inst" and new["id"] >= 0,
+              new["name"])
+    cmd("generate")
+    ia = snap()["tracks"][-1]
+    rep.check("Pistas con IA: demostración sin audio (no entra al motor)", ia["type"] == "ia" and ia["id"] == -1, ia["name"])
+
+    cmd("hide", "drums", True)
+    cmd("hide", "inst", True)
+    _wait(app, lambda: False, 0.2, host)
+    quiet = render_peak()
+    rep.check("quitar Instrumentos y Batería desconecta sus pistas (no suenan)", quiet < -60, f"pico {quiet:.1f} dBFS")
+    cmd("hide", "drums", False)
+    cmd("hide", "inst", False)

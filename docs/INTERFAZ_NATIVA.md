@@ -20,7 +20,7 @@ python tools/native_compare.py [--oscuro]   # comparación píxel a píxel con l
 | 0 | Ventana, cabecera (transporte, tempo, zoom, Ver todo, Restaurar diseño, tema), lienzo infinito con puntos, 12 módulos movibles y redimensionables, cables con curva, conectores y cuadrados de curva arrastrables, diseño y tema guardados, módulo **Pistas** con el motor real, arrastrar audios a la ventana | **Hecha** |
 | 1 | Audios, Mezcla (consola, faders, rol de voz, MEZCLAR AUTOMÁTICAMENTE), Mezcla final (VU, master, exportar) | **Hecha** |
 | 2 | Afinador, Master IA, Antes / Después | **Hecha** |
-| 3 | Piano roll, Instrumentos, Batería, Pistas con IA, con sonido del motor (hoy son la demo Web Audio) | Pendiente |
+| 3 | Piano roll, Instrumentos, Batería, Pistas con IA, con sonido del motor (hoy son la demo Web Audio) | **Hecha** |
 | 4 | Grabador de cintas grabando con el motor; autoprueba completa sobre QML; retirar Qt WebEngine | Pendiente |
 
 Los módulos de fases pendientes muestran en su cuerpo que aún no están migrados y dónde usarlos.
@@ -101,3 +101,37 @@ confirmar F menor 91 BPM en modo manual; **REMEZCLAR con afinación al 60 %: la 
 Diferencias que quedan con la web: el texto de la curva pendiente no sale estirado (en la web el
 SVG lo deforma), y en Master IA los tres botones caben en una fila porque el texto nativo es algo
 más estrecho.
+
+## Fase 3: cómo se hizo
+
+**Sonido en el motor C++ (JUCE + Tracktion), no en el navegador ni en Python.**
+
+- `native/src/AfoSynth.*`: la DSP del sonido de la plantilla (osciladores, lowpass según el Brillo,
+  envolvente exponencial; batería con barridos, cuadradas y ruido filtrado), voz a voz.
+- `AfoSynthPlugin` (en `AfoEngine.cpp`): plugin propio de Tracktion. Cada pista de Instrumento o
+  Batería es una pista del motor con ese plugin y **un clip MIDI** en tiempos de compás. El plugin
+  toca las notas en el callback de audio: editar una nota solo rehace el clip (sin renderizar), y la
+  pista tiene fader, paneo, mute/solo, medidores y exportación como cualquier otra.
+- Escuchar al pulsar (teclado, rejilla, instrumento, golpe) usa la misma DSP por el reproductor de
+  escucha del motor, sin tocar el transporte.
+- Nuevo en `afo_audio` (API 3): `add_synth_track`, `set_synth_settings`, `set_synth_notes`,
+  `audition_synth`. `engine_host.pattern_notes` convierte piano roll / patrón + clips en notas,
+  igual que el reloj de la plantilla.
+
+**Interfaz:** `Sequencer.qml` (pistas, pista activa por módulo, piano roll, patrón, IA),
+`PianoBody.qml`, `InstBody.qml`, `DrumsBody.qml`, `IaBody.qml`, `TrackTabs.qml`. Pistas muestra
+los clips con sus notas o golpes, un cable desde el módulo de origen hasta la fila de cada pista, y
+la consola una tira por pista con el color de su módulo. Arranca con las 3 pistas de la plantilla
+(Acordes, Bajo, Batería 1), que ahora suenan de verdad.
+
+**Lo que se dice tal cual:** el sonido es la síntesis básica de la plantilla, no instrumentos
+muestreados (el subtítulo lo pone: «síntesis»). Reverb y Swing no los usaba la plantilla y siguen
+sin cambiar el audio (lo avisan). Pistas con IA sigue siendo una DEMO: clips de ejemplo, sin audio,
+y lo indica en la pista, en la tira y en el módulo. Quitar Instrumentos o Batería del lienzo
+desconecta sus pistas (no suenan), como en la plantilla.
+
+Comprobado: render real del motor (nota La a 440 Hz exactamente en su tiempo, silencio antes;
+batería en negras; rehacer el patrón sustituye el clip); `--nativo --selftest`: las 3 pistas de la
+plantilla suenan en el render, editar el piano roll cambia el patrón, escuchar una nota, + Instrumento
+crea pista con sintetizador, IA sin audio, desconectar silencia. Vista inicial frente a la web:
+cabecera 8 %, lienzo 20 % (antes 30 %).

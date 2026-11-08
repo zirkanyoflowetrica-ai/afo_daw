@@ -1,8 +1,10 @@
 #include "AfoEngine.h"
+#include "AfoSynth.h"
 
 #include <juce_audio_utils/juce_audio_utils.h>
 #include <tracktion_engine/tracktion_engine.h>
 
+#include <array>
 #include <cmath>
 #include <stdexcept>
 
@@ -13,6 +15,13 @@ namespace afo
 
 namespace
 {
+    synth::Params toParams (const SynthSettings& s)
+    {
+        synth::Params p;
+        p.mode = s.mode; p.wave = s.wave; p.vel = s.vel; p.bri = s.bri; p.sus = s.sus; p.vol = s.vol; p.tun = s.tun;
+        return p;
+    }
+
     juce::File toFile (const std::string& p)  { return juce::File (juce::String::fromUTF8 (p.c_str())); }
     std::string toStd (const juce::String& s) { return s.toStdString(); }
 
@@ -27,12 +36,96 @@ namespace
 }
 
 //==============================================================================
+// Sintetizador de Instrumento/Batería como plugin de Tracktion: toca las notas del clip MIDI de su
+// pista en el callback de audio, con la DSP de AfoSynth (el sonido de la plantilla).
+class AfoSynthPlugin : public te::Plugin
+{
+public:
+    AfoSynthPlugin (te::PluginCreationInfo info) : te::Plugin (info) {}
+    ~AfoSynthPlugin() override { notifyListenersOfDeletion(); }
+
+    static const char* getPluginName() { return "AllForOne Synth"; }
+    static const char* xmlTypeName;
+    juce::String getName() const override              { return getPluginName(); }
+    juce::String getPluginType() override              { return xmlTypeName; }
+    juce::String getShortName (int) override           { return "AFO Synth"; }
+    juce::String getSelectableDescription() override   { return getName(); }
+    bool producesAudioWhenNoAudioInput() override      { return true; }
+    bool isSynth() override                            { return true; }
+    bool takesMidiInput() override                     { return true; }
+    int getNumOutputChannelsGivenInputs (int) override { return 2; }
+
+    void initialise (const te::PluginInitialisationInfo& i) override
+    {
+        sampleRate = i.sampleRate;
+        for (auto& v : voices) v.active = false;
+    }
+    void deinitialise() override {}
+
+    void applyToBuffer (const te::PluginRenderContext& fc) override
+    {
+        if (fc.destBuffer == nullptr)
+            return;
+        auto& buf = *fc.destBuffer;
+        const int n = fc.bufferNumSamples, start = fc.bufferStartSample;
+        for (int c = 0; c < buf.getNumChannels(); ++c)
+            buf.clear (c, start, n);
+
+        const auto p = params.load();
+        if (auto* midi = fc.bufferForMidiMessages)
+        {
+            if (midi->isAllNotesOff)
+                for (auto& v : voices) v.active = false;
+            for (auto& m : *midi)
+                if (m.isNoteOn())
+                {
+                    const int at = juce::jlimit (0, juce::jmax (0, n - 1), juce::roundToInt (m.getTimeStamp() * sampleRate));
+                    auto& v = freeVoice();
+                    if (p.mode == 0) v.startNote (p, m.getNoteNumber(), synth::noteSeconds (p), sampleRate, at);
+                    else             v.startDrum (p, m.getNoteNumber() - synth::firstDrumNote, sampleRate, at);
+                }
+        }
+
+        auto* l = buf.getWritePointer (0, start);
+        for (int i = 0; i < n; ++i)
+        {
+            float x = 0.0f;
+            for (auto& v : voices)
+                if (v.active) x += v.next();
+            l[i] = x;
+        }
+        for (int c = 1; c < buf.getNumChannels(); ++c)
+            buf.copyFrom (c, start, buf, 0, start, n);
+    }
+
+    synth::AtomicParams params;
+
+private:
+    synth::Voice& freeVoice()
+    {
+        synth::Voice* oldest = &voices[0];
+        for (auto& v : voices)
+        {
+            if (! v.active) return v;
+            if (v.t > oldest->t) oldest = &v;
+        }
+        return *oldest;                      // sin voces libres: se reutiliza la más antigua
+    }
+
+    double sampleRate = 48000.0;
+    std::array<synth::Voice, synth::maxVoices> voices;
+};
+
+const char* AfoSynthPlugin::xmlTypeName = "afoSynth";
+
+//==============================================================================
 struct TrackSlot
 {
     int id = 0;
     te::AudioTrack::Ptr track;
     te::LevelMeasurer::Client meter;
     TrackInfo info;
+    AfoSynthPlugin* synth = nullptr;         // solo en pistas de Instrumento/Batería
 };
 
 // Configuración de Tracktion dentro de la carpeta de datos de AllForOne (nada fuera de ella)
@@ -48,7 +141,7 @@ struct PreviewPlayer
     juce::AudioFormatManager formats;
     juce::AudioTransportSource transport;
     juce::AudioSourcePlayer player;
-    std::unique_ptr<juce::AudioFormatReaderSource> source;
+    std::unique_ptr<juce::PositionableAudioSource> source;   // archivo, o nota sintetizada en memoria
     juce::AudioDeviceManager* dm = nullptr;
     std::string path;
 
@@ -76,6 +169,7 @@ struct Engine::Impl
                                           : toFile (dataDir);
         engine = std::make_unique<te::Engine> (std::make_unique<LocalPropertyStorage> (juce::String (appName), base.getChildFile ("tracktion")),
                                                nullptr, nullptr);
+        engine->getPluginManager().createBuiltInType<AfoSynthPlugin>();
 
         // Edit vacío en memoria. El formato de proyecto .afo (V0.2) guardará su estado.
         auto editFile = base.getChildFile ("sesion").getChildFile ("session.tracktionedit");
@@ -162,6 +256,31 @@ bool Engine::previewPlay (const std::string& path, double startSeconds)
     return true;
 }
 
+bool Engine::auditionSynth (const SynthSettings& s, int midiNote, double seconds)
+{
+    requireMessageThread();
+    auto& pv = impl->preview;
+    double sr = 48000.0;
+    if (auto* dev = impl->engine->getDeviceManager().deviceManager.getCurrentAudioDevice())
+        sr = dev->getCurrentSampleRate();
+    const auto p = toParams (s);
+    const int len = synth::hitLengthSamples (p, midiNote, seconds, sr);
+    if (len <= 0)
+        return false;
+    juce::AudioBuffer<float> buf (2, len);
+    synth::renderHit (p, midiNote, seconds, sr, buf.getWritePointer (0), len);
+    buf.copyFrom (1, 0, buf, 0, 0, len);
+    pv.transport.stop();
+    pv.transport.setSource (nullptr);
+    pv.source = std::make_unique<juce::MemoryAudioSource> (buf, true, false);
+    pv.transport.setSource (pv.source.get(), 0, nullptr, sr, 2);
+    pv.path.clear();
+    pv.attach (impl->engine->getDeviceManager().deviceManager);
+    pv.transport.setPosition (0.0);
+    pv.transport.start();
+    return true;
+}
+
 void Engine::previewStop()            { impl->preview.transport.stop(); }
 bool Engine::previewPlaying() const   { return impl->preview.transport.isPlaying(); }
 double Engine::previewPosition() const{ return impl->preview.transport.getCurrentPosition(); }
@@ -228,6 +347,74 @@ TrackInfo Engine::addAudioTrack (const std::string& filePath, const std::string&
     edit.getTransport().ensureContextAllocated();
     impl->attachMasterMeter();
     return info;
+}
+
+TrackInfo Engine::addSynthTrack (const std::string& name, int mode)
+{
+    requireMessageThread();
+    auto& edit = *impl->edit;
+    edit.ensureNumberOfAudioTracks ((int) te::getAudioTracks (edit).size() + 1);
+    auto* track = te::getAudioTracks (edit).getLast();
+    track->setName (juce::String::fromUTF8 (name.c_str()));
+
+    auto plugin = edit.getPluginCache().createNewPlugin (AfoSynthPlugin::xmlTypeName, {});
+    auto* synthPlugin = dynamic_cast<AfoSynthPlugin*> (plugin.get());
+    if (synthPlugin == nullptr)
+        throw std::runtime_error ("afo_audio: no se pudo crear el sintetizador");
+    track->pluginList.insertPlugin (plugin, 0, nullptr);
+    synth::Params p;
+    p.mode = mode;
+    synthPlugin->params.store (p);
+
+    auto slot = std::make_unique<TrackSlot>();
+    slot->id = impl->nextId++;
+    slot->track = track;
+    slot->synth = synthPlugin;
+    slot->info.id = slot->id;
+    slot->info.name = name;
+    slot->info.numChannels = 2;
+    if (auto* lm = track->getLevelMeterPlugin())
+        lm->measurer.addClient (slot->meter);
+    auto info = slot->info;
+    impl->slots[slot->id] = std::move (slot);
+    edit.getTransport().ensureContextAllocated();
+    impl->attachMasterMeter();
+    return info;
+}
+
+void Engine::setSynthSettings (int id, const SynthSettings& s)
+{
+    requireMessageThread();
+    auto& slot = impl->slot (id);
+    if (slot.synth == nullptr)
+        throw std::invalid_argument ("afo_audio: la pista no es de síntesis");
+    slot.synth->params.store (toParams (s));
+}
+
+double Engine::setSynthNotes (int id, const std::vector<std::pair<double, int>>& notes, double lengthBeats)
+{
+    requireMessageThread();
+    auto& slot = impl->slot (id);
+    if (slot.synth == nullptr)
+        throw std::invalid_argument ("afo_audio: la pista no es de síntesis");
+    auto& edit = *impl->edit;
+    for (auto* c : slot.track->getClips())          // el patrón se rehace entero: es pequeño
+        c->removeFromParent();
+    slot.info.lengthSeconds = 0.0;
+    if (notes.empty())
+        return 0.0;
+    // Las notas van en tiempos de compás; la duración del clip se fija con el tempo actual
+    // (al cambiar el tempo, la interfaz vuelve a mandar el patrón)
+    const auto end = edit.tempoSequence.toTime (te::BeatPosition::fromBeats (juce::jmax (1.0, lengthBeats)));
+    auto clip = slot.track->insertMIDIClip (slot.track->getName(), { te::TimePosition(), end }, nullptr);
+    if (clip == nullptr)
+        throw std::runtime_error ("afo_audio: Tracktion no pudo crear el clip MIDI");
+    auto& seq = clip->getSequence();
+    for (auto& [beat, note] : notes)
+        seq.addNote (juce::jlimit (0, 127, note), te::BeatPosition::fromBeats (beat), te::BeatDuration::fromBeats (0.25), 100, 0, nullptr);
+    slot.info.lengthSeconds = end.inSeconds();
+    edit.getTransport().ensureContextAllocated();
+    return slot.info.lengthSeconds;
 }
 
 bool Engine::removeTrack (int id)

@@ -32,7 +32,8 @@ Todo lo que AllForOne escribe (datos, registros, cachés, temporales) queda dent
 
 **Interfaz nativa (en desarrollo, sin navegador interno):** `python -m allforone --nativo` desde
 `app/`. Ya funcionan el lienzo, Pistas, Audios, la consola Mezcla con la mezcla automática,
-Mezcla final, Afinador, Master IA y Antes / Después; el resto llega por fases
+Mezcla final, Afinador, Master IA, Antes / Después, Piano roll, Instrumentos, Batería (con el
+sintetizador del motor) y Pistas con IA (demo); falta el Grabador (fase 4)
 (`docs/INTERFAZ_NATIVA.md`).
 
 ## Estructura
@@ -41,7 +42,7 @@ Mezcla final, Afinador, Master IA y Antes / Después; el resto llega por fases
 PLANTILLA_DAW.html          interfaz original (referencia, no se edita)
 Mezclador_Automatico.zip    mezclador V4.2 original (referencia)
 CMakeLists.txt, cmake/      motor nativo y dependencias fijadas
-native/src/                 AfoEngine (fachada sobre Tracktion Engine)
+native/src/                 AfoEngine (fachada sobre Tracktion Engine) y AfoSynth (sintetizador)
 native/bindings/            extensión Python afo_audio (pybind11)
 native/tests/               pruebas nativas (ctest)
 app/allforone/              aplicación Python (PySide6 + Qt WebEngine + QWebChannel)

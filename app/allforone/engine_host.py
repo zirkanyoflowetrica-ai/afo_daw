@@ -33,6 +33,45 @@ def fader_to_db(pos: float) -> float:
     return max(-100.0, 40.0 * math.log10(pos / UNITY_POS))
 
 
+# Secuenciador de la plantilla: 16 compases de 16 semicorcheas en el carril de Pistas
+STEPS = 256
+FIRST_DRUM_NOTE = 36                       # carril i de la Batería = nota MIDI 36 + i
+ROLL_TOP_NOTE = 72                         # fila 0 del piano roll = C5; fila 12 = C4
+
+
+def in_clip(clips, bar: int) -> bool:
+    return any(bar * 6.25 >= c[0] - 0.01 and bar * 6.25 < c[0] + c[1] - 0.01 for c in clips)
+
+
+def pattern_notes(track: dict) -> list[tuple[float, int]]:
+    """(negra, nota MIDI) de cada nota que tocaba el reloj de la plantilla (tick) en los 16 compases.
+
+    Instrumento: cada nota del piano roll se repite en cada compás que cae dentro de un clip.
+    Batería: cada paso activo del patrón, igual.
+    """
+    out = []
+    roll = [tuple(map(int, k.split("-"))) for k in (track.get("roll") or {})]
+    pat = [tuple(map(int, k.split("-"))) for k, on in (track.get("pat") or {}).items() if on]
+    for st in range(STEPS):
+        bar, s = st >> 4, st % 16
+        if not in_clip(track.get("clips", []), bar):
+            continue
+        beat = st / 4
+        if track["type"] == "inst":
+            out += [(beat, ROLL_TOP_NOTE - r) for r, c in roll if c == s]
+        elif track["type"] == "drum":
+            out += [(beat, FIRST_DRUM_NOTE + lane) for lane, c in pat if c == s]
+    return out
+
+
+def synth_settings(track: dict) -> dict:
+    cfg = track.get("cfg", {})
+    if track["type"] == "drum":
+        return {"mode": 1, "vol": float(cfg.get("vol", 80)), "tun": float(cfg.get("tun", 50))}
+    return {"mode": 0, "wave": int(cfg.get("v", 0)), "vel": float(cfg.get("vel", 70)),
+            "bri": float(cfg.get("bri", 50)), "sus": bool(track.get("sus"))}
+
+
 @dataclass
 class EngineHost:
     engine: object | None = None
@@ -110,6 +149,26 @@ class EngineHost:
         info["note"] = note
         self.tracks[info["id"]] = info
         return info
+
+    # --- Instrumento y Batería (sintetizador del motor) ---------------------------------
+    def add_synth(self, name: str, mode: int) -> dict:
+        info = dict(self.engine.add_synth_track(name, mode))
+        info.update(peaks=[], originalPath="", note="")
+        self.tracks[info["id"]] = info
+        return info
+
+    def update_synth(self, track_id: int, track: dict) -> float:
+        """Parámetros y patrón; el clip MIDI se rehace entero. Devuelve su duración en segundos."""
+        self.engine.set_synth_settings(track_id, **synth_settings(track))
+        if track.get("settingsOnly"):            # perillas: no hace falta rehacer el clip
+            return -1.0
+        return self.engine.set_synth_notes(track_id, pattern_notes(track), float(STEPS) / 4)
+
+    def audition(self, data: dict) -> bool:
+        s = synth_settings(data)
+        if data["type"] == "drum":
+            return self.engine.audition_synth(FIRST_DRUM_NOTE + int(data["lane"]), 0.0, **s)
+        return self.engine.audition_synth(int(data["note"]), float(data.get("seconds", 0.4)), **s)
 
     def add_test_tone(self) -> dict:
         path = paths.media_dir() / "tono_prueba_440Hz.wav"

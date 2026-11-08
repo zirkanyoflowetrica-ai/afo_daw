@@ -38,6 +38,16 @@ struct TrackInfo
     int numChannels = 0;
 };
 
+// Parámetros de una pista de Instrumento/Batería (ver AfoSynth.h)
+struct SynthSettings
+{
+    int mode = 0;           // 0 = instrumento, 1 = batería
+    int wave = 0;           // preset 0..7
+    float vel = 70, bri = 50;
+    bool sus = false;
+    float vol = 80, tun = 50;
+};
+
 struct Levels
 {
     float masterL = -100.0f, masterR = -100.0f;   // dBFS (pico desde la última lectura)
@@ -67,6 +77,14 @@ public:
     void setTrackPan (int id, float pan);              // -1..1
     void setTrackMute (int id, bool muted);
     void setTrackSolo (int id, bool solo);
+
+    // Pistas de Instrumento/Batería: sintetizador del motor que toca un clip MIDI
+    TrackInfo addSynthTrack (const std::string& name, int mode);
+    void setSynthSettings (int id, const SynthSettings&);
+    // (tiempo en negras, nota MIDI); batería: nota 36 + carril. Devuelve la duración del clip en segundos.
+    double setSynthNotes (int id, const std::vector<std::pair<double, int>>& notes, double lengthBeats);
+    // Escucha de una nota o golpe suelto por el reproductor de escucha (no toca el transporte)
+    bool auditionSynth (const SynthSettings&, int midiNote, double seconds);
 
     // Master
     void setMasterGainDb (float db);

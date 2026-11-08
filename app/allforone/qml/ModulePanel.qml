@@ -124,7 +124,7 @@ Item {
         // .pb: cuerpo con desplazamiento propio
         Flickable {
             id: flick
-            x: root.wood ? 30 : 12
+            x: 3 + (root.wood ? 30 : 12)            // padding de .pb dentro del borde de 3 px
             y: head.y + head.height + 12
             width: parent.width - 2 * x
             height: parent.height - y - 30 - 3

@@ -45,7 +45,7 @@ Column {
                         width: 84; height: parent.height
                         color: Theme.dark ? "#26222e" : "#d9d2bd"
                         border.width: 2; border.color: "#000"
-                        Rectangle { width: parent.width; height: 8; color: Theme.pc.pistas }
+                        Rectangle { width: parent.width; height: 8; color: Theme.pc[root.studio.seqSrc(strip.modelData.type)] }
                         Column {
                             id: col
                             x: 10; y: 8 + 8; width: 64
@@ -53,6 +53,13 @@ Column {
                             Text { width: parent.width; horizontalAlignment: Text.AlignHCenter; elide: Text.ElideRight
                                    text: strip.modelData.name; color: Theme.ink
                                    font.family: Theme.font; font.pixelSize: 11; font.weight: 500 }
+                            Rectangle {                 // pista de IA: demostración sin audio
+                                visible: strip.modelData.type === "ia"
+                                width: parent.width; height: visible ? 14 : 0
+                                color: "#000"
+                                Text { anchors.centerIn: parent; text: "DEMO · sin audio"; color: "#ffb000"
+                                       font.family: Theme.font; font.pixelSize: 9; font.weight: 700 }
+                            }
                             Column {                    // .afo-smeta
                                 width: parent.width; spacing: 3
                                 visible: !!strip.item
@@ -90,12 +97,12 @@ Column {
                             Knob {
                                 anchors.horizontalCenter: parent.horizontalCenter
                                 label: "Pan"; value: strip.modelData.pan
-                                onMoved: function (v) { root.studio.setTrackMix(strip.tid, strip.modelData.vol, v) }
+                                onMoved: function (v) { root.studio.setTrackMixUid(strip.modelData.uid, strip.modelData.vol, v) }
                             }
                             Row {                       // .fad
                                 spacing: 6; anchors.horizontalCenter: parent.horizontalCenter
                                 Fader { value: strip.modelData.vol; tip: "Volumen " + strip.modelData.name
-                                        onMoved: function (v) { root.studio.setTrackMix(strip.tid, v, strip.modelData.pan) } }
+                                        onMoved: function (v) { root.studio.setTrackMixUid(strip.modelData.uid, v, strip.modelData.pan) } }
                                 Meter { level: root.studio.playing ? MD.dbToPct(root.studio.trackLevel(strip.tid)) : 0 }
                             }
                             Text { width: parent.width; horizontalAlignment: Text.AlignHCenter
@@ -163,7 +170,7 @@ Column {
             Behavior on width { NumberAnimation { duration: 200 } }
             Row {
                 Repeater {
-                    model: Math.ceil(root.width / 10)
+                    model: Math.max(0, Math.ceil(root.width / 10))
                     Row { Rectangle { width: 8; height: 10; color: "#ffb000" } Rectangle { width: 2; height: 10; color: "#ff9f45" } }
                 }
             }

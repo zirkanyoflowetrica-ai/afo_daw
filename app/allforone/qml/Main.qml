@@ -37,12 +37,27 @@ Window {
     property real vu: 0
     property bool limiter: true                // pendiente (V0.7): todavía no procesa audio
     Mixer { id: mx; studio: win }
+    Sequencer { id: sq; studio: win }
+    onBpmChanged: sq.rerenderAll()                // el patrón depende del tempo: se vuelve a sintetizar
+    onHiddenChanged: syncTrackStates()            // módulo quitado = sus pistas desconectadas (no suenan)
+    onTracksChanged: Qt.callLater(function () { win.geomRev++ })   // las filas de Pistas se movieron
+    property var rowCenter: null                  // función de TracksBody: centro de la fila i (coord. del módulo)
     readonly property real bar16: 16 * 4 * 60 / Math.max(40, bpm)
     property real stripScroll: 0               // desplazamiento horizontal de las tiras de la consola
     onStripScrollChanged: geomRev++
     // Cables fijos + uno del Afinador a la tira de cada voz que va a afinar (intensidad > 0 %)
     readonly property var cableLinks: {
         var out = L.links(hidden)
+        // Cada pista de Instrumento, Batería o IA tiene su cable desde su módulo hasta su fila en Pistas
+        var sources = {}, trackLinks = []
+        for (var i = 0; i < tracks.length; i++) {
+            var src = sq.src[tracks[i].type]
+            if (src === "pistas" || src === "cinta" || hidden[src] || hidden.pistas) continue
+            var slot = sources[src] || 0; sources[src] = slot + 1
+            trackLinks.push({ key: "track-" + tracks[i].uid, f: src, t: "pistas", i: i, slot: slot })
+        }
+        trackLinks.forEach(function (l) { l.total = sources[l.f] })
+        out.splice.apply(out, [out.length && out[0].key === "piano-inst" ? 1 : 0, 0].concat(trackLinks))
         if (mx.tuneStrength > 0 && !hidden.afina && !hidden.mezcla) {
             mx.items; mx.tune; tracks
             var S = mx.tunedStrips()
@@ -70,6 +85,11 @@ Window {
         return L.anchor(g, portOverride[link.key + ":" + end] || defaultPin(link, end, g))
     }
     function defaultPin(link, end, g) {
+        if (link.i !== undefined) {                 // pista → su fila en Pistas
+            if (end === "from") return { side: "right", u: L.clamp(.12 + .76 * (link.slot + 1) / (link.total + 1), .08, .92) }
+            var y = rowCenter ? rowCenter(link.i) : 40
+            return { side: "left", u: L.clamp(y / g.h, .05, .95) }
+        }
         if (link.mx === undefined) return L.defaultPin(link, end)
         if (end === "to") return { side: "top", u: L.clamp((12 + link.mx * 92 + 42 - stripScroll) / g.w, .04, .96) }   // centro de la tira
         return { side: "right", u: L.clamp(.12 + .76 * (link.slot + 1) / (link.total + 1), .08, .92) }
@@ -92,7 +112,18 @@ Window {
         return { items: mx.items, runs: mx.runs.length, busy: mx.busy, status: mx.status, live: mx.live,
                  tune: mx.tune, links: cableLinks.map(function (l) { return l.key }),
                  lastTuned: mx.runs.length ? !!mx.runs[mx.runs.length - 1].tuned : false,
-                 tracks: tracks.map(function (t) { return { id: t.id, vol: t.vol, pan: t.pan } }) }
+                 tracks: tracks.map(function (t) { return { uid: t.uid, id: t.id, type: t.type, name: t.name, vol: t.vol, pan: t.pan,
+                                                             notes: Object.keys(t.roll || {}).length + Object.keys(t.pat || {}).length } }),
+                 act: sq.act, voice: sq.active("inst") ? sq.active("inst").cfg.v : -1 }
+    }
+    // Para la autoprueba: acciones del secuenciador
+    function seqCommand(what, a, b) {
+        if (what === "add") sq.addTrack(a)
+        else if (what === "roll") sq.toggleRoll(a, b)
+        else if (what === "step") sq.toggleStep(a, b)
+        else if (what === "voice") sq.setVoice(a)
+        else if (what === "generate") sq.finishGenerate()
+        else if (what === "hide") setHidden(a, b)
     }
     function mixNow(remix) { mx.mix(!!remix) }
     function setTuneStrength(v) { mx.tuneStrength = v }
@@ -142,26 +173,28 @@ Window {
     // stem = false: la pista no es un audio para el mezclador (tono de prueba, master enviado a Pistas)
     function addTrack(info, stem) {
         var t = tracks.slice()
-        t.push({ id: info.id, name: info.name, len: info.length_seconds || 0, peaks: info.peaks || [],
+        t.push({ uid: "a" + info.id, id: info.id, type: "audio", name: info.name, len: info.length_seconds || 0, peaks: info.peaks || [],
                  note: info.note || "", mute: false, solo: false, vol: 70, pan: 50 })
         tracks = t; selected = t.length - 1
         if (stem !== false) mx.linkTrack(info)
     }
     function removeTrackAt(i) {
         var t = tracks.slice(), gone = t.splice(i, 1)[0]
-        call("removeTrack", gone.id); tracks = t
+        if (gone.type === "audio") call("removeTrack", gone.id)
+        sq.forget(gone)
+        tracks = t
         if (selected >= t.length) selected = t.length - 1
-        mx.unlinkTrack(gone.id)
+        if (gone.id >= 0) mx.unlinkTrack(gone.id)
     }
     // Fader (0..100, 70 = 0 dB) y paneo (0..100, 50 = centro) de una pista, en la interfaz y en el motor
     function setTrackMix(id, vol, pan) {
-        var t = tracks.slice()
-        for (var i = 0; i < t.length; i++) if (t[i].id === id) {
-            t[i] = Object.assign({}, t[i], { vol: Math.round(vol), pan: pan })
-            if (engineOk) { call("setTrackVolume", id, Math.round(vol)); call("setTrackPan", id, (pan - 50) / 50) }
-        }
-        tracks = t
+        for (var i = 0; i < tracks.length; i++) if (tracks[i].id === id) setTrackMixUid(tracks[i].uid, vol, pan)
     }
+    function setTrackMixUid(uid, vol, pan) {
+        var t = sq.replace(uid, { vol: Math.round(vol), pan: pan })
+        if (t && t.id >= 0 && engineOk) { call("setTrackVolume", t.id, Math.round(vol)); call("setTrackPan", t.id, (pan - 50) / 50) }
+    }
+    function seqSrc(type) { return sq.src[type] }
     function trackLevel(id) { var v = trackDb[String(id)]; return v === undefined ? -100 : v }
     function setMaster(v) { masterPos = v; if (engineOk) call("setMasterVolume", v) }
     function exportMix() {
@@ -170,7 +203,9 @@ Window {
         toast(r.ok ? "Exportado: " + r.path : (r.cancelled ? "Exportación cancelada" : r.error))
     }
     function syncTrackStates() {
-        call("setTrackStates", JSON.stringify(tracks.map(function (t) { return [t.id, t.mute, t.solo] })))
+        if (!engineOk) return
+        var list = tracks.filter(function (t) { return t.id >= 0 }).map(function (t) { return [t.id, t.mute || sq.disconnected(t), t.solo] })
+        if (list.length) call("setTrackStates", JSON.stringify(list))
     }
     function importAudio() {
         var r = call("importAudio")
@@ -414,7 +449,7 @@ Window {
                     pid: modelData[0]; title: modelData[1]; modelName: modelData[2]
                     viewZ: win.zoom
                     visible: !win.hidden[pid]
-                    autoHeight: ["pistas", "audios", "mezcla", "master", "afina", "mastia", "antes"].indexOf(pid) >= 0
+                    autoHeight: pid !== "cinta"
                     z: index + 1
                     Component.onCompleted: {
                         var o = (win.savedLayout.pos || {})[pid] || modelData[3]
@@ -436,7 +471,8 @@ Window {
                     Loader {
                         width: panel.bodyWidth
                         sourceComponent: ({ pistas: tracksComp, audios: audiosComp, mezcla: mixComp, master: masterComp,
-                                            afina: tuneComp, mastia: masteringComp, antes: reviewComp })[panel.pid] || pendingComp
+                                            afina: tuneComp, mastia: masteringComp, antes: reviewComp,
+                                            inst: instComp, drums: drumsComp, piano: pianoComp, ia: iaComp })[panel.pid] || pendingComp
                     }
                     Component { id: audiosComp; AudiosBody { mixer: mx; studio: win } }
                     Component { id: mixComp; MixBody { mixer: mx; studio: win } }
@@ -444,11 +480,19 @@ Window {
                     Component { id: tuneComp; TuneBody { mixer: mx } }
                     Component { id: masteringComp; MasteringBody { mixer: mx } }
                     Component { id: reviewComp; ReviewBody { mixer: mx } }
+                    Component { id: instComp; InstBody { seq: sq } }
+                    Component { id: drumsComp; DrumsBody { seq: sq; curStep: win.playing && win.step >= 0 ? win.step % 16 : -1 } }
+                    Component { id: pianoComp; PianoBody { seq: sq } }
+                    Component { id: iaComp; IaBody { seq: sq } }
                     Component {
                         id: tracksComp
                         TracksBody {
                             tracks: win.tracks
                             mixer: mx
+                            seq: sq
+                            host: panel
+                            Component.onCompleted: win.rowCenter = rowCenter
+                            onAddType: function (type) { sq.addTrack(type) }
                             selected: win.selected
                             bar16: win.bar16
                             headPos: win.step < 0 ? 0 : (win.step % 256) / 256
@@ -458,7 +502,7 @@ Window {
                                 if (r.ok) { win.addTrack(r.track, false); win.toast("Tono de prueba 440 Hz (sintético) añadido") } else win.toast(r.error)
                             }
                             onNotYet: function (what) { win.toast("«" + what + "» todavía no está en la interfaz nativa") }
-                            onSelectTrack: function (i) { win.selected = i }
+                            onSelectTrack: function (i) { sq.pick(i) }
                             onToggleMute: function (i) { var t = win.tracks.slice(); t[i] = Object.assign({}, t[i], { mute: !t[i].mute }); win.tracks = t; win.syncTrackStates() }
                             onToggleSolo: function (i) { var t = win.tracks.slice(); t[i] = Object.assign({}, t[i], { solo: !t[i].solo }); win.tracks = t; win.syncTrackStates() }
                             onRemoveTrack: function (i) { win.removeTrackAt(i) }
@@ -641,6 +685,7 @@ Window {
             toast(dev.open ? "Motor nativo listo · " + dev.type + " · " + dev.output : "Motor nativo listo · sin dispositivo de salida abierto")
         } else toast("Motor nativo no disponible: " + (info.error || "desconocido"))
         mx.connect()
+        sq.createDefaults()
         firstFit.start()
     }
     Timer { id: firstFit; interval: 60; onTriggered: win.fitIds(["inst", "drums", "pistas"]) }
