@@ -32,6 +32,57 @@ def _prepare_qt_environment() -> None:
     if sys.platform.startswith("linux") and hasattr(os, "geteuid") and os.geteuid() == 0:
         os.environ.setdefault("QTWEBENGINE_DISABLE_SANDBOX", "1")
     os.environ.setdefault("QTWEBENGINE_CHROMIUM_FLAGS", "--autoplay-policy=no-user-gesture-required")
+    os.environ.setdefault("QT_DISABLE_SHADER_DISK_CACHE", "1")   # no escribir cachés de Qt fuera de la carpeta
+    # Temporales de Python, del mezclador y de librerías dentro de la carpeta de datos
+    tmp = paths.user_data_dir() / "temporales"
+    tmp.mkdir(parents=True, exist_ok=True)
+    for var in ("TEMP", "TMP", "TMPDIR"):
+        os.environ[var] = str(tmp)
+    import tempfile
+    tempfile.tempdir = str(tmp)
+    os.environ.setdefault("NUMBA_CACHE_DIR", str(paths.user_data_dir() / "cache" / "numba"))
+
+
+def make_drop_filter(view, bridge):
+    """Arrastrar archivos desde el Explorador: Qt conoce la ruta real (Chromium no la expone).
+
+    Se entrega a JavaScript con la posición, que decide el destino (Mezcla IA o Pistas)."""
+    from PySide6.QtCore import QEvent, QObject
+
+    class DropFilter(QObject):
+        def eventFilter(self, obj, ev):  # noqa: N802
+            t = ev.type()
+            if t in (QEvent.Type.DragEnter, QEvent.Type.DragMove):
+                md = ev.mimeData()
+                if md.hasUrls() and any(u.isLocalFile() for u in md.urls()):
+                    ev.acceptProposedAction()
+                    return True
+            elif t == QEvent.Type.Drop:
+                md = ev.mimeData()
+                files = [u.toLocalFile() for u in md.urls() if u.isLocalFile()] if md.hasUrls() else []
+                if files:
+                    pos = ev.position() if hasattr(ev, "position") else ev.pos()
+                    deliver_drop(view, files, pos.x(), pos.y())
+                    ev.acceptProposedAction()
+                    return True
+            return False
+
+    return DropFilter(view)
+
+
+def deliver_drop(view, files, x, y):
+    import json as _json
+    view.page().runJavaScript(f"window.AFO_onDrop && AFO_onDrop({_json.dumps(files)}, {float(x)}, {float(y)})")
+
+
+def install_drop_filter(view, flt):
+    from PySide6.QtWidgets import QWidget
+    view.setAcceptDrops(True)
+    for w in [view, *view.findChildren(QWidget)]:
+        if not getattr(w, "_afo_drop", False):
+            w.setAcceptDrops(True)
+            w.installEventFilter(flt)
+            w._afo_drop = True
 
 
 def build_window(host):
@@ -55,7 +106,7 @@ def build_window(host):
 
     window = QMainWindow()
     window.setWindowTitle(f"AllForOne {__version__}")
-    icon = paths.ui_dir() / "icon.png"
+    icon = paths.ui_dir() / "icon.ico"
     if icon.exists():
         window.setWindowIcon(QIcon(str(icon)))
     view = QWebEngineView(window)
@@ -78,11 +129,16 @@ def build_window(host):
     channel.registerObject("afo", bridge)
     page.setWebChannel(channel)
 
+    drop_filter = make_drop_filter(view, bridge)
+    # El widget interno de Chromium se crea al cargar: se instala el filtro entonces
+    view.loadFinished.connect(lambda _ok: install_drop_filter(view, drop_filter))
+    install_drop_filter(view, drop_filter)
+
     view.setUrl(QUrl.fromLocalFile(str(paths.ui_dir() / "index.html")))
     window.setCentralWidget(view)
     window.resize(1600, 900)
     # Mantener referencias vivas
-    window._afo = (profile, page, channel, bridge)  # type: ignore[attr-defined]
+    window._afo = (profile, page, channel, bridge, drop_filter)  # type: ignore[attr-defined]
     return window, view, bridge
 
 

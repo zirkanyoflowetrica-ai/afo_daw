@@ -31,7 +31,7 @@ int main (int argc, char** argv)
     CHECK (tonePeak > -12.5f && tonePeak < -11.5f, "pico del tono = -12 dBFS");
 
     {
-        afo::Engine engine ("AllForOneTests");
+        afo::Engine engine ("AllForOneTests", (out / "datos").string());
         auto dev = engine.deviceInfo();
         std::printf ("       dispositivo: '%s' (%s) abierto=%d sr=%.0f buf=%d\n",
                      dev.outputName.c_str(), dev.typeName.c_str(), (int) dev.open, dev.sampleRate, dev.bufferSize);
@@ -74,6 +74,10 @@ int main (int argc, char** argv)
         CHECK (! engine.renderToWav ((out / "render_muted.wav").string()), "todo silenciado: no se exporta nada");
         CHECK (engine.removeTrack (t2.id), "elimina pista 2");
 
+        CHECK (engine.previewPlay (tone, 0.5) || ! dev.open, "previsualización acepta el archivo");
+        CHECK (engine.previewLength() > 1.9 || ! dev.open, "longitud de la previsualización");
+        engine.previewStop();
+        CHECK (! engine.previewPlaying(), "previsualización detenida");
         CHECK (engine.removeTrack (t.id), "elimina pista");
         CHECK (engine.tracks().empty(), "sin pistas tras eliminar");
     }

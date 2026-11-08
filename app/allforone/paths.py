@@ -17,14 +17,22 @@ def ui_dir() -> Path:
     return package_dir() / "ui"
 
 
+def is_frozen() -> bool:
+    return bool(getattr(sys, "frozen", False) or "__compiled__" in globals())
+
+
+def app_root() -> Path:
+    """Carpeta del programa: la del AllForOne.exe empaquetado, o la raíz del proyecto en desarrollo."""
+    if is_frozen():
+        return Path(sys.argv[0]).resolve().parent
+    return package_dir().parents[1]
+
+
 def user_data_dir() -> Path:
+    """Todo lo que AllForOne escribe vive junto al programa (portátil, nada en %APPDATA%):
+       EXE\\datos con el ejecutable, o data\\ en la carpeta del proyecto durante el desarrollo."""
     override = os.environ.get("AFO_DATA_DIR")
-    if override:
-        base = Path(override)
-    elif sys.platform == "win32":
-        base = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local")) / APP_NAME
-    else:
-        base = Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local" / "share")) / APP_NAME
+    base = Path(override) if override else app_root() / ("datos" if is_frozen() else "data")
     base.mkdir(parents=True, exist_ok=True)
     return base
 

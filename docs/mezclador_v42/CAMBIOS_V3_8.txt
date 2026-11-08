@@ -1,0 +1,8 @@
+V3.8 - Panel de afinacion vocal independiente
+- Nuevo cuadro visible de afinacion con tonica, escala, intensidad y cuatro interruptores.
+- Voz principal, voces L, voces R y dobles/coros/_B centrales: decisiones separadas.
+- _B_L se controla con L y _B_R se controla con R, manteniendo paneo al 50%.
+- Fuerza 0 desactiva toda afinacion sin desactivar los otros procesos.
+- Sin cambios en PSOLA, limpieza, EQ, compresion, efecto de aire, escalon L/R, master ni exportacion.
+- Conservar compatibilidad con configuraciones de afinacion V3.7 (include_backings).
+- Pruebas: tests/test_v38.py.

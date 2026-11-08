@@ -47,7 +47,9 @@ struct Levels
 class Engine
 {
 public:
-    explicit Engine (const std::string& appName = "AllForOne");
+    // dataDir: carpeta donde Tracktion guarda su configuración y sesiones temporales.
+    // Vacío = carpeta por defecto del sistema. AllForOne pasa siempre su propia carpeta de datos.
+    explicit Engine (const std::string& appName = "AllForOne", const std::string& dataDir = {});
     ~Engine();
 
     Engine (const Engine&) = delete;
@@ -80,6 +82,15 @@ public:
     double lengthSeconds() const;
     void setTempo (double bpm);
     double tempo() const;
+
+    // Previsualización (A/B de mezclas y masters): reproduce un archivo por el mismo dispositivo,
+    // sin añadirlo al proyecto. Cambiar de archivo conserva la posición (comparación A/B).
+    bool previewPlay (const std::string& path, double startSeconds);
+    void previewStop();
+    bool previewPlaying() const;
+    double previewPosition() const;
+    double previewLength() const;
+    std::string previewPath() const;
 
     // Medición (llamar periódicamente desde el hilo de mensajes)
     Levels readLevels();

@@ -25,7 +25,7 @@ py::dict toDict (const afo::TrackInfo& t)
 PYBIND11_MODULE (afo_audio, m)
 {
     m.doc() = "AllForOne: motor de audio nativo (JUCE + Tracktion Engine)";
-    m.attr("API_VERSION") = 1;
+    m.attr("API_VERSION") = 2;
 
     m.def ("version", &afo::version);
     m.def ("juce_version", &afo::juceVersion);
@@ -42,7 +42,7 @@ PYBIND11_MODULE (afo_audio, m)
            "Procesa mensajes pendientes de JUCE. En Windows lo hace el bucle de Qt; úsese en otras plataformas.");
 
     py::class_<afo::Engine> (m, "Engine")
-        .def (py::init<const std::string&>(), py::arg ("app_name") = "AllForOne")
+        .def (py::init<const std::string&, const std::string&>(), py::arg ("app_name") = "AllForOne", py::arg ("data_dir") = "")
         .def ("device_info", [] (const afo::Engine& e)
               {
                   auto i = e.deviceInfo();
@@ -83,5 +83,11 @@ PYBIND11_MODULE (afo_audio, m)
                   d["tracks"] = tr;
                   return d;
               })
-        .def ("render_to_wav", &afo::Engine::renderToWav, py::arg ("path"));
+        .def ("render_to_wav", &afo::Engine::renderToWav, py::arg ("path"), py::call_guard<py::gil_scoped_release>())
+        .def ("preview_play", &afo::Engine::previewPlay, py::arg ("path"), py::arg ("start_seconds") = 0.0)
+        .def ("preview_stop", &afo::Engine::previewStop)
+        .def ("preview_playing", &afo::Engine::previewPlaying)
+        .def ("preview_position", &afo::Engine::previewPosition)
+        .def ("preview_length", &afo::Engine::previewLength)
+        .def ("preview_path", &afo::Engine::previewPath);
 }

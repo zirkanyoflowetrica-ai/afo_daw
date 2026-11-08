@@ -35,6 +35,29 @@ struct TrackSlot
     TrackInfo info;
 };
 
+// Configuración de Tracktion dentro de la carpeta de datos de AllForOne (nada fuera de ella)
+struct LocalPropertyStorage : public te::PropertyStorage
+{
+    LocalPropertyStorage (juce::String appName, juce::File dir) : te::PropertyStorage (appName), folder (dir) {}
+    juce::File getAppPrefsFolder() override { folder.createDirectory(); return folder; }
+    juce::File folder;
+};
+
+struct PreviewPlayer
+{
+    juce::AudioFormatManager formats;
+    juce::AudioTransportSource transport;
+    juce::AudioSourcePlayer player;
+    std::unique_ptr<juce::AudioFormatReaderSource> source;
+    juce::AudioDeviceManager* dm = nullptr;
+    std::string path;
+
+    PreviewPlayer() { formats.registerBasicFormats(); player.setSource (&transport); }
+    ~PreviewPlayer() { detach(); transport.setSource (nullptr); }
+    void attach (juce::AudioDeviceManager& d) { if (dm == nullptr) { dm = &d; dm->addAudioCallback (&player); } }
+    void detach() { if (dm != nullptr) { dm->removeAudioCallback (&player); dm = nullptr; } }
+};
+
 struct Engine::Impl
 {
     juce::ScopedJuceInitialiser_GUI juceInit;   // crea MessageManager en este hilo
@@ -45,14 +68,17 @@ struct Engine::Impl
 
     te::LevelMeasurer::Client masterClient;
     te::EditPlaybackContext* attachedContext = nullptr;
+    PreviewPlayer preview;
 
-    Impl (const std::string& appName)
+    Impl (const std::string& appName, const std::string& dataDir)
     {
-        engine = std::make_unique<te::Engine> (juce::String (appName));
+        juce::File base = dataDir.empty() ? juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile (appName)
+                                          : toFile (dataDir);
+        engine = std::make_unique<te::Engine> (std::make_unique<LocalPropertyStorage> (juce::String (appName), base.getChildFile ("tracktion")),
+                                               nullptr, nullptr);
 
         // Edit vacío en memoria. El formato de proyecto .afo (V0.2) guardará su estado.
-        auto editFile = juce::File::getSpecialLocation (juce::File::tempDirectory)
-                            .getChildFile ("AllForOne").getChildFile ("session.tracktionedit");
+        auto editFile = base.getChildFile ("sesion").getChildFile ("session.tracktionedit");
         editFile.getParentDirectory().createDirectory();
         edit = te::createEmptyEdit (*engine, editFile);
         if (auto mv = edit->getMasterVolumePlugin())
@@ -63,6 +89,8 @@ struct Engine::Impl
 
     ~Impl()
     {
+        preview.transport.stop();
+        preview.detach();
         if (edit != nullptr)
             edit->getTransport().stop (false, true);
 
@@ -77,28 +105,26 @@ struct Engine::Impl
         engine.reset();
     }
 
+    // Tracktion puede recrear el EditPlaybackContext (y el nuevo puede ocupar la misma dirección
+    // que el anterior), así que no basta con comparar punteros: en cada lectura se vuelve a
+    // registrar el cliente en el contexto ACTUAL. removeClient/addClient son baratos y seguros.
     void attachMasterMeter()
     {
         auto* ctx = edit->getCurrentPlaybackContext();
-        if (ctx == attachedContext)
-            return;
-        detachMasterMeter();
         if (ctx != nullptr)
         {
+            ctx->masterLevels.removeClient (masterClient);
             ctx->masterLevels.addClient (masterClient);
-            attachedContext = ctx;
         }
+        attachedContext = ctx;
     }
 
     void detachMasterMeter()
     {
-        if (attachedContext != nullptr)
-        {
-            // El contexto puede haberse reasignado; solo lo quitamos si sigue siendo el actual
-            if (edit != nullptr && edit->getCurrentPlaybackContext() == attachedContext)
-                attachedContext->masterLevels.removeClient (masterClient);
-            attachedContext = nullptr;
-        }
+        if (edit != nullptr)
+            if (auto* ctx = edit->getCurrentPlaybackContext())
+                ctx->masterLevels.removeClient (masterClient);
+        attachedContext = nullptr;
     }
 
     TrackSlot& slot (int id) const
@@ -111,7 +137,36 @@ struct Engine::Impl
 };
 
 //==============================================================================
-Engine::Engine (const std::string& appName) : impl (std::make_unique<Impl> (appName)) {}
+Engine::Engine (const std::string& appName, const std::string& dataDir) : impl (std::make_unique<Impl> (appName, dataDir)) {}
+
+bool Engine::previewPlay (const std::string& path, double startSeconds)
+{
+    requireMessageThread();
+    auto& pv = impl->preview;
+    auto file = toFile (path);
+    if (pv.path != path || pv.source == nullptr)
+    {
+        std::unique_ptr<juce::AudioFormatReader> reader (pv.formats.createReaderFor (file));
+        if (reader == nullptr)
+            return false;
+        const double sr = reader->sampleRate;
+        pv.transport.stop();
+        pv.transport.setSource (nullptr);
+        pv.source = std::make_unique<juce::AudioFormatReaderSource> (reader.release(), true);
+        pv.transport.setSource (pv.source.get(), 0, nullptr, sr, 2);
+        pv.path = path;
+    }
+    pv.attach (impl->engine->getDeviceManager().deviceManager);
+    pv.transport.setPosition (juce::jlimit (0.0, juce::jmax (0.0, pv.transport.getLengthInSeconds() - 0.05), startSeconds));
+    pv.transport.start();
+    return true;
+}
+
+void Engine::previewStop()            { impl->preview.transport.stop(); }
+bool Engine::previewPlaying() const   { return impl->preview.transport.isPlaying(); }
+double Engine::previewPosition() const{ return impl->preview.transport.getCurrentPosition(); }
+double Engine::previewLength() const  { return impl->preview.transport.getLengthInSeconds(); }
+std::string Engine::previewPath() const { return impl->preview.path; }
 Engine::~Engine() = default;
 
 DeviceInfo Engine::deviceInfo() const

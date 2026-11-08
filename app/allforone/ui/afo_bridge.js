@@ -21,6 +21,25 @@
   });
   AFO.call = call;
 
+  /* ---------- recursos propios de AllForOne (sin tocar index.html) ---------- */
+  for (const href of ['afo_panels.css', 'afo_theme_dark.css']) {
+    const l = document.createElement('link'); l.rel = 'stylesheet'; l.href = href; document.head.appendChild(l);
+  }
+  /* Tema: claro (original) u oscuro. Preferencia por usuario en este equipo. */
+  const THEME_KEY = 'allforone-theme';
+  const setTheme = t => {
+    document.documentElement.dataset.theme = t;
+    try { localStorage.setItem(THEME_KEY, t); } catch (e) {}
+    const b = document.getElementById('afoTheme'); if (b) b.textContent = t === 'dark' ? '◑ Claro' : '◐ Oscuro';
+  };
+  AFO.setTheme = setTheme;
+  let savedTheme = 'light'; try { savedTheme = localStorage.getItem(THEME_KEY) || 'light'; } catch (e) {}
+  document.querySelector('.zoom').insertAdjacentHTML('beforeend', '<button id="afoTheme" title="Cambiar entre el tema claro original y el oscuro">◐ Oscuro</button>');
+  document.getElementById('afoTheme').addEventListener('click', () => setTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark'));
+  setTheme(savedTheme);
+  /* Paneles del Mezclador V4.2: se cargan después de este archivo */
+  const ps = document.createElement('script'); ps.src = 'afo_panels.js'; document.body.appendChild(ps);
+
   if (typeof QWebChannel === 'undefined' || !window.qt || !qt.webChannelTransport) {
     log('QWebChannel no disponible: la plantilla funciona en modo demostración del navegador.');
     return;
@@ -107,6 +126,7 @@
     tracks.push(t); pick(t);
     return t;
   }
+  AFO.addAudioTrack = addAudioTrack;
 
   function syncTrackStates() {
     const list = tracks.filter(t => t.engineId).map(t => [t.engineId, !!t.mute, !!t.solo]);
@@ -177,6 +197,7 @@
     AFO.connected = true;
     const info = AFO.info = await call('hello');
     log('conectado', JSON.stringify(info));
+    if (window.AFO_onMixerConnected) AFO_onMixerConnected();
     if (!info.engine) { toast('Motor nativo no disponible: ' + (info.error || 'desconocido')); return; }
     AFO.engineOk = true;
     AFO.bridge.stateChanged.connect(s => { try { applyState(JSON.parse(s)); } catch (err) { log('estado inválido', err); } });

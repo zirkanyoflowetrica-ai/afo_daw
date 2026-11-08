@@ -1,0 +1,52 @@
+V4.1 — ANALISIS HIBRIDO DE TONALIDAD Y BPM / CONFIRMACION ANTES DE AFINAR
+
+1) Integracion real (opcional) de Essentia KeyExtractor con perfiles
+   krumhansl, temperley, edmm y RhythmExtractor2013 (multifeature),
+   mediante Python Linux o WSL en Windows. No existe binding nativo
+   oficial Python Essentia para Windows: usar instalador WSL opcional.
+2) Integracion real (opcional) de Beat This! File2Beats. Usa PyTorch,
+   necesita checkpoint y puede requerir una descarga la primera vez.
+   No esta preinstalado ni se incluyen los pesos en el proyecto.
+3) Librosa sigue disponible como respaldo incluso sin los otros modelos.
+   Se comparan resultados de archivos instrumentales por separado
+   (piano, guitarra, synth, bajo y bateria), nunca las voces.
+4) En vez de un 100% engañoso, se muestra el acuerdo cualitativo de
+   los analizadores, candidatos alternativos y el metodo consultado.
+   No confundir correlacion/acuerdo con probabilidad de acierto.
+5) Tres modos: Automático, Manual y Asistido. En los tres hay un botón
+   «Confirmar tonalidad y BPM para esta mezcla». La afinación y el
+   delay usan la eleccion confirmada. En modo Automático se analiza el
+   audio aunque se priorice la referencia conocida.
+6) CONFIGURACION INICIAL DE ESTA CANCION: F (Fa) + Menor natural, 91 BPM,
+   modo Automático, «Priorizar referencia» activado. Si Essentia, Beat
+   This o Librosa sugieren otros datos, no se cambian esos valores sin
+   confirmacion expresa. Para otras canciones cambia la referencia.
+7) Se comprueba identidad, tamaño y fecha de los archivos y todos los
+   parametros al confirmar. Cambios posteriores invalidan la aprobacion.
+8) Se conserva PSOLA por voz individual, los interruptores de principal,
+   L y R, el escalon vocal, reverb/delay de V3.9, la mezcla y el mastering.
+   El análisis no escribe sobre el instrumental ni modifica stems.
+
+INSTALACIÓN (WINDOWS)
+- El mismo iniciar_windows.bat sigue iniciando la mezcla básica.
+- Beat This!: instalar_beat_this_opcional_windows.bat requiere conexión
+  y puede consumir varios GB al descargar PyTorch/checkpoint.
+- Essentia WSL: instalar_essentia_wsl_opcional_windows.bat requiere WSL
+  con Ubuntu y python3-venv (instalable con sudo apt install python3-venv).
+  Los dos instaladores opcionales se pueden omitir y el mezclador
+  usa Librosa. El reporte indica los motores realmente utilizados.
+- Los paquetes de Essentia están bajo AGPL-3.0 y Beat This! MIT. Para
+  distribución comercial revisar sus licencias por separado.
+
+RUTA DE USO
+1. Cargar stems y opcionalmente beat de referencia solo para analizar.
+2. Dejar modo Automático, F menor, 91 BPM, «Priorizar referencia» marcado.
+3. Pulsar «Analizar tonalidad y BPM antes de mezclar».
+4. Leer resultados por instrumento y «Confirmar tonalidad y BPM».
+5. Elegir voces a afinar, intensidad, escalón, FX y mezclar.
+6. Si cambias archivos o los valores musicales, repite la confirmación.
+
+NO se garantizan detecciones del 95%-100% ni ausencia total de artefactos
+vocales. Los detectores opcionales no se pudieron ejecutar con modelos
+reales en el entorno de construcción; su código se verificó por pruebas
+simuladas y deben probarse en el Windows/WSL del usuario.

@@ -8,29 +8,67 @@ from __future__ import annotations
 
 import json
 import logging
+import math
+import queue
+import shutil
 from datetime import datetime
 from pathlib import Path
 
-from PySide6.QtCore import QObject, QTimer, Signal, Slot
+from PySide6.QtCore import QObject, QTimer, QUrl, Signal, Slot
+from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import QFileDialog, QWidget
 
 from .engine_host import EngineHost, fader_to_db
+from .mixer_service import AUDIO_EXT, REF_LABEL, MixerService
 
 log = logging.getLogger("allforone.bridge")
 AUDIO_FILTER = "Audio (*.wav *.aif *.aiff *.flac *.ogg *.mp3);;Todos (*.*)"
 
 
+def _clean(v):
+    """JSON válido para JavaScript: sin NaN/Infinito ni tipos de NumPy."""
+    if isinstance(v, dict):
+        return {str(k): _clean(x) for k, x in v.items()}
+    if isinstance(v, (list, tuple)):
+        return [_clean(x) for x in v]
+    if hasattr(v, "item") and not isinstance(v, (str, bytes)):
+        try:
+            v = v.item()
+        except Exception:
+            return str(v)
+    if isinstance(v, float) and not math.isfinite(v):
+        return None
+    return v
+
+
+def _json(obj) -> str:
+    return json.dumps(_clean(obj), ensure_ascii=False)
+
+
 def _ok(**kw) -> str:
-    return json.dumps({"ok": True, **kw})
+    return _json({"ok": True, **kw})
 
 
 def _err(msg: str, **kw) -> str:
     log.warning(msg)
-    return json.dumps({"ok": False, "error": msg, **kw})
+    return _json({"ok": False, "error": msg, **kw})
+
+
+def audio_files(items) -> list[str]:
+    """Archivos de audio de una lista de rutas (las carpetas se exploran)."""
+    out = []
+    for it in items:
+        p = Path(it)
+        if p.is_dir():
+            out += sorted(str(f) for f in p.rglob("*") if f.suffix.lower() in AUDIO_EXT)
+        elif p.suffix.lower() in AUDIO_EXT and p.is_file():
+            out.append(str(p))
+    return out
 
 
 class Bridge(QObject):
     stateChanged = Signal(str)
+    mixerEvent = Signal(str)   # progreso y resultados del Mezclador V4.2 (desde su hilo de trabajo)
 
     def __init__(self, host: EngineHost, parent_widget: QWidget | None = None):
         super().__init__()
@@ -43,6 +81,22 @@ class Bridge(QObject):
         self._timer.timeout.connect(self._tick)
         if host.ok:
             self._timer.start()
+        # El mezclador trabaja en otro hilo: sus eventos se encolan y se emiten desde el hilo
+        # principal (QWebChannel solo reenvía a JavaScript señales emitidas en su propio hilo).
+        self._mixer_events: queue.SimpleQueue = queue.SimpleQueue()
+        self.mixsvc = MixerService(self._mixer_events.put)
+        self._mixer_timer = QTimer(self)
+        self._mixer_timer.setInterval(50)
+        self._mixer_timer.timeout.connect(self._drain_mixer_events)
+        self._mixer_timer.start()
+
+    def _drain_mixer_events(self) -> None:
+        for _ in range(200):
+            try:
+                ev = self._mixer_events.get_nowait()
+            except queue.Empty:
+                return
+            self.mixerEvent.emit(_json(ev))
 
     def _tick(self) -> None:
         try:
@@ -139,6 +193,16 @@ class Bridge(QObject):
             return json.dumps({"ok": False, "cancelled": True})
         return self.import_paths(files)
 
+    @Slot(str, result=str)
+    def importPaths(self, payload: str) -> str:
+        """Importa a Pistas archivos soltados desde el Explorador."""
+        if (g := self._guard()):
+            return g
+        files = audio_files(json.loads(payload))
+        if not files:
+            return _err("Ningún archivo de audio compatible (WAV, AIFF, FLAC, OGG, MP3).")
+        return self.import_paths(files)
+
     def import_paths(self, files: list[str]) -> str:
         added, errors = [], []
         for f in files:
@@ -185,3 +249,115 @@ class Bridge(QObject):
             return _err("No se exportó nada: no hay pistas audibles en el motor (revisa mute/solo).")
         from ._native import afo_audio
         return _ok(path=path, measure=afo_audio.measure_file(path))
+
+    # --- Mezclador V4.2 (paneles Mezcla IA, Afinador, Master IA, Antes/Después) ---------------
+    @Slot(str, str, result=str)
+    def mixer(self, cmd: str, payload: str) -> str:
+        try:
+            data = json.loads(payload or "{}")
+            fn = getattr(self, "_mx_" + cmd, None)
+            if fn is None:
+                return _err(f"Comando del mezclador desconocido: {cmd}")
+            return _json(fn(data))
+        except Exception as exc:
+            log.exception("mixer %s", cmd)
+            return _err(f"{type(exc).__name__}: {exc}")
+
+    def _mx_info(self, d):
+        return self.mixsvc.info()
+
+    def _mx_describe(self, d):
+        return {"ok": True, "stems": self.mixsvc.describe_paths(audio_files(d.get("paths", [])))}
+
+    def _mx_add(self, d):
+        files, _ = QFileDialog.getOpenFileNames(self.parent_widget, "Stems para la mezcla automática", str(Path.home()), AUDIO_FILTER)
+        if not files:
+            return {"ok": False, "cancelled": True}
+        return {"ok": True, "stems": self.mixsvc.describe_paths(files)}
+
+    def _mx_ref(self, d):
+        f, _ = QFileDialog.getOpenFileName(self.parent_widget, "Canción de referencia para el mastering", str(Path.home()), AUDIO_FILTER)
+        if not f:
+            return {"ok": False, "cancelled": True}
+        return {"ok": True, "reference": {"path": f, "name": Path(f).stem}}
+
+    def _mx_fromtracks(self, d):
+        if not self.host.ok:
+            return {"ok": False, "error": self.host.error}
+        files = [t["source_path"] for t in self.host.engine.tracks()]
+        if not files:
+            return {"ok": False, "error": "No hay pistas de audio en el motor. Importa audio en Pistas o arrastra archivos aquí."}
+        return {"ok": True, "stems": self.mixsvc.describe_paths(files)}
+
+    def _mx_analyze(self, d):
+        return self.mixsvc.analyze_async(d)
+
+    def _mx_confirm(self, d):
+        return self.mixsvc.confirm(d)
+
+    def _mx_mix(self, d):
+        return self.mixsvc.mix_async(d)
+
+    def _mx_remix(self, d):
+        d["label"] = f"Remezcla · {d.get('profile_name') or ''}".strip(" ·")
+        return self.mixsvc.mix_async(d)
+
+    def _run(self, d):
+        runs = self.mixsvc.runs
+        i = d.get("run")
+        if i is None or not (0 <= int(i) < len(runs)):
+            raise ValueError("Todavía no hay una mezcla terminada.")
+        return runs[int(i)]
+
+    def _master_file(self, run, sel):
+        names = list(self.mixsvc.info()["masters"]) + [REF_LABEL]
+        name = names[int(sel)]
+        if name not in run["masters"]:
+            raise ValueError(f"No hay «{name}» en esta mezcla.")
+        return name, run["masters"][name]["file"]
+
+    def _mx_listen(self, d):
+        if not self.host.ok:
+            return {"ok": False, "error": self.host.error}
+        eng = self.host.engine
+        if d.get("ab") == "stop":
+            eng.preview_stop()
+            return {"ok": True, "playing": False}
+        run = self._run(d)
+        if d.get("what") == "master":
+            path = run["mix"] if d.get("ab") == "A" else self._master_file(run, d.get("sel", 3))[1]
+        else:
+            item = run["review"][int(d.get("sel", 0))]
+            path = item["a"] if d.get("ab") == "A" else item["b"]
+        if not eng.device_info().get("open"):
+            return {"ok": False, "error": "No hay dispositivo de salida de audio abierto."}
+        if eng.is_playing():
+            eng.pause()
+        pos = eng.preview_position() if eng.preview_playing() else 0.0   # A/B: misma posición
+        if not eng.preview_play(path, pos):
+            return {"ok": False, "error": f"No se pudo reproducir {Path(path).name}"}
+        return {"ok": True, "playing": True, "file": Path(path).name}
+
+    def _mx_tracks(self, d):
+        if not self.host.ok:
+            return {"ok": False, "error": self.host.error}
+        run = self._run(d)
+        name, path = self._master_file(run, d.get("sel", 3))
+        info = self.host.add_audio(path, f"Master IA · {name.split(' (')[0]} #{run['id'] + 1}")
+        return {"ok": True, "tracks": [info]}
+
+    def _mx_zip(self, d):
+        run = self._run(d)
+        target, _ = QFileDialog.getSaveFileName(self.parent_widget, "Guardar sesión de mezcla", str(Path.home() / Path(run["zip"]).name), "ZIP (*.zip)")
+        if not target:
+            return {"ok": False, "cancelled": True}
+        shutil.copy2(run["zip"], target)
+        return {"ok": True, "path": target}
+
+    def _mx_folder(self, d):
+        run = self._run(d)
+        QDesktopServices.openUrl(QUrl.fromLocalFile(run["folder"]))
+        return {"ok": True, "path": run["folder"]}
+
+    def _mx_report(self, d):
+        return {"ok": True, "report": self._run(d)["report"]}

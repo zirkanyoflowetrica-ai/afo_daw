@@ -1,8 +1,0 @@
-# Mezclador Automático V4.2 (se integra en V0.5). Mismas versiones que su requirements-tested.txt
-pedalboard==0.9.26
-pyloudnorm==0.2.0
-soundfile==0.14.0
-scipy==1.18.1
-numpy==2.5.4
-praat-parselmouth==0.4.7
-librosa>=0.10.2,<1.1

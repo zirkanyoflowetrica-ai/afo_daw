@@ -1,0 +1,20 @@
+V4.0 - Análisis musical y afinación vocal individual
+
+* Auditoría: la afinación PSOLA ya se hacía individualmente POR STEM en V3.9,
+  antes de sumar los buses. Nunca debe afinarse sobre el bus conjunto.
+* Una pista estéreo con voces independientes en L/R no es lo mismo que dos
+  stems de voces: PSOLA protege el estéreo real y puede omitir afinación.
+* Nuevo detector de BPM y tonalidad desde instrumentos no vocales
+  (piano/guitarra/synth/pads/bajo, percusión para BPM y beats completos).
+* Estimación con librosa: HPSS + chroma / perfiles tonal mayor/menor;
+  onset + beat tracking para pulso. Resultado, fuente, confianza y advertencias.
+* El modo Auto de tonalidad sólo se aplica si la confianza supera el umbral.
+  Si la escala no es fiable, deja intacta la afinación (NO asume C mayor).
+* BPM automático opcional para delay; BPM manual tiene prioridad. La lectura
+  70/140 puede ser ambigua, revisa en trap.
+* Panel: detección antes de mezclar, Auto/Manual para tonalidad, BPM Auto,
+  con controles manuales ocultos hasta seleccionarlos.
+* Sin cambios a PSOLA, roles L/R, escalón, EQ, mastering o buses de FX.
+
+Dependencia adicional: librosa>=0.10.2,<1.1 (instalada por iniciador .bat).
+* Entrada opcional del beat completo SOLO para el análisis, sin incluirlo en la mezcla ni los masters.

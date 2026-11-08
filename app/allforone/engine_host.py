@@ -47,7 +47,7 @@ class EngineHost:
             log.error("Extensión afo_audio no disponible: %s", NATIVE_ERROR)
             return cls(error=f"afo_audio no disponible ({NATIVE_ERROR})")
         try:
-            eng = afo_audio.Engine("AllForOne")
+            eng = afo_audio.Engine("AllForOne", str(paths.user_data_dir() / "motor"))
         except Exception as exc:
             log.exception("No se pudo iniciar el motor")
             return cls(error=f"No se pudo iniciar el motor: {exc}")

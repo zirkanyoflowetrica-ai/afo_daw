@@ -12,3 +12,8 @@ app/allforone/ui/_original_localfont.html
 *.dist/
 *.onefile-build/
 .toolchains/
+data/
+EXE/
+.cache/
+release/
+AllForOne.lnk

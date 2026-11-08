@@ -46,3 +46,35 @@ con almacenamiento limpio y compara píxel a píxel (umbral 24/255):
   faders, piano roll, secuenciador y tipografía: idénticos.
 
 Capturas: `docs/visual/original.png`, `docs/visual/allforone.png`, `docs/visual/diff.png`.
+
+
+## V0.2 — Paneles del Mezclador V4.2, tema oscuro e icono
+
+Todo se añade sin editar `index.html` (sigue siendo plantilla + 3 líneas). `afo_bridge.js` carga
+`afo_panels.css`, `afo_theme_dark.css` y `afo_panels.js`.
+
+### Módulos nuevos en el mismo lienzo (misma estructura que los originales)
+
+Se registran en `PANELS`/`POS`/`PC` de la plantilla, así que tienen cabecera negra, chip en
+«Módulos», Enfocar, ✕, 8 tiradores, conectores, cables con curva y posición guardada.
+
+| Módulo | Color | Contenido (del Mezclador V4.2) |
+|---|---|---|
+| Mezcla IA · Auto-Mix V4.2 | `#ff9f45` | Zona para arrastrar stems y referencia, lista con tipo y rol editables (P/B/L/R/B_L/B_R), plantilla artística (9 guías trap/rap), modo (Solo guía / Guía + balance sutil), escalón L/R (5–10 dB), espacio vocal, **MEZCLAR AUTOMÁTICAMENTE**, **REMEZCLAR**, progreso e historial |
+| Afinador · PSOLA AT-1 | `#7ae7ff` | Análisis Automático/Asistido/Manual, tónica, escala, BPM, Analizar música, Confirmar, intensidad 0–100 %, voces a afinar |
+| Master IA · Master M-4 | `#ff6b9a` | 4 masters + master según referencia con LUFS, true peak y limitación reales; A/B; enviar a Pistas; ZIP; abrir carpeta |
+| Antes / Después · A/B Comp | `#e6d3a3` | Comparación A/B por pista al mismo volumen y decisiones del mezclador |
+
+Cables nuevos: Pistas → Mezcla IA → Master IA → Mezcla final; Afinador → Mezcla IA; Mezcla IA → Antes/Después.
+Estilos nuevos solo con clases propias (`.afo-*`), mismo lenguaje (bordes negros, sombras sólidas, LCD ámbar).
+
+### Tema oscuro (botón ◐ en la cabecera)
+
+`afo_theme_dark.css` solo actúa con `<html data-theme="dark">`. Misma composición, componentes y
+colores de módulo; superficies oscuras teñidas con el color de cada módulo y sombras sólidas de su
+color. El tema claro original no cambia. La preferencia se recuerda en el equipo.
+
+### Icono
+
+`ui/icon.svg` → `icon.ico` (16–256 px): diseño original «todos en uno», ocho señales con los colores
+de los módulos convergiendo en un único conector. Se usa en la ventana y en `AllForOne.exe`.

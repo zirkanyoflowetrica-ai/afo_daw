@@ -30,6 +30,13 @@ New-Item -ItemType Directory -Force -Path $LogDir | Out-Null
 $Stamp = Get-Date -Format 'yyyyMMdd_HHmmss'
 $LogFile = Join-Path $LogDir "build_$Stamp.log"
 Start-Transcript -Path $LogFile -Append | Out-Null
+# Caches y temporales dentro del proyecto (nada en %TEMP% ni %LOCALAPPDATA%)
+$Cache = Join-Path $Root '.cache'
+foreach ($d in @('tmp', 'pip')) { New-Item -ItemType Directory -Force -Path (Join-Path $Cache $d) | Out-Null }
+$env:TEMP = Join-Path $Cache 'tmp'; $env:TMP = $env:TEMP
+$env:PIP_CACHE_DIR = Join-Path $Cache 'pip'
+$env:NUMBA_CACHE_DIR = Join-Path $Cache 'numba'
+$env:AFO_DATA_DIR = 
 
 function Step($msg)  { Write-Host ""; Write-Host "==> $msg" -ForegroundColor Yellow }
 function Ok($msg)    { Write-Host "    [OK] $msg" -ForegroundColor Green }

@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+  <!-- AllForOne: ocho señales (colores de los módulos) que convergen en un solo conector -->
+  <rect x="20" y="20" width="224" height="224" rx="34" fill="#000"/>
+  <rect x="8" y="8" width="224" height="224" rx="34" fill="#16131c" stroke="#000" stroke-width="8"/>
+  <g fill="none" stroke-linecap="round" stroke-width="15">
+    <path d="M28 46 C 80 46, 92 92, 120 120" stroke="#b79bff"/>
+    <path d="M120 16 C 120 60, 120 90, 120 120" stroke="#ff7a70"/>
+    <path d="M212 46 C 160 46, 148 92, 120 120" stroke="#d4f26a"/>
+    <path d="M222 120 C 180 120, 150 120, 120 120" stroke="#6ab8ff"/>
+    <path d="M212 194 C 160 194, 148 148, 120 120" stroke="#ff9ee0"/>
+    <path d="M120 224 C 120 180, 120 150, 120 120" stroke="#5ee0b0"/>
+    <path d="M28 194 C 80 194, 92 148, 120 120" stroke="#c9ccd2"/>
+    <path d="M18 120 C 60 120, 90 120, 120 120" stroke="#ffc233"/>
+  </g>
+  <circle cx="126" cy="126" r="58" fill="#000"/>
+  <circle cx="120" cy="120" r="58" fill="#fff1c9" stroke="#000" stroke-width="8"/>
+  <circle cx="120" cy="120" r="34" fill="#ffc233" stroke="#000" stroke-width="8"/>
+  <circle cx="120" cy="120" r="13" fill="#000"/>
+</svg>

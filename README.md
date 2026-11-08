@@ -8,21 +8,22 @@ y el Mezclador Automático V4.2 integrado por fases.
 
 ## Compilar y abrir (Windows 11 x64)
 
-1. Doble clic en **`build_and_run.bat`**.
-   Detecta Python 3.12, Git y Visual Studio Build Tools (ofrece instalarlos con winget si faltan),
-   crea `.venv` con versiones fijadas, descarga JUCE y Tracktion Engine en `.deps`, compila
-   `afo_audio.pyd`, ejecuta las pruebas y abre AllForOne. La primera vez tarda 15–40 min.
-2. Doble clic en **`package_windows.bat`** para crear `dist\AllForOne\AllForOne.exe`
-   (carpeta standalone; no necesita Python ni este código fuente) y `dist\AllForOne-0.1.0-win64.zip`.
-3. Doble clic en **`install_windows.bat`** para instalarlo en `%LOCALAPPDATA%\Programs\AllForOne`
-   con accesos directos en el menú Inicio y el escritorio (sin administrador).
-   Desinstalar: `powershell -ExecutionPolicy Bypass -File tools\install.ps1 -Uninstall`.
+1. Doble clic en **`build_and_run.bat`**: prepara todo dentro de esta carpeta (Python portátil en
+   `.toolchains` si hace falta, `.venv`, JUCE y Tracktion en `.deps`), compila el motor, ejecuta las
+   pruebas (incluidas las 27 originales del Mezclador V4.2) y abre AllForOne.
+2. Doble clic en **`package_windows.bat`**: genera el programa en **`EXE\AllForOne.exe`**, crea el
+   acceso directo `AllForOne.lnk` en esta carpeta y el ZIP para publicar en `release\`.
+   Tus mezclas y ajustes quedan en `EXE\datos` y se conservan al actualizar.
 
-Si no hay Python 3.12, el script descarga uno portátil oficial (python.org vía NuGet) en
-`.toolchains`; si no hay Git, descarga MinGit. Visual Studio Build Tools (C++) sí debe estar instalado
-(el script ofrece instalarlo con winget, requiere administrador).
+Todo lo que AllForOne escribe (datos, registros, cachés, temporales) queda dentro de esta carpeta.
+`limpiar_fuera_de_AFO.bat` borra lo que versiones anteriores de los scripts crearon fuera.
 
-Registros en `logs\`. Datos del usuario en `%LOCALAPPDATA%\AllForOne`.
+## Uso rápido del Mezclador IA
+
+Arrastra tus stems desde el Explorador al módulo **Mezcla IA** (o a **Pistas** para importarlos
+como pistas), elige la plantilla trap/rap y pulsa **MEZCLAR AUTOMÁTICAMENTE**. Para afinar voces:
+**Afinador** → Analizar música → Confirmar → sube la intensidad. Los resultados se escuchan y
+comparan en **Master IA** y **Antes / Después**. El botón **◐** cambia al tema oscuro.
 
 ## Estructura
 
@@ -36,7 +37,9 @@ native/tests/               pruebas nativas (ctest)
 app/allforone/              aplicación Python (PySide6 + Qt WebEngine + QWebChannel)
 app/allforone/ui/           index.html (= plantilla + 3 líneas), afo_bridge.js, fuentes locales
 tests/                      pruebas Python (pytest)
-tools/                      build.ps1, package.ps1, visual_compare.py
+app/allforone/mixer_v42/    Mezclador Automático V4.2 original (sin cambios)
+app/allforone/mixer_service.py  adaptador del mezclador para los paneles
+tools/                      build.ps1, package.ps1, limpiar_fuera.ps1, visual_compare.py
 docs/                       especificación, auditoría, cambios de la plantilla, informes
 ```
 
