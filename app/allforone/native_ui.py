@@ -94,6 +94,38 @@ def build_native_window(host):
     return engine, window, bridge
 
 
+def _native_fx_checks(rep, app, host, window, bridge, track_id: int) -> None:
+    """Módulo Efectos: insertar en una pista desde la interfaz y leer lo que mide el motor."""
+    from PySide6.QtCore import QMetaObject, Q_ARG, Q_RETURN_ARG
+
+    from .selftest import _wait
+
+    def fx(what, a=None, b=None):
+        v = QMetaObject.invokeMethod(window, "fxCommand", Q_RETURN_ARG("QVariant"),
+                                     Q_ARG("QVariant", what), Q_ARG("QVariant", a), Q_ARG("QVariant", b))
+        return v.toVariant() if hasattr(v, "toVariant") else v
+
+    st = fx("target", track_id)
+    rep.check("Efectos: catálogo del motor (Hito 1, 9 módulos)", st and st["catalog"] == 9, st and st["catalog"])
+    fx("add", "eq")
+    st = fx("add", "analyzer")
+    rep.check("Efectos: insertar EQ y Analizador en la pista", [e["key"] for e in st["chain"]] == ["eq", "analyzer"],
+              [e["key"] for e in st["chain"]])
+    rep.check("la cadena está en el motor", [e["key"] for e in host.engine.effects(track_id)] == ["eq", "analyzer"])
+    if host.engine.device_info().get("open"):
+        json.loads(bridge.togglePlay())
+        ok = _wait(app, lambda: (lambda s: len(s["spectrum"]) == 96 and max(s["spectrum"]) > -40)(fx("noop")), 3, host)
+        s = fx("noop")
+        peak = max(s["spectrum"]) if s["spectrum"] else -100
+        rep.check("el Analizador muestra el espectro real del tono", ok, f"máximo {peak:.1f} dB")
+        json.loads(bridge.stop())
+    st = fx("bypass", False)
+    rep.check("bypass del efecto abierto en el motor", not host.engine.effects(track_id)[-1]["enabled"])
+    fx("remove")
+    st = fx("remove")
+    rep.check("quitar los efectos vacía la cadena", not st["chain"] and not host.engine.effects(track_id))
+
+
 def run_native_selftest(app, host, report_path: str | None, screenshot_path: str | None) -> int:
     """`AllForOne --nativo --selftest`: la interfaz QML con el motor real, comprobada de verdad."""
     from PySide6.QtCore import QMetaObject, Q_ARG
@@ -122,10 +154,10 @@ def run_native_selftest(app, host, report_path: str | None, screenshot_path: str
     rep.check("fuente Space Grotesk 500/600/700 cargada", len(load_fonts()) >= 3)
 
     panels = prop("panelItems")
-    rep.check("12 módulos en el lienzo", len(panels or {}) == 12, sorted(panels or {}))
+    rep.check("13 módulos en el lienzo", len(panels or {}) == 13, sorted(panels or {}))
     links = prop("cableLinks")
-    n_seq = len([t for t in (prop("tracks") or []) if t["type"] in ("inst", "drum", "ia")])
-    rep.check("cables entre módulos (+ uno por pista de Instrumento/Batería/IA)", len(links or []) == 7 + n_seq, len(links or []))
+    n_seq = len([t for t in (prop("tracks") or []) if t["type"] in ("inst", "drum", "ia", "voz")])
+    rep.check("cables entre módulos (+ uno por pista de Instrumento/Batería/Voz/IA)", len(links or []) == 7 + n_seq, len(links or []))
     rep.check("motor conectado desde QML", bool(prop("engineOk")))
     rep.check("encuadre inicial aplicado", abs(float(prop("zoom")) - 1.0) > 1e-6, prop("zoom"))
 
@@ -136,6 +168,8 @@ def run_native_selftest(app, host, report_path: str | None, screenshot_path: str
     tracks = prop("tracks") or []
     rep.check("Pistas muestra la pista del motor con su forma de onda",
               bool(tracks) and tracks[-1]["type"] == "audio" and len(tracks[-1]["peaks"]) == 600, [t["name"] for t in tracks])
+
+    _native_fx_checks(rep, app, host, window, bridge, tone["track"]["id"])
 
     dev = host.engine.device_info()
     if dev.get("open"):
@@ -156,7 +190,7 @@ def run_native_selftest(app, host, report_path: str | None, screenshot_path: str
     QMetaObject.invokeMethod(window, "saveLayout")
     saved = json.loads((paths.user_data_dir() / LAYOUT_FILE).read_text(encoding="utf-8"))
     rep.check("diseño y tema guardados en la carpeta de datos",
-              saved.get("theme") == "dark" and len(saved.get("pos", {})) == 12)
+              saved.get("theme") == "dark" and len(saved.get("pos", {})) == 13)
     QMetaObject.invokeMethod(window, "setDark", Q_ARG("QVariant", False))
 
     shot = Path(screenshot_path) if screenshot_path else paths.logs_dir() / "selftest_nativo.png"
@@ -285,6 +319,42 @@ def _native_sequencer_checks(rep, app, host, window, prop) -> None:
     cmd("generate")
     ia = snap()["tracks"][-1]
     rep.check("Pistas con IA: demostración sin audio (no entra al motor)", ia["type"] == "ia" and ia["id"] == -1, ia["name"])
+
+    # Grabador de cintas: la pista de voz es del motor y la toma la escribe Tracktion
+    cmd("add", "voz")
+    voz = snap()["tracks"][-1]
+    rep.check("+ Voz crea una pista de grabación en el motor", voz["type"] == "voz" and voz["id"] >= 0, voz["name"])
+    before = host.engine.device_info()
+    if not host.engine.record_inputs():
+        # Sin entradas en el dispositivo actual: se prueba como lo haría el usuario en «⚙ Audio»
+        # (ASIO4ALL u otro driver con entradas) y al final se vuelve al dispositivo de antes.
+        for kind in ("ASIO", "DirectSound"):
+            o = host.engine.audio_device_options(kind)
+            if o["inputs"] and o["outputs"]:
+                err = host.set_audio_device({"type": kind, "output": o["outputs"][0], "input": o["inputs"][0]})
+                QMetaObject.invokeMethod(window, "audioDeviceChanged")
+                if not err and host.engine.record_inputs():
+                    break
+    if host.engine.record_inputs() and host.engine.device_info().get("open"):
+        _wait(app, lambda: host.engine.record_state()["armed_track"] == voz["id"], 3, host)   # la interfaz vuelve a armar
+        rs = host.engine.record_state()
+        rep.check("la pista de voz queda armada en una entrada real", rs["armed_track"] == voz["id"], rs["input"])
+        cmd("record")
+        _wait(app, lambda: False, 1.2, host)
+        cmd("recstop")
+        take = next(t for t in snap()["tracks"] if t["uid"] == voz["uid"])
+        rep.check("grabar y parar: el motor escribe la toma y se ve como onda", take["len"] > 0.5 and take["peaks"] == 600,
+                  f"{take['len']:.2f} s")
+    else:
+        rep.add("grabación real", "INFO", "ningún driver tiene entradas en este equipo")
+    after_dev = host.engine.device_info()
+    if before.get("open") and (after_dev["type"], after_dev["output"]) != (before["type"], before["output"]):
+        err = host.engine.set_audio_device(before["type"], before["output"], before["input"], before["sample_rate"], before["buffer_size"])
+        rep.check("volver al dispositivo de antes", not err, err or before["output"])
+    cmd("hide", "cinta", True)
+    _wait(app, lambda: False, 0.1, host)
+    rep.check("quitar el Grabador desarma la pista (no graba)", not host.engine.record_state()["armed_track"])
+    cmd("hide", "cinta", False)
 
     cmd("hide", "drums", True)
     cmd("hide", "inst", True)

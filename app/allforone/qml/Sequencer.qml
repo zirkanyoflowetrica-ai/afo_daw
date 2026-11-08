@@ -1,18 +1,26 @@
 import QtQuick
+import "layout.js" as L
 
-// Pistas de Instrumento, Batería e IA de la plantilla (mk, addT, pick, basic, piano roll, patrón…).
+// Pistas de Instrumento, Batería, Voz e IA de la plantilla (mk, addT, pick, basic, piano roll, patrón…).
 // Instrumento y Batería suenan con el sintetizador del motor C++ (plugin de Tracktion que toca un
-// clip MIDI): editar una nota solo rehace el clip, sin renderizar. Las de IA son la DEMO de la
+// clip MIDI): editar una nota solo rehace el clip, sin renderizar. Las de Voz graban con el motor
+// (Tracktion escribe el WAV desde la entrada del dispositivo). Las de IA son la DEMO de la
 // plantilla: clips de ejemplo, sin audio.
 QtObject {
     id: sq
     property var studio
     property int uidN: 0
-    property var act: ({ inst: "", drum: "", ia: "" })   // pista activa de cada módulo (uid)
+    property var act: ({ inst: "", drum: "", ia: "", voz: "" })   // pista activa de cada módulo (uid)
     property int oct: 4
     property bool sus: false
     property var draftIa: ({ prompt: "", style: "Lo-fi", cre: 60, den: 40 })
     property bool generating: false
+    // Grabador de cintas: entrada del dispositivo, escucha por los altavoces y toma en curso
+    property var inputs: []
+    property string input: ""
+    property bool monitor: false
+    property bool recording: false
+    property string armedUid: ""
 
     readonly property var src: ({ inst: "inst", drum: "drums", ia: "ia", voz: "cinta", audio: "pistas" })
     readonly property var tn: ({ inst: "Instrumento", drum: "Batería", ia: "IA", voz: "Voz", audio: "Audio" })
@@ -38,6 +46,7 @@ QtObject {
         if (t.type === "inst") return "síntesis · " + insts[t.cfg.v][0]
         if (t.type === "drum") return "síntesis · 16 pasos"
         if (t.type === "ia") return "DEMO · " + t.cfg.style + " · sin audio"
+        if (t.type === "voz") return t.len > 0 ? "toma " + L.fmt(t.len) + " · motor nativo" : "sin toma · graba en Grabador de cintas"
         return ""
     }
     function replace(uid, changes) {
@@ -55,6 +64,7 @@ QtObject {
         if (type === "inst") { t.cfg = { v: 0, vel: 70, bri: 50, rev: 30 }; t.clips = [[0, 50], [62.5, 37.5]] }
         if (type === "drum") { t.cfg = { vol: 80, tun: 50, sw: 20 }; t.clips = [[0, 100]] }
         if (type === "ia") t.cfg = Object.assign({}, draftIa)
+        if (type === "voz") t.start = 0
         return t
     }
     function basic() {
@@ -67,15 +77,23 @@ QtObject {
     }
     function push(t) {
         if (isSynth(t)) t.id = engineTrack(t)
+        if (t.type === "voz") t.id = recTrack(t)
         var a = studio.tracks.slice(); a.push(t); studio.tracks = a
         var c = Object.assign({}, act); c[t.type] = t.uid; act = c
         studio.selected = a.length - 1
         if (isSynth(t)) update(t.uid)
+        if (t.type === "voz") arm()
     }
     // Pista del motor con el sintetizador (−1 si el motor no está disponible)
     function engineTrack(t) {
         if (!studio.engineOk) return -1
         var r = studio.call("synthCreate", t.name, t.type === "drum" ? 1 : 0)
+        if (!r.ok) { studio.toast(r.error); return -1 }
+        return r.track.id
+    }
+    function recTrack(t) {
+        if (!studio.engineOk) return -1
+        var r = studio.call("recCreate", t.name)
         if (!r.ok) { studio.toast(r.error); return -1 }
         return r.track.id
     }
@@ -96,7 +114,7 @@ QtObject {
         d.pat = basic()
         a.id = engineTrack(a); b.id = engineTrack(b); d.id = engineTrack(d)
         var t = studio.tracks.slice(); t.unshift(a, b, d); studio.tracks = t
-        act = { inst: a.uid, drum: d.uid, ia: "" }
+        act = { inst: a.uid, drum: d.uid, ia: "", voz: "" }
         studio.selected = 0
         update(a.uid); update(b.uid); update(d.uid)
     }
@@ -104,15 +122,74 @@ QtObject {
         var t = studio.tracks[i]; if (!t) return
         studio.selected = i
         if (act[t.type] !== undefined) { var c = Object.assign({}, act); c[t.type] = t.uid; act = c }
+        if (t.type === "voz") arm()
     }
     function forget(t) {
-        if (isSynth(t) && t.id >= 0) studio.call("removeTrack", t.id)
+        if (t.type === "voz" && t.uid === armedUid) { if (recording) stopTake(true); armedUid = "" }
+        if ((isSynth(t) || t.type === "voz") && t.id >= 0) studio.call("removeTrack", t.id)
         var c = Object.assign({}, act)
         for (var k in c) if (c[k] === t.uid) {
             var other = studio.tracks.filter(function (x) { return x.type === k && x.uid !== t.uid })[0]
             c[k] = other ? other.uid : ""
         }
         act = c
+        if (t.type === "voz") Qt.callLater(arm)
+    }
+
+    // ---------------- Grabador de cintas (graba el motor) ----------------
+    function refreshInputs() {
+        var r = studio.engineOk ? studio.call("recInputs") : { ok: false }
+        inputs = r.ok ? r.inputs : []
+        if (inputs.indexOf(input) < 0) input = inputs.length ? inputs[0] : ""
+    }
+    // Arma la pista de voz activa en la entrada elegida; sin pista o con el módulo quitado, desarma
+    function arm() {
+        if (!studio.engineOk || recording) return
+        var t = active("voz")
+        if (!t || t.id < 0 || studio.hidden.cinta) {
+            if (armedUid) studio.call("recArm", -1, "", false)
+            armedUid = ""; return
+        }
+        refreshInputs()
+        if (!inputs.length) { armedUid = ""; return }
+        var r = studio.call("recArm", t.id, input, monitor)
+        armedUid = r.ok ? t.uid : ""
+        if (!r.ok) studio.toast(r.error)
+    }
+    function setInput(v) { input = v; arm() }
+    function setMonitor(b) { monitor = b; arm() }
+    function startTake() {
+        var t = active("voz")
+        if (!t) { studio.toast("Crea una pista de voz primero"); return }
+        if (recording) return
+        if (armedUid !== t.uid) arm()
+        if (armedUid !== t.uid) {
+            if (!inputs.length) studio.toast("El dispositivo de audio no tiene entradas: elige otro en «Audio» (p. ej. ASIO4ALL)")
+            return
+        }
+        var r = studio.call("recStart")
+        if (!r.ok) { studio.toast(r.error); return }
+        recording = true
+    }
+    function stopTake(discard) {
+        if (!recording) return
+        recording = false
+        var r = studio.call("recStop", !!discard)
+        if (!r.ok) { studio.toast(r.error); return }
+        var info = r.track, t = null
+        for (var i = 0; i < studio.tracks.length; i++) if (studio.tracks[i].id === info.id) t = studio.tracks[i]
+        if (!t || discard) return
+        if (!info.source_path) { studio.toast("La toma quedó vacía"); return }
+        replace(t.uid, { len: info.length_seconds, peaks: info.peaks, start: info.start_seconds || 0 })
+        studio.mixer.unlinkTrack(info.id)
+        studio.mixer.linkTrack(info)
+        studio.toast("Toma guardada en " + t.name + " (" + L.fmt(info.length_seconds) + ")")
+    }
+    function listenTake() {
+        var t = active("voz")
+        if (!t || t.id < 0) { studio.toast("Crea una pista de voz primero"); return }
+        var r = studio.call("recListen", t.id)
+        if (!r.ok) studio.toast(r.error)
     }
 
     // ---------------- sintetizador del motor ----------------

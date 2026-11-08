@@ -174,6 +174,36 @@ class EngineHost:
             return self.engine.audition_synth(FIRST_DRUM_NOTE + int(data["lane"]), 0.0, **s)
         return self.engine.audition_synth(int(data["note"]), float(data.get("seconds", 0.4)), **s)
 
+    # --- dispositivo de audio --------------------------------------------------
+    def audio_options(self, type_name: str = "") -> dict:
+        info = self.engine.device_info()
+        opts = self.engine.audio_device_options(type_name or "")
+        return {"device": info, "types": info["available_types"], "options": opts}
+
+    def set_audio_device(self, d: dict) -> str:
+        """Devuelve "" si se abrió el dispositivo, o el mensaje de error del driver."""
+        return self.engine.set_audio_device(str(d.get("type", "")), str(d.get("output", "")), str(d.get("input", "")),
+                                            float(d.get("sampleRate", 0) or 0), int(d.get("bufferSize", 0) or 0))
+
+    # --- grabación (Tracktion escribe el WAV desde su hilo; aquí solo se manda) ------------
+    def add_record_track(self, name: str) -> dict:
+        info = dict(self.engine.add_record_track(name))
+        info.update(peaks=[], originalPath="", note="")
+        self.tracks[info["id"]] = info
+        return info
+
+    def finish_take(self, discard: bool = False, buckets: int = 600) -> dict:
+        info = dict(self.engine.stop_recording(discard))
+        info["peaks"] = [round(v, 4) for v in self.engine.track_peaks(info["id"], buckets)] if info["source_path"] else []
+        info.update(originalPath=info["source_path"], note="")
+        self.tracks[info["id"]] = info
+        return info
+
+    # --- efectos nativos -------------------------------------------------------------
+    @staticmethod
+    def effect_catalog() -> list[dict]:
+        return afo_audio.effect_catalog() if afo_audio is not None else []
+
     def add_test_tone(self) -> dict:
         path = paths.media_dir() / "tono_prueba_440Hz.wav"
         if not path.exists():
@@ -206,4 +236,13 @@ class EngineHost:
             "master": [round(lv["master_l_db"], 1), round(lv["master_r_db"], 1)],
             "vu": round(lv["master_vu_db"], 1),
             "tracks": {str(k): round(v, 1) for k, v in lv["tracks"].items()},
+            "rec": self._rec_state(),
+            "preview": self.engine.preview_playing(),
         }
+
+    def _rec_state(self) -> dict | None:
+        r = self.engine.record_state()
+        if not r["armed_track"]:
+            return None
+        return {"track": r["armed_track"], "recording": r["recording"], "seconds": round(r["seconds"], 2),
+                "input": r["input"], "db": round(r["input_db"], 1), "monitor": r["monitor"]}

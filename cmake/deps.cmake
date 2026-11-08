@@ -23,6 +23,17 @@ FetchContent_Declare(tracktion
     GIT_SUBMODULES ""
     SOURCE_SUBDIR  modules)   # solo los módulos (sin ejemplos ni el submódulo JUCE)
 
+# ASIO SDK oficial de Steinberg (2.3.4, doble licencia: propietaria o GPLv3; AllForOne la usa bajo GPLv3,
+# compatible con su AGPLv3). Solo se necesita la cabecera iasiodrv.h y lo que incluye (carpeta common/).
+# Con el SDK los drivers ASIO del sistema aparecen en el panel de audio, incluidos ASIO4ALL y FlexASIO.
+if (WIN32)
+    FetchContent_Declare(asiosdk
+        URL      https://download.steinberg.net/sdk_downloads/ASIO-SDK_2.3.4_2025-10-15.zip
+        URL_HASH SHA256=d5ebf0c20dd2c5f43771fd0c1418f4b361bf52434ee670097cfa6b3a335e2eca
+        DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
+    FetchContent_MakeAvailable(asiosdk)
+endif()
+
 # JUCE primero: los módulos de Tracktion usan juce_add_modules()
 FetchContent_MakeAvailable(juce)
 FetchContent_MakeAvailable(tracktion)

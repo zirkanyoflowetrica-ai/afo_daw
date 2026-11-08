@@ -41,7 +41,7 @@ Column {
             model: [["inst", "Instrumento"], ["drum", "Batería"], ["ia", "IA"]]
             NeoButton { text: "+ " + modelData[1]; onClicked: root.addType(modelData[0]) }
         }
-        NeoButton { text: "+ Voz"; tip: "Llega en la fase 4 (grabar con el motor)"; onClicked: root.notYet("Voz") }
+        NeoButton { text: "+ Voz"; tip: "Pista que graba la entrada del dispositivo (Grabador de cintas)"; onClicked: root.addType("voz") }
     }
 
     Rectangle {                           // .scroll
@@ -134,13 +134,16 @@ Column {
                             id: lane
                             x: 170; width: row.width - 170; height: row.height - 2
                             opacity: root.seq.disconnected(row.modelData) ? 0.3 : 1           // .off .lane
-                            readonly property bool audio: row.modelData.type === "audio"
+                            // audio importado o toma grabada: forma de onda real desde donde empezó la toma
+                            readonly property bool audio: row.modelData.type === "audio" || (row.modelData.type === "voz" && row.modelData.len > 0)
+                            readonly property real startPct: row.modelData.type === "voz" ? 100 * Math.min(1, (row.modelData.start || 0) / root.bar16) : 0
                             Repeater {               // rejilla de 16 compases
                                 model: 16
                                 Rectangle { x: (index + 1) * lane.width / 16 - 1; width: 1; height: lane.height; color: Qt.rgba(1, 1, 1, 0.14) }
                             }
                             Repeater {               // .clip (audio: uno; el resto: los de la pista)
-                                model: lane.audio ? [[0, 100 * Math.max(0.01, Math.min(1, row.modelData.len / root.bar16))]] : row.modelData.clips
+                                model: lane.audio ? [[lane.startPct, Math.min(100 - lane.startPct, 100 * Math.max(0.01, row.modelData.len / root.bar16))]]
+                                                  : (row.modelData.type === "voz" ? [] : row.modelData.clips)
                                 Rectangle {
                                     required property var modelData
                                     x: lane.width * modelData[0] / 100; y: 5
@@ -177,7 +180,7 @@ Column {
                             Canvas {                 // .wf: forma de onda real (picos del motor)
                                 id: wave
                                 visible: lane.audio
-                                x: 0; y: 0; width: clipRect.width; height: lane.height
+                                x: lane.width * lane.startPct / 100; y: 0; width: Math.min(clipRect.width, lane.width - x); height: lane.height
                                 property var peaks: row.modelData.peaks || []
                                 onPeaksChanged: requestPaint()
                                 onWidthChanged: requestPaint()

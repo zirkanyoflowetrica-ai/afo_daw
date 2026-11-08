@@ -49,6 +49,7 @@ public:
     {
         if (fc.destBuffer == nullptr)
             return;
+        const juce::ScopedNoDenormals noDenormals;
         auto& buf = *fc.destBuffer;
         const int n = fc.bufferNumSamples, start = fc.bufferStartSample;
         for (int c = 0; c < buf.getNumChannels(); ++c)
@@ -193,6 +194,7 @@ public:
     {
         if (fc.destBuffer == nullptr)
             return;
+        const juce::ScopedNoDenormals noDenormals;
         auto& buf = *fc.destBuffer;
         const int n = fc.bufferNumSamples, start = fc.bufferStartSample;
         const int chans = juce::jmin (2, buf.getNumChannels());

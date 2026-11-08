@@ -16,7 +16,8 @@ var PANELS = [
     ["audios", "Audios", "Carga A-30", [2200, 1040, 700], 369],
     ["afina", "Afinador", "PSOLA AT-1", [3000, 1040, 520], 701],
     ["mastia", "Master IA", "Master M-4", [3620, 1040, 440], 563],
-    ["antes", "Antes / Después", "A/B Comp", [4160, 1040, 420], 316]
+    ["antes", "Antes / Después", "A/B Comp", [4160, 1040, 420], 316],
+    ["fx", "Efectos", "Rack FX-96", [4640, 60, 780], 760]
 ]
 
 // Cables fijos entre módulos (orden de la interfaz web: plantilla + afo_panels.js)

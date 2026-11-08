@@ -202,6 +202,171 @@ class Bridge(QObject):
         return _ok()
 
     # --- tomas del grabador --------------------------------------------------------
+    # --- configuración de audio (driver, dispositivo, frecuencia, búfer) ---------------------
+    @Slot(str, result=str)
+    def audioOptions(self, type_name: str) -> str:
+        if (g := self._guard()):
+            return g
+        try:
+            return _ok(**self.host.audio_options(type_name))
+        except Exception as exc:
+            return _err(f"No se pudo leer el dispositivo: {exc}")
+
+    @Slot(str, result=str)
+    def setAudioDevice(self, payload: str) -> str:
+        if (g := self._guard()):
+            return g
+        try:
+            err = self.host.set_audio_device(json.loads(payload))
+        except Exception as exc:
+            return _err(f"No se pudo cambiar el dispositivo: {exc}")
+        info = self.host.engine.device_info()
+        log.info("Dispositivo de audio: %s", info)
+        if err:
+            return _err(err, device=info)
+        return _ok(device=info)
+
+    @Slot(result=str)
+    def audioControlPanel(self) -> str:
+        if (g := self._guard()):
+            return g
+        if not self.host.engine.show_audio_control_panel():
+            return _err("Este driver no tiene panel propio (solo los ASIO, como ASIO4ALL)")
+        return _ok(device=self.host.engine.device_info())
+
+    # --- grabador de cintas: graba el motor (Tracktion), no la interfaz ---------------------
+    @Slot(result=str)
+    def recInputs(self) -> str:
+        if (g := self._guard()):
+            return g
+        return _ok(inputs=self.host.engine.record_inputs())
+
+    @Slot(str, result=str)
+    def recCreate(self, name: str) -> str:
+        if (g := self._guard()):
+            return g
+        try:
+            return _ok(track=self.host.add_record_track(name or "Voz"))
+        except Exception as exc:
+            return _err(f"No se pudo crear la pista de voz: {exc}")
+
+    @Slot(int, str, bool, result=str)
+    def recArm(self, track_id: int, input_name: str, monitor: bool) -> str:
+        if (g := self._guard()):
+            return g
+        if track_id < 0:
+            self.host.engine.disarm()
+            return _ok()
+        err = self.host.engine.arm_track(track_id, input_name, monitor)
+        return _err(err) if err else _ok(state=self.host._rec_state())
+
+    @Slot(result=str)
+    def recStart(self) -> str:
+        if (g := self._guard()):
+            return g
+        err = self.host.engine.start_recording()
+        return _err(err) if err else _ok()
+
+    @Slot(bool, result=str)
+    def recStop(self, discard: bool) -> str:
+        if (g := self._guard()):
+            return g
+        try:
+            info = self.host.finish_take(discard)
+        except Exception as exc:
+            return _err(f"No se pudo cerrar la toma: {exc}")
+        if info["source_path"]:
+            log.info("Toma grabada por el motor: %s (%.1f s)", info["source_path"], info["length_seconds"])
+        return _ok(track=info)
+
+    @Slot(int, result=str)
+    def recListen(self, track_id: int) -> str:
+        """Escuchar la toma de una pista de voz (o pararla si ya suena)."""
+        if (g := self._guard()):
+            return g
+        eng = self.host.engine
+        path = (self.host.tracks.get(track_id) or {}).get("source_path", "")
+        if eng.preview_playing() and eng.preview_path() == path:
+            eng.preview_stop()
+            return _ok(playing=False)
+        if not path:
+            return _err("Esta pista no tiene audio grabado")
+        if not eng.preview_play(path, 0.0):
+            return _err("No se pudo abrir la toma")
+        return _ok(playing=True)
+
+    # --- efectos nativos (biblioteca AFO, Hito 1) -----------------------------------------
+    @Slot(result=str)
+    def fxCatalog(self) -> str:
+        return _ok(catalog=self.host.effect_catalog())
+
+    @Slot(int, str, int, result=str)
+    def fxAdd(self, track_id: int, key: str, index: int) -> str:
+        if (g := self._guard()):
+            return g
+        try:
+            return _ok(effect=self.host.engine.add_effect(track_id, key, index), chain=self.host.engine.effects(track_id))
+        except Exception as exc:
+            return _err(f"No se pudo insertar el efecto: {exc}")
+
+    @Slot(int, result=str)
+    def fxList(self, track_id: int) -> str:
+        if (g := self._guard()):
+            return g
+        try:
+            return _ok(chain=self.host.engine.effects(track_id))
+        except Exception as exc:
+            return _err(str(exc))
+
+    @Slot(int, int, result=str)
+    def fxRemove(self, effect_id: int, track_id: int) -> str:
+        if (g := self._guard()):
+            return g
+        self.host.engine.remove_effect(effect_id)
+        return _ok(chain=self.host.engine.effects(track_id))
+
+    @Slot(int, int, int, result=str)
+    def fxMove(self, effect_id: int, index: int, track_id: int) -> str:
+        if (g := self._guard()):
+            return g
+        self.host.engine.move_effect(effect_id, index)
+        return _ok(chain=self.host.engine.effects(track_id))
+
+    @Slot(int, str, float, result=str)
+    def fxParam(self, effect_id: int, param: str, value: float) -> str:
+        if (g := self._guard()):
+            return g
+        try:
+            return _ok() if self.host.engine.set_effect_param(effect_id, param, value) else _err(f"Parámetro desconocido: {param}")
+        except Exception as exc:
+            return _err(str(exc))
+
+    @Slot(int, bool, result=str)
+    def fxEnable(self, effect_id: int, enabled: bool) -> str:
+        if (g := self._guard()):
+            return g
+        self.host.engine.set_effect_enabled(effect_id, enabled)
+        return _ok()
+
+    @Slot(int, result=str)
+    def fxMeters(self, effect_id: int) -> str:
+        if (g := self._guard()):
+            return g
+        try:
+            return _ok(m=[round(v, 1) for v in self.host.engine.effect_meters(effect_id)])
+        except Exception as exc:
+            return _err(str(exc))
+
+    @Slot(int, int, result=str)
+    def fxSpectrum(self, effect_id: int, bands: int) -> str:
+        """Espectro del Analizador (AF-76): dB por banda logarítmica de 20 Hz a 20 kHz."""
+        if (g := self._guard()):
+            return g
+        try:
+            return _ok(bands=[round(v, 1) for v in self.host.engine.effect_spectrum(effect_id, max(8, min(256, bands)))])
+        except Exception as exc:
+            return _err(str(exc))
+
     # El grabador de la plantilla produce un Blob en el navegador. JavaScript lo decodifica,
     # arma un WAV PCM de 24 bits y lo manda por trozos: aquí solo se escriben los bytes.
     @Slot(str, result=str)

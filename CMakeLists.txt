@@ -28,7 +28,8 @@ target_compile_definitions(afo_engine
         JUCE_STANDALONE_APPLICATION=0
         TRACKTION_ENABLE_TIMESTRETCH_SOUNDTOUCH=1)
 if (WIN32)
-    target_compile_definitions(afo_engine PRIVATE JUCE_ASIO=0 JUCE_WASAPI=1 JUCE_DIRECTSOUND=1 NOMINMAX)
+    target_compile_definitions(afo_engine PRIVATE JUCE_ASIO=1 JUCE_WASAPI=1 JUCE_DIRECTSOUND=1 NOMINMAX)
+    target_include_directories(afo_engine PRIVATE "${asiosdk_SOURCE_DIR}/common")
 endif()
 target_link_libraries(afo_engine
     PRIVATE

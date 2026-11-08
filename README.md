@@ -33,8 +33,11 @@ Todo lo que AllForOne escribe (datos, registros, cachés, temporales) queda dent
 **Interfaz nativa (en desarrollo, sin navegador interno):** `python -m allforone --nativo` desde
 `app/`. Ya funcionan el lienzo, Pistas, Audios, la consola Mezcla con la mezcla automática,
 Mezcla final, Afinador, Master IA, Antes / Después, Piano roll, Instrumentos, Batería (con el
-sintetizador del motor) y Pistas con IA (demo); falta el Grabador (fase 4)
-(`docs/INTERFAZ_NATIVA.md`).
+sintetizador del motor), Pistas con IA (demo), el **Grabador de cintas** (graba el motor), la
+**configuración de audio** (botón «Audio»: Windows Audio, DirectSound o cualquier driver ASIO como
+ASIO4ALL) y el módulo **Efectos** con la Biblioteca nativa (Hito 1: Gain, Channel Strip, Parametric
+EQ, Compressor, Gate, Saturator, Space, Digital Delay y Spectrum Analyzer)
+(`docs/INTERFAZ_NATIVA.md`, `docs/BIBLIOTECA_NATIVA.md`).
 
 ## Estructura
 
@@ -42,6 +45,7 @@ sintetizador del motor) y Pistas con IA (demo); falta el Grabador (fase 4)
 PLANTILLA_DAW.html          interfaz original (referencia, no se edita)
 CMakeLists.txt, cmake/      motor nativo y dependencias fijadas
 native/src/                 AfoEngine (fachada sobre Tracktion Engine) y AfoSynth (sintetizador)
+native/src/fx/              Biblioteca nativa AFO: DSP compartida y efectos (plugins de Tracktion)
 native/bindings/            extensión Python afo_audio (pybind11)
 native/tests/               pruebas nativas (ctest)
 app/allforone/              aplicación Python (PySide6): coordina motor, mezclador e interfaz

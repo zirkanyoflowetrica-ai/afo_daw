@@ -28,11 +28,63 @@ struct DeviceInfo
     std::vector<std::string> availableTypes;
 };
 
+// Opciones de un tipo de driver (WASAPI, DirectSound, ASIO...) para el panel de audio
+struct AudioDeviceOptions
+{
+    std::string typeName;
+    std::vector<std::string> outputs, inputs;
+    bool separateInputsAndOutputs = true;      // ASIO: un solo dispositivo para entrada y salida
+    // Solo si el dispositivo abierto es de este tipo:
+    std::vector<double> sampleRates;
+    std::vector<int> bufferSizes;
+    std::vector<std::string> inputChannels, outputChannels;
+    bool hasControlPanel = false;              // ASIO: panel propio del driver (ASIO4ALL, etc.)
+    double inputLatencyMs = 0, outputLatencyMs = 0;
+};
+
+// Estado de la grabación
+struct RecordState
+{
+    bool recording = false;
+    int armedTrack = 0;                        // 0 = ninguna
+    std::string input;                         // entrada asignada
+    bool monitor = false;
+    double seconds = 0;                        // duración de la toma en curso
+    float inputDb = -100.0f;                   // pico de la entrada desde la última lectura
+    std::string file;                          // archivo de la toma en curso
+};
+
+// Efecto nativo de la biblioteca (docs/BIBLIOTECA_NATIVA.md)
+struct EffectParamInfo
+{
+    std::string id, name, unit, help;
+    float min = 0, max = 1, def = 0, centre = 0;
+    std::vector<std::string> choices;          // vacío = continuo
+};
+
+struct EffectTypeInfo
+{
+    std::string key, af, name, family, summary;
+    std::vector<EffectParamInfo> params;
+    std::vector<std::string> meters;           // medidas propias tras [entrada dB, salida dB]
+};
+
+struct EffectInfo
+{
+    int id = 0;
+    int trackId = 0;                           // 0 = master
+    std::string key;
+    bool enabled = true;
+    std::vector<float> values;                 // en el orden de EffectTypeInfo::params
+    double latencySeconds = 0;
+};
+
 struct TrackInfo
 {
     int id = 0;
     std::string name;
     std::string sourcePath;
+    double startSeconds = 0.0;                 // posición del clip en la línea de tiempo
     double lengthSeconds = 0.0;
     double sampleRate = 0.0;
     int numChannels = 0;
@@ -69,6 +121,23 @@ public:
 
     // Dispositivo
     DeviceInfo deviceInfo() const;
+    AudioDeviceOptions audioDeviceOptions (const std::string& typeName) const;   // vacío = tipo actual
+    // Cambia el driver y el dispositivo. Devuelve "" si todo fue bien o el error del driver.
+    // sampleRate/bufferSize <= 0 conservan el valor actual. La elección se guarda para el próximo arranque.
+    std::string setAudioDevice (const std::string& typeName, const std::string& output, const std::string& input,
+                                double sampleRate, int bufferSize);
+    bool showAudioControlPanel();             // ASIO: abre el panel del driver (bloquea hasta cerrarlo)
+
+    // Grabación (Tracktion graba en disco desde su propio hilo; el callback de audio no hace E/S)
+    std::vector<std::string> recordInputs() const;                      // entradas mono/estéreo disponibles
+    TrackInfo addRecordTrack (const std::string& name);                 // pista de audio vacía para grabar
+    // Arma la pista con una entrada ("" = la primera). monitor: escuchar la entrada mientras está armada.
+    std::string armTrack (int trackId, const std::string& input, bool monitor);
+    void disarm();
+    std::string startRecording();             // graba desde la posición actual (las otras pistas suenan)
+    // Detiene y devuelve la pista con la toma (o la info sin archivo si no se grabó nada)
+    TrackInfo stopRecording (bool discard);
+    RecordState recordState();
 
     // Pistas de audio
     TrackInfo addAudioTrack (const std::string& filePath, const std::string& name);
@@ -87,6 +156,17 @@ public:
     double setSynthNotes (int id, const std::vector<std::pair<double, int>>& notes, double lengthBeats);
     // Escucha de una nota o golpe suelto por el reproductor de escucha (no toca el transporte)
     bool auditionSynth (const SynthSettings&, int midiNote, double seconds);
+
+    // Efectos nativos: trackId 0 = master (antes de la sección master). index -1 = al final de la cadena.
+    static std::vector<EffectTypeInfo> effectCatalog();
+    EffectInfo addEffect (int trackId, const std::string& key, int index);
+    bool removeEffect (int effectId);
+    bool moveEffect (int effectId, int newIndex);
+    bool setEffectParam (int effectId, const std::string& paramId, float value);
+    void setEffectEnabled (int effectId, bool enabled);
+    std::vector<EffectInfo> effects (int trackId) const;
+    std::vector<float> effectMeters (int effectId);                   // [entrada dB, salida dB, propias...]
+    std::vector<float> effectSpectrum (int effectId, int bands);      // espectro de la salida (dBFS)
 
     // Master
     void setMasterGainDb (float db);

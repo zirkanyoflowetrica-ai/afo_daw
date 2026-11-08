@@ -21,7 +21,7 @@ def test_native_selftest(tmp_path):
     failed = [x for x in data["results"] if x["status"] == "fail"]
     names = {x["name"] for x in data["results"] if x["status"] == "ok"}
     assert r.returncode == 0 and not failed, (failed, r.stdout[-2000:], r.stderr[-2000:])
-    assert "interfaz QML cargada sin avisos" in names and "12 módulos en el lienzo" in names
+    assert "interfaz QML cargada sin avisos" in names and "13 módulos en el lienzo" in names
 
 
 def test_layout_store_roundtrip(tmp_path):

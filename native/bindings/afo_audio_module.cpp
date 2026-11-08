@@ -15,9 +15,18 @@ py::dict toDict (const afo::TrackInfo& t)
     d["id"] = t.id;
     d["name"] = t.name;
     d["source_path"] = t.sourcePath;
+    d["start_seconds"] = t.startSeconds;
     d["length_seconds"] = t.lengthSeconds;
     d["sample_rate"] = t.sampleRate;
     d["num_channels"] = t.numChannels;
+    return d;
+}
+
+py::dict toDict (const afo::EffectInfo& e)
+{
+    py::dict d;
+    d["id"] = e.id; d["track_id"] = e.trackId; d["key"] = e.key; d["enabled"] = e.enabled;
+    d["values"] = e.values; d["latency_seconds"] = e.latencySeconds;
     return d;
 }
 
@@ -32,7 +41,7 @@ afo::SynthSettings settings (int mode, int wave, float vel, float bri, bool sus,
 PYBIND11_MODULE (afo_audio, m)
 {
     m.doc() = "AllForOne: motor de audio nativo (JUCE + Tracktion Engine)";
-    m.attr("API_VERSION") = 4;
+    m.attr("API_VERSION") = 5;
 
     m.def ("version", &afo::version);
     m.def ("juce_version", &afo::juceVersion);
@@ -48,6 +57,28 @@ PYBIND11_MODULE (afo_audio, m)
     m.def ("pump_messages", &afo::Engine::pumpMessages, py::arg ("milliseconds") = 0,
            "Procesa mensajes pendientes de JUCE. En Windows lo hace el bucle de Qt; úsese en otras plataformas.");
 
+    m.def ("effect_catalog", []
+           {
+               py::list l;
+               for (auto& t : afo::Engine::effectCatalog())
+               {
+                   py::dict d;
+                   d["key"] = t.key; d["af"] = t.af; d["name"] = t.name; d["family"] = t.family; d["summary"] = t.summary;
+                   d["meters"] = t.meters;
+                   py::list ps;
+                   for (auto& p : t.params)
+                   {
+                       py::dict q;
+                       q["id"] = p.id; q["name"] = p.name; q["unit"] = p.unit; q["help"] = p.help;
+                       q["min"] = p.min; q["max"] = p.max; q["def"] = p.def; q["centre"] = p.centre; q["choices"] = p.choices;
+                       ps.append (q);
+                   }
+                   d["params"] = ps;
+                   l.append (d);
+               }
+               return l;
+           }, "Efectos nativos disponibles (Hito 1 de la biblioteca).");
+
     py::class_<afo::Engine> (m, "Engine")
         .def (py::init<const std::string&, const std::string&>(), py::arg ("app_name") = "AllForOne", py::arg ("data_dir") = "")
         .def ("device_info", [] (const afo::Engine& e)
@@ -60,6 +91,44 @@ PYBIND11_MODULE (afo_audio, m)
                   d["open"] = i.open; d["available_types"] = i.availableTypes;
                   return d;
               })
+        .def ("audio_device_options", [] (const afo::Engine& e, const std::string& type)
+              {
+                  auto o = e.audioDeviceOptions (type);
+                  py::dict d;
+                  d["type"] = o.typeName; d["outputs"] = o.outputs; d["inputs"] = o.inputs;
+                  d["separate_io"] = o.separateInputsAndOutputs; d["sample_rates"] = o.sampleRates;
+                  d["buffer_sizes"] = o.bufferSizes; d["input_channels"] = o.inputChannels;
+                  d["output_channels"] = o.outputChannels; d["has_control_panel"] = o.hasControlPanel;
+                  d["input_latency_ms"] = o.inputLatencyMs; d["output_latency_ms"] = o.outputLatencyMs;
+                  return d;
+              }, py::arg ("type") = "")
+        .def ("set_audio_device", &afo::Engine::setAudioDevice, py::arg ("type"), py::arg ("output"), py::arg ("input") = "",
+              py::arg ("sample_rate") = 0.0, py::arg ("buffer_size") = 0)
+        .def ("show_audio_control_panel", &afo::Engine::showAudioControlPanel)
+        .def ("record_inputs", &afo::Engine::recordInputs)
+        .def ("add_record_track", [] (afo::Engine& e, const std::string& name) { return toDict (e.addRecordTrack (name)); }, py::arg ("name"))
+        .def ("arm_track", &afo::Engine::armTrack, py::arg ("track_id"), py::arg ("input") = "", py::arg ("monitor") = false)
+        .def ("disarm", &afo::Engine::disarm)
+        .def ("start_recording", &afo::Engine::startRecording)
+        .def ("stop_recording", [] (afo::Engine& e, bool discard) { return toDict (e.stopRecording (discard)); }, py::arg ("discard") = false)
+        .def ("record_state", [] (afo::Engine& e)
+              {
+                  auto r = e.recordState();
+                  py::dict d;
+                  d["recording"] = r.recording; d["armed_track"] = r.armedTrack; d["input"] = r.input; d["monitor"] = r.monitor;
+                  d["seconds"] = r.seconds; d["input_db"] = r.inputDb; d["file"] = r.file;
+                  return d;
+              })
+        .def ("add_effect", [] (afo::Engine& e, int track, const std::string& key, int index) { return toDict (e.addEffect (track, key, index)); },
+              py::arg ("track_id"), py::arg ("key"), py::arg ("index") = -1)
+        .def ("remove_effect", &afo::Engine::removeEffect, py::arg ("effect_id"))
+        .def ("move_effect", &afo::Engine::moveEffect, py::arg ("effect_id"), py::arg ("index"))
+        .def ("set_effect_param", &afo::Engine::setEffectParam, py::arg ("effect_id"), py::arg ("param"), py::arg ("value"))
+        .def ("set_effect_enabled", &afo::Engine::setEffectEnabled, py::arg ("effect_id"), py::arg ("enabled"))
+        .def ("effects", [] (const afo::Engine& e, int track)
+              { py::list l; for (auto& f : e.effects (track)) l.append (toDict (f)); return l; }, py::arg ("track_id"))
+        .def ("effect_meters", &afo::Engine::effectMeters, py::arg ("effect_id"))
+        .def ("effect_spectrum", &afo::Engine::effectSpectrum, py::arg ("effect_id"), py::arg ("bands") = 64)
         .def ("add_audio_track", [] (afo::Engine& e, const std::string& path, const std::string& name)
               { return toDict (e.addAudioTrack (path, name)); }, py::arg ("path"), py::arg ("name") = "")
         .def ("remove_track", &afo::Engine::removeTrack)

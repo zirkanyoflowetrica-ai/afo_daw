@@ -8,6 +8,7 @@ Column {
     property real value: 50                    // 0..100
     property string label: ""
     property string tip: ""
+    property color labelColor: Theme.ink
     signal moved(real value)
     spacing: 4
     width: Math.max(46, lbl.implicitWidth)
@@ -67,7 +68,7 @@ Column {
         id: lbl
         anchors.horizontalCenter: parent.horizontalCenter
         text: root.label
-        color: Theme.ink
+        color: root.labelColor
         font.family: Theme.font; font.pixelSize: 11; font.weight: 600
     }
 }

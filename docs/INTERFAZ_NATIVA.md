@@ -17,11 +17,12 @@ python tools/native_compare.py [--oscuro]   # comparación píxel a píxel con l
 
 | Fase | Contenido | Estado |
 |---|---|---|
-| 0 | Ventana, cabecera (transporte, tempo, zoom, Ver todo, Restaurar diseño, tema), lienzo infinito con puntos, 12 módulos movibles y redimensionables, cables con curva, conectores y cuadrados de curva arrastrables, diseño y tema guardados, módulo **Pistas** con el motor real, arrastrar audios a la ventana | **Hecha** |
+| 0 | Ventana, cabecera (transporte, tempo, zoom, Ver todo, Restaurar diseño, tema), lienzo infinito con puntos, 12 módulos movibles (13 con Efectos) y redimensionables, cables con curva, conectores y cuadrados de curva arrastrables, diseño y tema guardados, módulo **Pistas** con el motor real, arrastrar audios a la ventana | **Hecha** |
 | 1 | Audios, Mezcla (consola, faders, rol de voz, MEZCLAR AUTOMÁTICAMENTE), Mezcla final (VU, master, exportar) | **Hecha** |
 | 2 | Afinador, Master IA, Antes / Después | **Hecha** |
 | 3 | Piano roll, Instrumentos, Batería, Pistas con IA, con sonido del motor (hoy son la demo Web Audio) | **Hecha** |
-| 4 | Grabador de cintas grabando con el motor; autoprueba completa sobre QML; retirar Qt WebEngine | Pendiente |
+| 4 | Grabador de cintas grabando con el motor, configuración de audio (drivers, ASIO), módulo Efectos (Biblioteca nativa, Hito 1) | **Hecha** |
+| 5 | Interfaz nativa como predeterminada y retirar Qt WebEngine | Pendiente |
 
 Los módulos de fases pendientes muestran en su cuerpo que aún no están migrados y dónde usarlos.
 
@@ -135,3 +136,35 @@ batería en negras; rehacer el patrón sustituye el clip); `--nativo --selftest`
 plantilla suenan en el render, editar el piano roll cambia el patrón, escuchar una nota, + Instrumento
 crea pista con sintetizador, IA sin audio, desconectar silencia. Vista inicial frente a la web:
 cabecera 8 %, lienzo 20 % (antes 30 %).
+
+## Fase 4: cómo se hizo
+
+**Grabar lo hace el motor.** Tracktion graba desde la entrada del dispositivo (`WaveInputDevice`)
+y escribe el WAV en su hilo; la interfaz solo arma, manda grabar o parar y lee el medidor real de
+la entrada. Nunca pasa audio por el puente.
+
+- `afo_audio` (API 5): `record_inputs`, `add_record_track`, `arm_track(track, input, monitor)`,
+  `start_recording`, `stop_recording(discard)`, `record_state` (incluye el nivel de entrada en dB).
+- `CintaBody.qml` (Cinta RX-2, como la plantilla): bobinas que giran mientras graba o suena la toma,
+  contador LCD, pestañas de pistas de voz, entrada, **Monitor** (oír la entrada) y medidor de entrada;
+  ● Grabar, ■ Parar, ▶ Escuchar toma. «+ Voz» en Pistas crea la pista; la toma se ve como onda
+  donde empezó y entra en la consola como cualquier audio. Quitar el Grabador del lienzo desarma.
+- **Configuración de audio** (botón «Audio» de la cabecera y del Grabador, `AudioSettings.qml`):
+  driver (Windows Audio, exclusivo, baja latencia, DirectSound, **ASIO**), salida, entrada,
+  frecuencia, búfer con su latencia en ms y el **panel propio del driver ASIO**. Funciona con
+  cualquier driver ASIO instalado: ASIO4ALL 2.x, los de cada interfaz, FL Studio ASIO… Si un driver
+  no abre, el motor vuelve al dispositivo anterior: nunca te deja sin audio. El ajuste se guarda.
+
+**Efectos.** Módulo «Efectos» (Rack FX-96, `FxBody.qml`): elegir la pista o el master, cadena en el
+orden de la señal con bypass, mover y quitar; editor con perillas y listas mapeadas al rango real
+de cada parámetro, medidores de entrada/salida, reducción de ganancia, la curva real del EQ y el
+espectro del Analizador; navegador con las 6 secciones y 20 carpetas de la Biblioteca. Detalle en
+`docs/BIBLIOTECA_NATIVA.md`.
+
+Comprobado: `tests/test_engine_fx.py` (13 pruebas de señal + dispositivo + grabación real) y
+`--nativo --selftest`: «+ Voz», armar en una entrada real (si el dispositivo no tiene entradas, la
+autoprueba cambia a ASIO4ALL como lo haría el usuario y al final vuelve al de antes), grabar 1 s y
+ver la onda; insertar EQ y Analizador en una pista, espectro real del tono, bypass y quitar.
+Vista inicial frente a la web: cabecera 12 % (los botones «Audio» y «Efectos», que la web no
+tiene; el chip de Efectos va en la primera fila para no añadir otra fila de chips), lienzo 20 %.
+

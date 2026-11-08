@@ -38,10 +38,27 @@ Window {
     property bool limiter: true                // sección master del motor (Mezcla final)
     property real masterDrive: 30
     property real masterTone: 50
+    property var rec: null                     // pista armada del motor: {track, recording, seconds, input, db, monitor}
+    property bool previewing: false            // el motor reproduce una toma o una escucha A/B
+    property int fxRev: 0                      // sube cada vez que cambia una cadena de efectos
+    function fxCountChanged() { fxRev++ }
+    property var fxBody: null
+    // Para la autoprueba: acciones del módulo Efectos y lo que muestra
+    function fxCommand(what, a, b) {
+        if (!fxBody) return null
+        if (what === "target") fxBody.pickTarget(a)
+        else if (what === "add") fxBody.add(a)
+        else if (what === "param") fxBody.setParam(a, b)
+        else if (what === "bypass") fxBody.enable(fxBody.sel, !!a)
+        else if (what === "remove") fxBody.remove(fxBody.sel)
+        return { chain: fxBody.chain.map(function (e) { return { id: e.id, key: e.key, enabled: e.enabled, values: e.values } }),
+                 sel: fxBody.sel, meters: fxBody.meters, spectrum: fxBody.spectrum, catalog: fxBody.catalog.length }
+    }
+    property alias mixer: mx
     Mixer { id: mx; studio: win }
     Sequencer { id: sq; studio: win }
     onBpmChanged: sq.rerenderAll()                // el patrón depende del tempo: se vuelve a sintetizar
-    onHiddenChanged: syncTrackStates()            // módulo quitado = sus pistas desconectadas (no suenan)
+    onHiddenChanged: { syncTrackStates(); sq.arm() }   // módulo quitado = sus pistas desconectadas (no suenan ni graban)
     onTracksChanged: Qt.callLater(function () { win.geomRev++ })   // las filas de Pistas se movieron
     property var rowCenter: null                  // función de TracksBody: centro de la fila i (coord. del módulo)
     readonly property real bar16: 16 * 4 * 60 / Math.max(40, bpm)
@@ -54,7 +71,7 @@ Window {
         var sources = {}, trackLinks = []
         for (var i = 0; i < tracks.length; i++) {
             var src = sq.src[tracks[i].type]
-            if (src === "pistas" || src === "cinta" || hidden[src] || hidden.pistas) continue
+            if (src === "pistas" || hidden[src] || hidden.pistas) continue
             var slot = sources[src] || 0; sources[src] = slot + 1
             trackLinks.push({ key: "track-" + tracks[i].uid, f: src, t: "pistas", i: i, slot: slot })
         }
@@ -115,6 +132,7 @@ Window {
                  tune: mx.tune, links: cableLinks.map(function (l) { return l.key }),
                  lastTuned: mx.runs.length ? !!mx.runs[mx.runs.length - 1].tuned : false,
                  tracks: tracks.map(function (t) { return { uid: t.uid, id: t.id, type: t.type, name: t.name, vol: t.vol, pan: t.pan,
+                                                             len: t.len || 0, peaks: (t.peaks || []).length,
                                                              notes: Object.keys(t.roll || {}).length + Object.keys(t.pat || {}).length } }),
                  act: sq.act, voice: sq.active("inst") ? sq.active("inst").cfg.v : -1 }
     }
@@ -126,6 +144,8 @@ Window {
         else if (what === "voice") sq.setVoice(a)
         else if (what === "generate") sq.finishGenerate()
         else if (what === "hide") setHidden(a, b)
+        else if (what === "record") sq.startTake()
+        else if (what === "recstop") sq.stopTake(false)
     }
     function mixNow(remix) { mx.mix(!!remix) }
     function setTuneStrength(v) { mx.tuneStrength = v }
@@ -183,8 +203,8 @@ Window {
     function removeTrackAt(i) {
         var t = tracks.slice(), gone = t.splice(i, 1)[0]
         if (gone.type === "audio") call("removeTrack", gone.id)
-        sq.forget(gone)
         tracks = t
+        sq.forget(gone)
         if (selected >= t.length) selected = t.length - 1
         if (gone.id >= 0) mx.unlinkTrack(gone.id)
     }
@@ -236,6 +256,12 @@ Window {
             win.masterDb = st.master
             win.trackDb = st.tracks
             win.vu = MD.dbToPct(st.vu)            // RMS con balística VU calculado en el motor
+            win.rec = st.rec
+            win.previewing = !!st.preview
+            if (sq.recording && !(st.rec && st.rec.recording)) {    // el motor dejó de grabar (dispositivo perdido)
+                sq.stopTake(false)
+                toast("La grabación se detuvo: el dispositivo de audio dejó de grabar")
+            }
         }
         function onMixerEvent(s) {
             var ev; try { ev = JSON.parse(s) } catch (e) { return }
@@ -245,6 +271,25 @@ Window {
             else if (ev.phase === "error") { toast(ev.error); mx.status = ev.error; mx.progress = 0 }
         }
     }
+
+    // ---------------- configuración de audio ----------------
+    function openAudioSettings() {
+        if (!engineOk) { toast("Motor nativo no disponible"); return }
+        audioSettings.show()
+    }
+    // Tras cambiar de driver se vuelve a armar la pista de voz; algunos (ASIO4ALL) se reinician al
+    // arrancar, así que se reintenta unas veces antes de darse por vencido
+    function audioDeviceChanged() { rearm.tries = 0; rearm.restart() }
+    Timer {
+        id: rearm
+        interval: 300
+        property int tries: 0
+        onTriggered: {
+            sq.refreshInputs(); sq.arm()
+            if (!sq.armedUid && sq.active("voz") && sq.inputs.length && ++tries < 5) restart()
+        }
+    }
+    AudioSettings { id: audioSettings; studio: win }
 
     // ---------------- aviso (#toast) ----------------
     function toast(t) { toastText.text = t; toastBox.opacity = 1; toastTimer.restart() }
@@ -323,6 +368,23 @@ Window {
                     tip: "Cambiar entre el tema claro original y el oscuro"
                     onClicked: { Theme.dark = !Theme.dark; win.saveLayout() }
                 }
+                NeoButton {
+                    text: "⚙ Audio"
+                    tip: "Driver (Windows Audio, DirectSound, ASIO4ALL…), dispositivo, frecuencia y búfer"
+                    onClicked: win.openAudioSettings()
+                }
+                NeoButton {                         // chip del módulo Efectos: aquí para no añadir otra fila de chips
+                    id: fxChip
+                    readonly property bool on: !win.hidden.fx
+                    text: "Efectos" + (on ? "" : "  +")
+                    color: on ? Theme.pc.fx : Theme.button
+                    textColor: on ? "#000" : Theme.ink
+                    pressedState: on
+                    tip: "Biblioteca nativa de efectos (mostrar u ocultar el módulo)"
+                    onClicked: win.setHidden("fx", on)
+                    Rectangle { width: 12; height: 12; border.width: 2; border.color: "#000"
+                                color: fxChip.on ? "#000" : (Theme.dark ? "#1b1822" : "#fff") }
+                }
             }
         }
 
@@ -349,7 +411,7 @@ Window {
                     font.family: Theme.font; font.pixelSize: 14; font.weight: 700
                 }
                 Repeater {
-                    model: L.PANELS
+                    model: L.PANELS.filter(function (p) { return p[0] !== "fx" })
                     NeoButton {
                         id: chip
                         readonly property string pid: modelData[0]
@@ -476,7 +538,8 @@ Window {
                         width: panel.bodyWidth
                         sourceComponent: ({ pistas: tracksComp, audios: audiosComp, mezcla: mixComp, master: masterComp,
                                             afina: tuneComp, mastia: masteringComp, antes: reviewComp,
-                                            inst: instComp, drums: drumsComp, piano: pianoComp, ia: iaComp })[panel.pid] || pendingComp
+                                            inst: instComp, drums: drumsComp, piano: pianoComp, ia: iaComp,
+                                            cinta: cintaComp, fx: fxComp })[panel.pid] || pendingComp
                     }
                     Component { id: audiosComp; AudiosBody { mixer: mx; studio: win } }
                     Component { id: mixComp; MixBody { mixer: mx; studio: win } }
@@ -488,6 +551,8 @@ Window {
                     Component { id: drumsComp; DrumsBody { seq: sq; curStep: win.playing && win.step >= 0 ? win.step % 16 : -1 } }
                     Component { id: pianoComp; PianoBody { seq: sq } }
                     Component { id: iaComp; IaBody { seq: sq } }
+                    Component { id: cintaComp; CintaBody { seq: sq; studio: win } }
+                    Component { id: fxComp; FxBody { studio: win; shown: panel.visible } }
                     Component {
                         id: tracksComp
                         TracksBody {
@@ -515,12 +580,11 @@ Window {
                     Component {
                         id: pendingComp
                         PendingBody {
-                            phase: ({ cinta: 4 })[panel.pid] || 3
+                            phase: 3
                             summary: ({
                                 piano: "Piano roll con teclado y rejilla de notas.",
                                 inst: "Banco de instrumentos con presets por pista.",
                                 drums: "Caja de ritmos de 16 pasos.",
-                                cinta: "Grabador de tomas de voz (pasará a grabar con el motor nativo).",
                                 ia: "Generador de pistas (DEMO).",
                                 mezcla: "Consola con tiras reales, rol de voz y MEZCLAR AUTOMÁTICAMENTE (Mezclador V4.2).",
                                 master: "Medidor VU, fader master con medidores reales y exportación.",

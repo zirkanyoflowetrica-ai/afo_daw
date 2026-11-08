@@ -54,5 +54,5 @@ def test_transport_state_without_device(host):
     host.engine.set_tempo(128)
     assert host.engine.tempo() == pytest.approx(128)
     snap = host.snapshot()
-    assert set(snap) == {"playing", "position", "length", "master", "vu", "tracks"}
+    assert set(snap) == {"playing", "position", "length", "master", "vu", "tracks", "rec", "preview"}
     assert snap["playing"] is False

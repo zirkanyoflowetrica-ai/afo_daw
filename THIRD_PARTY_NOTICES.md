@@ -21,10 +21,12 @@ el repositorio y etiquetando cada versión.
 | Nuitka (runtime) | 4.3.4 | Apache-2.0 | Empaquetado del ejecutable |
 | Space Grotesk | fontsource 5.2.10 | SIL OFL 1.1 (`app/allforone/ui/fonts/OFL-SpaceGrotesk.txt`) | Tipografía de la interfaz |
 | VST3 SDK (incluido en JUCE) | — | GPLv3 / MIT según versión del SDK en JUCE | Hosting VST3 |
+| Steinberg ASIO SDK | 2.3.4 (2025-10-15) | Doble licencia: propietaria de Steinberg **o GPLv3** (`LICENSE.txt` del SDK); aquí se usa bajo **GPLv3**, compatible con la AGPLv3 de AllForOne | Drivers ASIO (ASIO4ALL, los de cada interfaz…). Se descarga al compilar (`cmake/deps.cmake`, SHA-256 fijado); no se guarda en el repositorio |
 
 Mezclador Automático V4.2 (se integra en V0.5): `pedalboard` (GPLv3), `praat-parselmouth` (GPLv3),
 `pyloudnorm` (MIT), `scipy` (BSD), `librosa` (ISC). Los pesos opcionales de DrumSep tienen términos
-no aclarados y no se distribuirán. ASIO está desactivado (requiere el SDK de Steinberg con su propia
-licencia); se usan WASAPI y DirectSound.
+no aclarados y no se distribuirán. ASIO está activado con el SDK de Steinberg bajo GPLv3 (ver la
+tabla); también se usan WASAPI y DirectSound. «ASIO» es una marca de Steinberg Media Technologies
+GmbH. AllForOne no incluye ni redistribuye ningún driver ASIO (ASIO4ALL se instala aparte).
 
 No se redistribuyen plugins VST comerciales de terceros.
