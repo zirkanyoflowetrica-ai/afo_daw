@@ -147,6 +147,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--selftest", action="store_true", help="Ejecuta la verificación integrada y sale")
     parser.add_argument("--report", help="Ruta del informe JSON de --selftest")
     parser.add_argument("--screenshot", help="Ruta de la captura de --selftest")
+    parser.add_argument("--nativo", action="store_true", help="Interfaz nativa Qt Quick (en migración, sin Chromium)")
     parser.add_argument("--verbose", action="store_true")
     args, qt_args = parser.parse_known_args(argv if argv is not None else sys.argv[1:])
 
@@ -170,12 +171,22 @@ def main(argv: list[str] | None = None) -> int:
         from .selftest import run_selftest
 
         try:
+            if args.nativo:
+                from .native_ui import run_native_selftest
+
+                return run_native_selftest(app, host, args.report, args.screenshot)
             return run_selftest(app, host, args.report, args.screenshot)
         finally:
             host.engine = None  # cerrar el motor (hilos de audio) antes que Python
 
-    window, _view, _bridge = build_window(host)
-    window.show()
+    if args.nativo:
+        from .native_ui import build_native_window
+
+        qml_engine, window, _bridge = build_native_window(host)
+        window.show()
+    else:
+        window, _view, _bridge = build_window(host)
+        window.show()
     rc = app.exec()
     if host.ok:
         host.engine.stop()

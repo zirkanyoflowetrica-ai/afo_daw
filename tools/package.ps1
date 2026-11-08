@@ -84,6 +84,8 @@ $nargs = @('-m', 'nuitka',
     '--enable-plugin=pyside6',
     '--include-package=allforone',
     "--include-data-dir=$Root\app\allforone\ui=allforone/ui",
+    "--include-data-dir=$Root\app\allforone\qml=allforone/qml",
+    '--include-qt-plugins=qml',
     '--nofollow-import-to=gradio', '--nofollow-import-to=torch', '--nofollow-import-to=transformers',
     '--nofollow-import-to=beat_this', '--nofollow-import-to=mdxnet_infer',
     "--windows-icon-from-ico=$Root\app\allforone\ui\icon.ico",
@@ -111,7 +113,7 @@ Copy-Item (Join-Path $Root 'LICENSE') $Out -ErrorAction SilentlyContinue
 Copy-Item (Join-Path $Root 'README.md') $Out -ErrorAction SilentlyContinue
 
 Step "Comprobaciones de la distribucion"
-foreach ($rel in @('AllForOne.exe', 'allforone\ui\index.html', 'allforone\ui\afo_bridge.js', 'allforone\ui\fonts\space-grotesk-latin-wght-normal.woff2')) {
+foreach ($rel in @('AllForOne.exe', 'allforone\ui\index.html', 'allforone\ui\afo_bridge.js', 'allforone\ui\fonts\space-grotesk-latin-wght-normal.woff2', 'allforone\qml\Main.qml', 'allforone\qml\fonts\SpaceGrotesk-Bold.ttf')) {
     if (-not (Test-Path (Join-Path $Out $rel))) { Fail "Falta $rel en la distribucion" }
 }
 if (-not (Get-ChildItem $Out -Recurse -Filter 'QtWebEngineProcess.exe')) { Fail "Falta QtWebEngineProcess.exe" }
