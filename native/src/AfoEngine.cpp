@@ -1,0 +1,413 @@
+#include "AfoEngine.h"
+
+#include <juce_audio_utils/juce_audio_utils.h>
+#include <tracktion_engine/tracktion_engine.h>
+
+#include <cmath>
+#include <stdexcept>
+
+namespace te = tracktion;
+
+namespace afo
+{
+
+namespace
+{
+    juce::File toFile (const std::string& p)  { return juce::File (juce::String::fromUTF8 (p.c_str())); }
+    std::string toStd (const juce::String& s) { return s.toStdString(); }
+
+    float clampDb (float db) { return juce::jlimit (-100.0f, 12.0f, db); }
+
+    void requireMessageThread()
+    {
+        auto* mm = juce::MessageManager::getInstanceWithoutCreating();
+        if (mm == nullptr || ! mm->isThisTheMessageThread())
+            throw std::runtime_error ("afo_audio: el motor debe usarse desde el hilo que lo creó (hilo de mensajes).");
+    }
+}
+
+//==============================================================================
+struct TrackSlot
+{
+    int id = 0;
+    te::AudioTrack::Ptr track;
+    te::LevelMeasurer::Client meter;
+    TrackInfo info;
+};
+
+struct Engine::Impl
+{
+    juce::ScopedJuceInitialiser_GUI juceInit;   // crea MessageManager en este hilo
+    std::unique_ptr<te::Engine> engine;
+    std::unique_ptr<te::Edit> edit;
+    std::map<int, std::unique_ptr<TrackSlot>> slots;
+    int nextId = 1;
+
+    te::LevelMeasurer::Client masterClient;
+    te::EditPlaybackContext* attachedContext = nullptr;
+
+    Impl (const std::string& appName)
+    {
+        engine = std::make_unique<te::Engine> (juce::String (appName));
+
+        // Edit vacío en memoria. El formato de proyecto .afo (V0.2) guardará su estado.
+        auto editFile = juce::File::getSpecialLocation (juce::File::tempDirectory)
+                            .getChildFile ("AllForOne").getChildFile ("session.tracktionedit");
+        editFile.getParentDirectory().createDirectory();
+        edit = te::createEmptyEdit (*engine, editFile);
+        if (auto mv = edit->getMasterVolumePlugin())
+            mv->setVolumeDb (0.0f);   // Tracktion crea el master a -3 dB; AllForOne parte de unidad
+        edit->getTransport().ensureContextAllocated();
+        attachMasterMeter();
+    }
+
+    ~Impl()
+    {
+        if (edit != nullptr)
+            edit->getTransport().stop (false, true);
+
+        detachMasterMeter();
+
+        for (auto& [id, slot] : slots)
+            if (auto* lm = slot->track->getLevelMeterPlugin())
+                lm->measurer.removeClient (slot->meter);
+
+        slots.clear();
+        edit.reset();
+        engine.reset();
+    }
+
+    void attachMasterMeter()
+    {
+        auto* ctx = edit->getCurrentPlaybackContext();
+        if (ctx == attachedContext)
+            return;
+        detachMasterMeter();
+        if (ctx != nullptr)
+        {
+            ctx->masterLevels.addClient (masterClient);
+            attachedContext = ctx;
+        }
+    }
+
+    void detachMasterMeter()
+    {
+        if (attachedContext != nullptr)
+        {
+            // El contexto puede haberse reasignado; solo lo quitamos si sigue siendo el actual
+            if (edit != nullptr && edit->getCurrentPlaybackContext() == attachedContext)
+                attachedContext->masterLevels.removeClient (masterClient);
+            attachedContext = nullptr;
+        }
+    }
+
+    TrackSlot& slot (int id) const
+    {
+        auto it = slots.find (id);
+        if (it == slots.end())
+            throw std::out_of_range ("afo_audio: pista inexistente " + std::to_string (id));
+        return *it->second;
+    }
+};
+
+//==============================================================================
+Engine::Engine (const std::string& appName) : impl (std::make_unique<Impl> (appName)) {}
+Engine::~Engine() = default;
+
+DeviceInfo Engine::deviceInfo() const
+{
+    DeviceInfo d;
+    auto& dm = impl->engine->getDeviceManager().deviceManager;
+    for (auto* type : dm.getAvailableDeviceTypes())
+        d.availableTypes.push_back (toStd (type->getTypeName()));
+
+    if (auto* dev = dm.getCurrentAudioDevice())
+    {
+        juce::AudioDeviceManager::AudioDeviceSetup setup;
+        dm.getAudioDeviceSetup (setup);
+        d.typeName = toStd (dev->getTypeName());
+        d.outputName = toStd (setup.outputDeviceName);
+        d.inputName = toStd (setup.inputDeviceName);
+        d.sampleRate = dev->getCurrentSampleRate();
+        d.bufferSize = dev->getCurrentBufferSizeSamples();
+        d.numOutputChannels = dev->getActiveOutputChannels().countNumberOfSetBits();
+        d.numInputChannels = dev->getActiveInputChannels().countNumberOfSetBits();
+        d.open = dev->isOpen();
+    }
+    return d;
+}
+
+TrackInfo Engine::addAudioTrack (const std::string& filePath, const std::string& name)
+{
+    requireMessageThread();
+    auto file = toFile (filePath);
+    te::AudioFile audioFile (*impl->engine, file);
+    if (! file.existsAsFile() || ! audioFile.isValid())
+        throw std::runtime_error ("afo_audio: no se puede leer el audio: " + filePath);
+
+    auto& edit = *impl->edit;
+    edit.ensureNumberOfAudioTracks ((int) te::getAudioTracks (edit).size() + 1);
+    auto* track = te::getAudioTracks (edit).getLast();
+    const auto trackName = name.empty() ? file.getFileNameWithoutExtension() : juce::String::fromUTF8 (name.c_str());
+    track->setName (trackName);
+
+    const auto len = te::TimeDuration::fromSeconds (audioFile.getLength());
+    auto clip = track->insertWaveClip (trackName, file, { { te::TimePosition(), len }, te::TimeDuration() }, false);
+    if (clip == nullptr)
+        throw std::runtime_error ("afo_audio: Tracktion no pudo crear el clip");
+
+    auto slot = std::make_unique<TrackSlot>();
+    slot->id = impl->nextId++;
+    slot->track = track;
+    slot->info.id = slot->id;
+    slot->info.name = toStd (trackName);
+    slot->info.sourcePath = filePath;
+    slot->info.lengthSeconds = audioFile.getLength();
+    slot->info.sampleRate = audioFile.getSampleRate();
+    slot->info.numChannels = audioFile.getNumChannels();
+    if (auto* lm = track->getLevelMeterPlugin())
+        lm->measurer.addClient (slot->meter);
+
+    auto info = slot->info;
+    impl->slots[slot->id] = std::move (slot);
+    edit.getTransport().ensureContextAllocated();
+    impl->attachMasterMeter();
+    return info;
+}
+
+bool Engine::removeTrack (int id)
+{
+    requireMessageThread();
+    auto it = impl->slots.find (id);
+    if (it == impl->slots.end())
+        return false;
+    auto& s = *it->second;
+    if (auto* lm = s.track->getLevelMeterPlugin())
+        lm->measurer.removeClient (s.meter);
+    impl->edit->deleteTrack (s.track.get());
+    impl->slots.erase (it);
+    return true;
+}
+
+std::vector<TrackInfo> Engine::tracks() const
+{
+    std::vector<TrackInfo> r;
+    for (auto& [id, s] : impl->slots)
+        r.push_back (s->info);
+    return r;
+}
+
+std::vector<float> Engine::trackPeaks (int id, int numBuckets) const
+{
+    auto& s = impl->slot (id);
+    numBuckets = juce::jlimit (1, 20000, numBuckets);
+    std::vector<float> peaks ((size_t) numBuckets, 0.0f);
+
+    juce::AudioFormatManager fm;
+    fm.registerBasicFormats();
+    std::unique_ptr<juce::AudioFormatReader> reader (fm.createReaderFor (toFile (s.info.sourcePath)));
+    if (reader == nullptr || reader->lengthInSamples <= 0)
+        return peaks;
+
+    const auto total = reader->lengthInSamples;
+    for (int b = 0; b < numBuckets; ++b)
+    {
+        const auto start = total * b / numBuckets;
+        const auto end = total * (b + 1) / numBuckets;
+        float lowL = 0, highL = 0, lowR = 0, highR = 0;
+        reader->readMaxLevels (start, juce::jmax ((juce::int64) 1, end - start), lowL, highL, lowR, highR);
+        peaks[(size_t) b] = juce::jmax (std::abs (lowL), std::abs (highL), std::abs (lowR), std::abs (highR));
+    }
+    return peaks;
+}
+
+void Engine::setTrackGainDb (int id, float db)
+{
+    requireMessageThread();
+    if (auto* vp = impl->slot (id).track->getVolumePlugin())
+        vp->setVolumeDb (clampDb (db));
+}
+
+void Engine::setTrackPan (int id, float pan)
+{
+    requireMessageThread();
+    if (auto* vp = impl->slot (id).track->getVolumePlugin())
+        vp->setPan (juce::jlimit (-1.0f, 1.0f, pan));
+}
+
+void Engine::setTrackMute (int id, bool muted) { requireMessageThread(); impl->slot (id).track->setMute (muted); }
+void Engine::setTrackSolo (int id, bool solo)  { requireMessageThread(); impl->slot (id).track->setSolo (solo); }
+
+void Engine::setMasterGainDb (float db)
+{
+    requireMessageThread();
+    if (auto mv = impl->edit->getMasterVolumePlugin())
+        mv->setVolumeDb (clampDb (db));
+}
+
+float Engine::masterGainDb() const
+{
+    if (auto mv = impl->edit->getMasterVolumePlugin())
+        return mv->getVolumeDb();
+    return 0.0f;
+}
+
+void Engine::play()
+{
+    requireMessageThread();
+    auto& t = impl->edit->getTransport();
+    t.ensureContextAllocated();
+    impl->attachMasterMeter();
+    t.play (false);
+}
+
+void Engine::pause()  { requireMessageThread(); impl->edit->getTransport().stop (false, false); }
+
+void Engine::stop()
+{
+    requireMessageThread();
+    auto& t = impl->edit->getTransport();
+    t.stop (false, false);
+    t.setPosition (te::TimePosition());
+}
+
+bool Engine::isPlaying() const          { return impl->edit->getTransport().isPlaying(); }
+double Engine::positionSeconds() const  { return impl->edit->getTransport().getPosition().inSeconds(); }
+void Engine::setPositionSeconds (double s)
+{
+    requireMessageThread();
+    impl->edit->getTransport().setPosition (te::TimePosition::fromSeconds (juce::jmax (0.0, s)));
+}
+double Engine::lengthSeconds() const    { return impl->edit->getLength().inSeconds(); }
+
+void Engine::setTempo (double bpm)
+{
+    requireMessageThread();
+    if (auto* t = impl->edit->tempoSequence.getTempo (0))
+        t->setBpm (juce::jlimit (20.0, 400.0, bpm));
+}
+
+double Engine::tempo() const
+{
+    if (auto* t = impl->edit->tempoSequence.getTempo (0))
+        return t->getBpm();
+    return 0.0;
+}
+
+Levels Engine::readLevels()
+{
+    Levels l;
+    impl->attachMasterMeter();
+    l.masterL = impl->masterClient.getAndClearAudioLevel (0).dB;
+    l.masterR = impl->masterClient.getAndClearAudioLevel (1).dB;
+    for (auto& [id, s] : impl->slots)
+        l.tracks[id] = juce::jmax (s->meter.getAndClearAudioLevel (0).dB, s->meter.getAndClearAudioLevel (1).dB);
+    return l;
+}
+
+bool Engine::renderToWav (const std::string& path)
+{
+    requireMessageThread();
+    auto& edit = *impl->edit;
+    if (edit.getLength() <= te::TimeDuration())
+        return false;
+
+    // Tracktion renderiza todas las pistas que recibe, aunque estén silenciadas.
+    // Exportamos lo que se escucha: con solo activo, solo esas; si no, las no silenciadas.
+    auto all = te::getAllTracks (edit);
+    bool anySolo = false;
+    for (auto& [id, s] : impl->slots)
+        anySolo = anySolo || s->track->isSolo (false);
+    juce::BigInteger audible;
+    for (auto& [id, s] : impl->slots)
+    {
+        const bool hear = anySolo ? s->track->isSolo (false) : ! s->track->isMuted (false);
+        const int index = all.indexOf (s->track.get());
+        if (hear && index >= 0)
+            audible.setBit (index);
+    }
+    if (audible.isZero())
+        return false;
+
+    auto file = toFile (path);
+    file.getParentDirectory().createDirectory();
+    if (edit.getTransport().isPlaying())
+        edit.getTransport().stop (false, false);
+    return te::Renderer::renderToFile ("AllForOne", file, edit, { te::TimePosition(), edit.getLength() },
+                                       audible, true, true, {}, false)
+           && file.existsAsFile();
+}
+
+void Engine::pumpMessages (int milliseconds)
+{
+   #if JUCE_MODAL_LOOPS_PERMITTED
+    if (auto* mm = juce::MessageManager::getInstanceWithoutCreating())
+        mm->runDispatchLoopUntil (juce::jmax (0, milliseconds));
+   #else
+    juce::ignoreUnused (milliseconds);
+   #endif
+}
+
+//==============================================================================
+std::string version()     { return AFO_VERSION; }
+std::string juceVersion() { return toStd (juce::SystemStats::getJUCEVersion()); }
+
+bool writeTestTone (const std::string& path, double frequency, double seconds, double sampleRate, float amplitudeDb)
+{
+    auto file = toFile (path);
+    file.getParentDirectory().createDirectory();
+    file.deleteFile();
+
+    const int numSamples = (int) std::round (seconds * sampleRate);
+    juce::AudioBuffer<float> buf (2, numSamples);
+    const float amp = juce::Decibels::decibelsToGain (amplitudeDb);
+    const int fade = juce::jmin (numSamples / 4, (int) (0.01 * sampleRate));   // 10 ms sin clics
+    for (int i = 0; i < numSamples; ++i)
+    {
+        float env = 1.0f;
+        if (i < fade) env = (float) i / (float) fade;
+        else if (i > numSamples - fade) env = (float) (numSamples - i) / (float) fade;
+        const float v = amp * env * (float) std::sin (juce::MathConstants<double>::twoPi * frequency * i / sampleRate);
+        buf.setSample (0, i, v);
+        buf.setSample (1, i, v);
+    }
+
+    juce::WavAudioFormat wav;
+    auto os = file.createOutputStream();
+    if (os == nullptr)
+        return false;
+    std::unique_ptr<juce::AudioFormatWriter> writer (wav.createWriterFor (os.get(), sampleRate, 2, 24, {}, 0));
+    if (writer == nullptr)
+        return false;
+    os.release();   // el writer es ahora el dueño del stream
+    return writer->writeFromAudioSampleBuffer (buf, 0, numSamples);
+}
+
+std::pair<float, float> measureFile (const std::string& path)
+{
+    juce::AudioFormatManager fm;
+    fm.registerBasicFormats();
+    std::unique_ptr<juce::AudioFormatReader> reader (fm.createReaderFor (toFile (path)));
+    if (reader == nullptr || reader->lengthInSamples <= 0)
+        throw std::runtime_error ("afo_audio: no se puede leer " + path);
+
+    const int chans = (int) reader->numChannels;
+    const int block = 65536;
+    juce::AudioBuffer<float> buf (chans, block);
+    double sumSq = 0.0; float peak = 0.0f; juce::int64 count = 0;
+    for (juce::int64 pos = 0; pos < reader->lengthInSamples; pos += block)
+    {
+        const int n = (int) juce::jmin ((juce::int64) block, reader->lengthInSamples - pos);
+        reader->read (&buf, 0, n, pos, true, true);
+        for (int c = 0; c < chans; ++c)
+        {
+            auto* d = buf.getReadPointer (c);
+            for (int i = 0; i < n; ++i) { peak = juce::jmax (peak, std::abs (d[i])); sumSq += (double) d[i] * d[i]; }
+        }
+        count += (juce::int64) n * chans;
+    }
+    const float rms = count > 0 ? (float) std::sqrt (sumSq / (double) count) : 0.0f;
+    return { juce::Decibels::gainToDecibels (peak, -100.0f), juce::Decibels::gainToDecibels (rms, -100.0f) };
+}
+
+} // namespace afo

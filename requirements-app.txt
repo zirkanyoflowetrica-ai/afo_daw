@@ -1,0 +1,4 @@
+# AllForOne V0.1 — dependencias de ejecución (versiones fijadas; Windows 11 x64, Python 3.12)
+PySide6==6.12.0
+numpy==2.5.4
+soundfile==0.14.0
