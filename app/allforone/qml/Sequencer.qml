@@ -148,8 +148,7 @@ QtObject {
         if (!t) { if (type === "ia") { var d = Object.assign({}, draftIa); d[key] = value; draftIa = d } return }
         var c = Object.assign({}, t.cfg); c[key] = value
         replace(t.uid, { cfg: c })
-        // Reverb (Instrumentos) y Swing (Batería) no los usaba el sonido de la plantilla: no cambian el audio
-        if (isSynth(t) && key !== "rev" && key !== "sw") update(t.uid, true)   // solo parámetros: las notas no cambian
+        if (isSynth(t)) update(t.uid, key !== "sw")   // el swing mueve las notas; el resto solo son parámetros
     }
     function setVoice(v) {
         var t = active("inst"); if (!t) return

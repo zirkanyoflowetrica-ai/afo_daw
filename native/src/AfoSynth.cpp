@@ -35,13 +35,13 @@ namespace
 
 void AtomicParams::store (const Params& p)
 {
-    mode = p.mode; wave = p.wave; vel = p.vel; bri = p.bri; sus = p.sus; vol = p.vol; tun = p.tun;
+    mode = p.mode; wave = p.wave; vel = p.vel; bri = p.bri; sus = p.sus; vol = p.vol; tun = p.tun; rev = p.rev;
 }
 
 Params AtomicParams::load() const
 {
     Params p;
-    p.mode = mode; p.wave = wave; p.vel = vel; p.bri = bri; p.sus = sus; p.vol = vol; p.tun = tun;
+    p.mode = mode; p.wave = wave; p.vel = vel; p.bri = bri; p.sus = sus; p.vol = vol; p.tun = tun; p.rev = rev;
     return p;
 }
 

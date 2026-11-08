@@ -22,13 +22,14 @@ struct Params
     bool sus = false;       // Sostenido: nota de 1,4 s en vez de 0,3 s
     float vol = 80.0f;      // Batería: volumen 0..100
     float tun = 50.0f;      // Batería: afinación 0..100 → ×2^((tun−50)/50)
+    float rev = 0.0f;       // Instrumentos: reverb 0..100 (0 = seca)
 };
 
 // Copia sin bloqueos entre el hilo de mensajes (escribe) y el de audio (lee)
 struct AtomicParams
 {
     std::atomic<int> mode { 0 }, wave { 0 };
-    std::atomic<float> vel { 70 }, bri { 50 }, vol { 80 }, tun { 50 };
+    std::atomic<float> vel { 70 }, bri { 50 }, vol { 80 }, tun { 50 }, rev { 0 };
     std::atomic<bool> sus { false };
     void store (const Params& p);
     Params load() const;

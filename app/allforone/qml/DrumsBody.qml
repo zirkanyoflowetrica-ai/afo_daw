@@ -30,7 +30,7 @@ Column {
             anchors.right: parent.right; spacing: 16
             Knob { label: "Volumen"; value: root.t ? root.t.cfg.vol : 80; onMoved: function (v) { root.seq.setCfg("drum", "vol", v) } }
             Knob { label: "Afinación"; value: root.t ? root.t.cfg.tun : 50; onMoved: function (v) { root.seq.setCfg("drum", "tun", v) } }
-            Knob { label: "Swing"; value: root.t ? root.t.cfg.sw : 20; tip: "Pendiente: el swing todavía no cambia el ritmo"
+            Knob { label: "Swing"; value: root.t ? root.t.cfg.sw : 20; tip: "Retrasa las semicorcheas pares (100 % = media semicorchea)"
                    onMoved: function (v) { root.seq.setCfg("drum", "sw", v) } }
         }
     }

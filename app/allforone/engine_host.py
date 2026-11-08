@@ -52,6 +52,7 @@ def pattern_notes(track: dict) -> list[tuple[float, int]]:
     out = []
     roll = [tuple(map(int, k.split("-"))) for k in (track.get("roll") or {})]
     pat = [tuple(map(int, k.split("-"))) for k, on in (track.get("pat") or {}).items() if on]
+    swing = max(0.0, min(100.0, float((track.get("cfg") or {}).get("sw", 0)))) / 100
     for st in range(STEPS):
         bar, s = st >> 4, st % 16
         if not in_clip(track.get("clips", []), bar):
@@ -60,6 +61,9 @@ def pattern_notes(track: dict) -> list[tuple[float, int]]:
         if track["type"] == "inst":
             out += [(beat, ROLL_TOP_NOTE - r) for r, c in roll if c == s]
         elif track["type"] == "drum":
+            # Swing: las semicorcheas pares se retrasan hasta media semicorchea (perilla al 100 %)
+            if s % 2:
+                beat += swing * 0.125
             out += [(beat, FIRST_DRUM_NOTE + lane) for lane, c in pat if c == s]
     return out
 
@@ -69,7 +73,7 @@ def synth_settings(track: dict) -> dict:
     if track["type"] == "drum":
         return {"mode": 1, "vol": float(cfg.get("vol", 80)), "tun": float(cfg.get("tun", 50))}
     return {"mode": 0, "wave": int(cfg.get("v", 0)), "vel": float(cfg.get("vel", 70)),
-            "bri": float(cfg.get("bri", 50)), "sus": bool(track.get("sus"))}
+            "bri": float(cfg.get("bri", 50)), "sus": bool(track.get("sus")), "rev": float(cfg.get("rev", 0))}
 
 
 @dataclass
@@ -200,5 +204,6 @@ class EngineHost:
             "position": round(self.engine.position_seconds(), 4),
             "length": round(self.engine.length_seconds(), 3),
             "master": [round(lv["master_l_db"], 1), round(lv["master_r_db"], 1)],
+            "vu": round(lv["master_vu_db"], 1),
             "tracks": {str(k): round(v, 1) for k, v in lv["tracks"].items()},
         }

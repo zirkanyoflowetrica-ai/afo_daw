@@ -46,11 +46,13 @@ struct SynthSettings
     float vel = 70, bri = 50;
     bool sus = false;
     float vol = 80, tun = 50;
+    float rev = 0;          // reverb 0..100 (instrumentos)
 };
 
 struct Levels
 {
     float masterL = -100.0f, masterR = -100.0f;   // dBFS (pico desde la última lectura)
+    float masterVu = -100.0f;                     // dBFS RMS con balística VU (300 ms)
     std::map<int, float> tracks;                  // id -> dBFS (máx. de canales)
 };
 
@@ -89,6 +91,8 @@ public:
     // Master
     void setMasterGainDb (float db);
     float masterGainDb() const;
+    // Sección master: Saturación 0..100, Tono 0..100 (50 = plano), Limitador (techo −1 dBFS)
+    void setMasterProcessing (float drive, float tone, bool limiter);
 
     // Transporte
     void play();

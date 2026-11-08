@@ -21,10 +21,10 @@ py::dict toDict (const afo::TrackInfo& t)
     return d;
 }
 
-afo::SynthSettings settings (int mode, int wave, float vel, float bri, bool sus, float vol, float tun)
+afo::SynthSettings settings (int mode, int wave, float vel, float bri, bool sus, float vol, float tun, float rev)
 {
     afo::SynthSettings s;
-    s.mode = mode; s.wave = wave; s.vel = vel; s.bri = bri; s.sus = sus; s.vol = vol; s.tun = tun;
+    s.mode = mode; s.wave = wave; s.vel = vel; s.bri = bri; s.sus = sus; s.vol = vol; s.tun = tun; s.rev = rev;
     return s;
 }
 }
@@ -32,7 +32,7 @@ afo::SynthSettings settings (int mode, int wave, float vel, float bri, bool sus,
 PYBIND11_MODULE (afo_audio, m)
 {
     m.doc() = "AllForOne: motor de audio nativo (JUCE + Tracktion Engine)";
-    m.attr("API_VERSION") = 3;
+    m.attr("API_VERSION") = 4;
 
     m.def ("version", &afo::version);
     m.def ("juce_version", &afo::juceVersion);
@@ -65,15 +65,16 @@ PYBIND11_MODULE (afo_audio, m)
         .def ("remove_track", &afo::Engine::removeTrack)
         .def ("add_synth_track", [] (afo::Engine& e, const std::string& name, int mode)
               { return toDict (e.addSynthTrack (name, mode)); }, py::arg ("name"), py::arg ("mode") = 0)
-        .def ("set_synth_settings", [] (afo::Engine& e, int id, int mode, int wave, float vel, float bri, bool sus, float vol, float tun)
-              { e.setSynthSettings (id, settings (mode, wave, vel, bri, sus, vol, tun)); },
+        .def ("set_synth_settings", [] (afo::Engine& e, int id, int mode, int wave, float vel, float bri, bool sus, float vol, float tun, float rev)
+              { e.setSynthSettings (id, settings (mode, wave, vel, bri, sus, vol, tun, rev)); },
               py::arg ("track_id"), py::arg ("mode") = 0, py::arg ("wave") = 0, py::arg ("vel") = 70.0f, py::arg ("bri") = 50.0f,
-              py::arg ("sus") = false, py::arg ("vol") = 80.0f, py::arg ("tun") = 50.0f)
+              py::arg ("sus") = false, py::arg ("vol") = 80.0f, py::arg ("tun") = 50.0f, py::arg ("rev") = 0.0f)
         .def ("set_synth_notes", &afo::Engine::setSynthNotes, py::arg ("track_id"), py::arg ("notes"), py::arg ("length_beats") = 64.0)
-        .def ("audition_synth", [] (afo::Engine& e, int note, double seconds, int mode, int wave, float vel, float bri, bool sus, float vol, float tun)
-              { return e.auditionSynth (settings (mode, wave, vel, bri, sus, vol, tun), note, seconds); },
+        .def ("audition_synth", [] (afo::Engine& e, int note, double seconds, int mode, int wave, float vel, float bri, bool sus, float vol, float tun, float rev)
+              { return e.auditionSynth (settings (mode, wave, vel, bri, sus, vol, tun, rev), note, seconds); },
               py::arg ("note"), py::arg ("seconds") = 0.4, py::arg ("mode") = 0, py::arg ("wave") = 0, py::arg ("vel") = 70.0f,
-              py::arg ("bri") = 50.0f, py::arg ("sus") = false, py::arg ("vol") = 80.0f, py::arg ("tun") = 50.0f)
+              py::arg ("bri") = 50.0f, py::arg ("sus") = false, py::arg ("vol") = 80.0f, py::arg ("tun") = 50.0f, py::arg ("rev") = 0.0f)
+        .def ("set_master_processing", &afo::Engine::setMasterProcessing, py::arg ("drive"), py::arg ("tone"), py::arg ("limiter"))
         .def ("tracks", [] (const afo::Engine& e)
               { py::list l; for (auto& t : e.tracks()) l.append (toDict (t)); return l; })
         .def ("track_peaks", &afo::Engine::trackPeaks, py::arg ("track_id"), py::arg ("buckets") = 600)
@@ -96,7 +97,7 @@ PYBIND11_MODULE (afo_audio, m)
               {
                   auto l = e.readLevels();
                   py::dict d, tr;
-                  d["master_l_db"] = l.masterL; d["master_r_db"] = l.masterR;
+                  d["master_l_db"] = l.masterL; d["master_r_db"] = l.masterR; d["master_vu_db"] = l.masterVu;
                   for (auto& [id, db] : l.tracks) tr[py::int_ (id)] = db;
                   d["tracks"] = tr;
                   return d;

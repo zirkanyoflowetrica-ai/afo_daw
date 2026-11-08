@@ -77,3 +77,51 @@ def test_patron_de_la_plantilla_a_notas():
     pat = {**{f"0-{s}": 1 for s in (0, 4, 8, 12)}, "1-4": 1, "1-12": 1, **{f"2-{s}": 1 for s in range(0, 16, 2)}, "3-14": 1}
     drums = pattern_notes({"type": "drum", "clips": [[0, 100]], "pat": pat})
     assert len(drums) == 16 * 15 and (0.0, 36) in drums and (3.5, 39) in drums
+
+
+def _render(eng, tmp_path, name):
+    out = tmp_path / name
+    assert eng.render_to_wav(str(out))
+    y, sr = sf.read(str(out))
+    return y, sr
+
+
+def test_master_limitador_saturacion_y_vu(host, tmp_path):
+    eng = host.engine
+    tone = host.add_test_tone()["id"]                 # 440 Hz a -12 dBFS
+    eng.set_track_gain_db(tone, 12.0)                  # a 0 dBFS…
+    eng.set_master_gain_db(6.0)                        # …y +6 dB: pasa de 0 dBFS
+    eng.set_master_processing(0.0, 50.0, False)
+    y, _ = _render(eng, tmp_path, "sin_limitador.wav")
+    assert np.abs(y).max() >= 0.999                     # sin limitador, recorta en 0 dBFS (WAV de 24 bits)
+    eng.set_master_processing(0.0, 50.0, True)
+    y, _ = _render(eng, tmp_path, "con_limitador.wav")
+    assert 20 * np.log10(np.abs(y[4800:]).max()) < -0.9  # techo −1 dBFS
+    assert eng.read_levels()["master_vu_db"] > -10       # el VU midió el render
+    eng.set_master_processing(100.0, 50.0, False)
+    eng.set_master_gain_db(0.0)
+    y, _ = _render(eng, tmp_path, "saturado.wav")
+    crest = np.abs(y).max() / np.sqrt((y ** 2).mean())
+    assert crest < 1.38                                  # el seno (1,41) se redondea
+
+
+def test_reverb_deja_cola(host, tmp_path):
+    eng = host.engine
+    eng.set_tempo(120.0)
+    tid = eng.add_synth_track("Rev", 0)["id"]
+    eng.set_synth_notes(tid, [(0.0, 69)], 8.0)
+    eng.set_synth_settings(tid, mode=0, wave=4, vel=100, rev=0)
+    y, sr = _render(eng, tmp_path, "seca.wav")
+    dry_tail = np.abs(y[int(0.6 * sr): int(1.5 * sr)]).max()
+    eng.set_synth_settings(tid, mode=0, wave=4, vel=100, rev=100)
+    y, sr = _render(eng, tmp_path, "rev.wav")
+    wet_tail = np.abs(y[int(0.6 * sr): int(1.5 * sr)]).max()
+    assert dry_tail < 1e-3 and wet_tail > 10 * max(dry_tail, 1e-5)
+
+
+def test_swing_retrasa_las_semicorcheas_pares():
+    from allforone.engine_host import pattern_notes
+    t = {"type": "drum", "clips": [[0, 6.25]], "pat": {"2-0": 1, "2-1": 1}, "cfg": {"sw": 100}}
+    assert pattern_notes(t) == [(0.0, 38), (0.25 + 0.125, 38)]
+    t["cfg"]["sw"] = 0
+    assert pattern_notes(t)[1] == (0.25, 38)

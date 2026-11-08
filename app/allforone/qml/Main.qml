@@ -35,7 +35,9 @@ Window {
     property var masterDb: [-100, -100]
     property var trackDb: ({})
     property real vu: 0
-    property bool limiter: true                // pendiente (V0.7): todavía no procesa audio
+    property bool limiter: true                // sección master del motor (Mezcla final)
+    property real masterDrive: 30
+    property real masterTone: 50
     Mixer { id: mx; studio: win }
     Sequencer { id: sq; studio: win }
     onBpmChanged: sq.rerenderAll()                // el patrón depende del tempo: se vuelve a sintetizar
@@ -197,6 +199,10 @@ Window {
     function seqSrc(type) { return sq.src[type] }
     function trackLevel(id) { var v = trackDb[String(id)]; return v === undefined ? -100 : v }
     function setMaster(v) { masterPos = v; if (engineOk) call("setMasterVolume", v) }
+    function setMasterProcessing(drive, tone, lim) {
+        masterDrive = drive; masterTone = tone; limiter = lim
+        if (engineOk) call("setMasterProcessing", drive, tone, lim)
+    }
     function exportMix() {
         toast("Renderizando mezcla…")
         var r = call("exportMix")
@@ -229,9 +235,7 @@ Window {
             if (st.playing || st.position > 0) win.step = Math.floor(st.position * win.bpm / 15) % 256
             win.masterDb = st.master
             win.trackDb = st.tracks
-            // VU: balística aproximada (~300 ms) sobre el pico medio L/R. No es una medida de sonoridad.
-            var target = st.playing ? (MD.dbToPct(st.master[0]) + MD.dbToPct(st.master[1])) / 2 : 0
-            win.vu += (target - win.vu) * 0.25
+            win.vu = MD.dbToPct(st.vu)            // RMS con balística VU calculado en el motor
         }
         function onMixerEvent(s) {
             var ev; try { ev = JSON.parse(s) } catch (e) { return }
@@ -680,6 +684,7 @@ Window {
         engineOk = !!info.engine
         if (engineOk) {
             call("setMasterVolume", 70)                 // 70 = 0 dB
+            call("setMasterProcessing", masterDrive, masterTone, limiter)
             call("setTempo", bpm)
             var dev = info.device || {}
             toast(dev.open ? "Motor nativo listo · " + dev.type + " · " + dev.output : "Motor nativo listo · sin dispositivo de salida abierto")

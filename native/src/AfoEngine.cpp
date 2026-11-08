@@ -1,8 +1,9 @@
 #include "AfoEngine.h"
-#include "AfoSynth.h"
 
 #include <juce_audio_utils/juce_audio_utils.h>
 #include <tracktion_engine/tracktion_engine.h>
+
+#include "AfoPlugins.h"
 
 #include <array>
 #include <cmath>
@@ -18,7 +19,7 @@ namespace
     synth::Params toParams (const SynthSettings& s)
     {
         synth::Params p;
-        p.mode = s.mode; p.wave = s.wave; p.vel = s.vel; p.bri = s.bri; p.sus = s.sus; p.vol = s.vol; p.tun = s.tun;
+        p.mode = s.mode; p.wave = s.wave; p.vel = s.vel; p.bri = s.bri; p.sus = s.sus; p.vol = s.vol; p.tun = s.tun; p.rev = s.rev;
         return p;
     }
 
@@ -34,89 +35,6 @@ namespace
             throw std::runtime_error ("afo_audio: el motor debe usarse desde el hilo que lo creó (hilo de mensajes).");
     }
 }
-
-//==============================================================================
-// Sintetizador de Instrumento/Batería como plugin de Tracktion: toca las notas del clip MIDI de su
-// pista en el callback de audio, con la DSP de AfoSynth (el sonido de la plantilla).
-class AfoSynthPlugin : public te::Plugin
-{
-public:
-    AfoSynthPlugin (te::PluginCreationInfo info) : te::Plugin (info) {}
-    ~AfoSynthPlugin() override { notifyListenersOfDeletion(); }
-
-    static const char* getPluginName() { return "AllForOne Synth"; }
-    static const char* xmlTypeName;
-    juce::String getName() const override              { return getPluginName(); }
-    juce::String getPluginType() override              { return xmlTypeName; }
-    juce::String getShortName (int) override           { return "AFO Synth"; }
-    juce::String getSelectableDescription() override   { return getName(); }
-    bool producesAudioWhenNoAudioInput() override      { return true; }
-    bool isSynth() override                            { return true; }
-    bool takesMidiInput() override                     { return true; }
-    int getNumOutputChannelsGivenInputs (int) override { return 2; }
-
-    void initialise (const te::PluginInitialisationInfo& i) override
-    {
-        sampleRate = i.sampleRate;
-        for (auto& v : voices) v.active = false;
-    }
-    void deinitialise() override {}
-
-    void applyToBuffer (const te::PluginRenderContext& fc) override
-    {
-        if (fc.destBuffer == nullptr)
-            return;
-        auto& buf = *fc.destBuffer;
-        const int n = fc.bufferNumSamples, start = fc.bufferStartSample;
-        for (int c = 0; c < buf.getNumChannels(); ++c)
-            buf.clear (c, start, n);
-
-        const auto p = params.load();
-        if (auto* midi = fc.bufferForMidiMessages)
-        {
-            if (midi->isAllNotesOff)
-                for (auto& v : voices) v.active = false;
-            for (auto& m : *midi)
-                if (m.isNoteOn())
-                {
-                    const int at = juce::jlimit (0, juce::jmax (0, n - 1), juce::roundToInt (m.getTimeStamp() * sampleRate));
-                    auto& v = freeVoice();
-                    if (p.mode == 0) v.startNote (p, m.getNoteNumber(), synth::noteSeconds (p), sampleRate, at);
-                    else             v.startDrum (p, m.getNoteNumber() - synth::firstDrumNote, sampleRate, at);
-                }
-        }
-
-        auto* l = buf.getWritePointer (0, start);
-        for (int i = 0; i < n; ++i)
-        {
-            float x = 0.0f;
-            for (auto& v : voices)
-                if (v.active) x += v.next();
-            l[i] = x;
-        }
-        for (int c = 1; c < buf.getNumChannels(); ++c)
-            buf.copyFrom (c, start, buf, 0, start, n);
-    }
-
-    synth::AtomicParams params;
-
-private:
-    synth::Voice& freeVoice()
-    {
-        synth::Voice* oldest = &voices[0];
-        for (auto& v : voices)
-        {
-            if (! v.active) return v;
-            if (v.t > oldest->t) oldest = &v;
-        }
-        return *oldest;                      // sin voces libres: se reutiliza la más antigua
-    }
-
-    double sampleRate = 48000.0;
-    std::array<synth::Voice, synth::maxVoices> voices;
-};
-
-const char* AfoSynthPlugin::xmlTypeName = "afoSynth";
 
 //==============================================================================
 struct TrackSlot
@@ -160,6 +78,7 @@ struct Engine::Impl
     int nextId = 1;
 
     te::LevelMeasurer::Client masterClient;
+    AfoMasterPlugin* master = nullptr;          // pertenece al Edit
     te::EditPlaybackContext* attachedContext = nullptr;
     PreviewPlayer preview;
 
@@ -170,6 +89,7 @@ struct Engine::Impl
         engine = std::make_unique<te::Engine> (std::make_unique<LocalPropertyStorage> (juce::String (appName), base.getChildFile ("tracktion")),
                                                nullptr, nullptr);
         engine->getPluginManager().createBuiltInType<AfoSynthPlugin>();
+        engine->getPluginManager().createBuiltInType<AfoMasterPlugin>();
 
         // Edit vacío en memoria. El formato de proyecto .afo (V0.2) guardará su estado.
         auto editFile = base.getChildFile ("sesion").getChildFile ("session.tracktionedit");
@@ -177,6 +97,12 @@ struct Engine::Impl
         edit = te::createEmptyEdit (*engine, editFile);
         if (auto mv = edit->getMasterVolumePlugin())
             mv->setVolumeDb (0.0f);   // Tracktion crea el master a -3 dB; AllForOne parte de unidad
+        // Sección master propia (fader, saturación, tono, limitador, VU) al final de la cadena del master
+        auto mp = edit->getPluginCache().createNewPlugin (AfoMasterPlugin::xmlTypeName, {});
+        master = dynamic_cast<AfoMasterPlugin*> (mp.get());
+        if (master == nullptr)
+            throw std::runtime_error ("afo_audio: no se pudo crear la sección master");
+        edit->getMasterPluginList().insertPlugin (mp, -1, nullptr);
         edit->getTransport().ensureContextAllocated();
         attachMasterMeter();
     }
@@ -483,15 +409,17 @@ void Engine::setTrackSolo (int id, bool solo)  { requireMessageThread(); impl->s
 void Engine::setMasterGainDb (float db)
 {
     requireMessageThread();
-    if (auto mv = impl->edit->getMasterVolumePlugin())
-        mv->setVolumeDb (clampDb (db));
+    impl->master->gainDb = clampDb (db);
 }
 
-float Engine::masterGainDb() const
+float Engine::masterGainDb() const { return impl->master->gainDb.load(); }
+
+void Engine::setMasterProcessing (float drive, float tone, bool limiter)
 {
-    if (auto mv = impl->edit->getMasterVolumePlugin())
-        return mv->getVolumeDb();
-    return 0.0f;
+    requireMessageThread();
+    impl->master->drive = juce::jlimit (0.0f, 100.0f, drive);
+    impl->master->tone = juce::jlimit (0.0f, 100.0f, tone);
+    impl->master->limiterOn = limiter;
 }
 
 void Engine::play()
@@ -542,6 +470,7 @@ Levels Engine::readLevels()
     impl->attachMasterMeter();
     l.masterL = impl->masterClient.getAndClearAudioLevel (0).dB;
     l.masterR = impl->masterClient.getAndClearAudioLevel (1).dB;
+    l.masterVu = juce::jmax (-100.0f, impl->master->vuDb.load());
     for (auto& [id, s] : impl->slots)
         l.tracks[id] = juce::jmax (s->meter.getAndClearAudioLevel (0).dB, s->meter.getAndClearAudioLevel (1).dB);
     return l;

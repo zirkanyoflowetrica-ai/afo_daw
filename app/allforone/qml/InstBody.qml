@@ -67,7 +67,7 @@ Column {
         anchors.horizontalCenter: parent.horizontalCenter; spacing: 16
         Knob { label: "Velocidad"; value: root.t ? root.t.cfg.vel : 70; onMoved: function (v) { root.seq.setCfg("inst", "vel", v) } }
         Knob { label: "Brillo"; value: root.t ? root.t.cfg.bri : 50; onMoved: function (v) { root.seq.setCfg("inst", "bri", v) } }
-        Knob { label: "Reverb"; value: root.t ? root.t.cfg.rev : 30; tip: "Pendiente: la reverb todavía no procesa audio"
+        Knob { label: "Reverb"; value: root.t ? root.t.cfg.rev : 30; tip: "Reverb de sala del motor (0 = seca)"
                onMoved: function (v) { root.seq.setCfg("inst", "rev", v) } }
     }
 }

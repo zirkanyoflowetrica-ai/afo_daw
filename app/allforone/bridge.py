@@ -169,6 +169,14 @@ class Bridge(QObject):
         self.host.engine.set_master_gain_db(db)
         return _ok(db=db)
 
+    @Slot(float, float, bool, result=str)
+    def setMasterProcessing(self, drive: float, tone: float, limiter: bool) -> str:
+        """Saturación, Tono y Limitador de «Mezcla final» (sección master del motor)."""
+        if (g := self._guard()):
+            return g
+        self.host.engine.set_master_processing(float(drive), float(tone), bool(limiter))
+        return _ok()
+
     @Slot(int, float, result=str)
     def setTrackVolume(self, track_id: int, pos: float) -> str:
         if (g := self._guard()):

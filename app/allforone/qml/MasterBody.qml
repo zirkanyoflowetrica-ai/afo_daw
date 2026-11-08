@@ -44,7 +44,7 @@ Column {
                 }
                 Text { x: 100 - width / 2; y: 88 - 15 * 0.8; text: "VU"; color: dial.ink
                        font.family: Theme.font; font.pixelSize: 15; font.weight: 700 }
-                Rectangle {                      // aguja: balística ~300 ms sobre el pico medio L/R
+                Rectangle {                      // aguja: VU del motor (RMS con balística de 300 ms)
                     x: 98.5; y: 28; width: 3; height: 77
                     color: Theme.dark ? "#ffb000" : "#000"
                     transform: Rotation { origin.x: 1.5; origin.y: 77; angle: -50 + root.studio.vu * 1.05
@@ -71,15 +71,15 @@ Column {
             Lcd { text: Math.round(root.studio.masterPos); fontSize: 24; width: Math.max(implicitWidth, 138) }
             Row {
                 spacing: 16
-                Knob { label: "Saturación"; value: 30; tip: "Pendiente: todavía no procesa audio en el motor"
-                       onMoved: root.studio.toast("Saturación: pendiente, todavía no procesa audio") }
-                Knob { label: "Tono"; value: 50; tip: "Pendiente: todavía no procesa audio en el motor"
-                       onMoved: root.studio.toast("Tono: pendiente, todavía no procesa audio") }
+                Knob { label: "Saturación"; value: root.studio.masterDrive; tip: "Saturación suave del master (tanh)"
+                       onMoved: function (v) { root.studio.setMasterProcessing(v, root.studio.masterTone, root.studio.limiter) } }
+                Knob { label: "Tono"; value: root.studio.masterTone; tip: "EQ inclinada: 50 = plano; ±6 dB en graves y agudos"
+                       onMoved: function (v) { root.studio.setMasterProcessing(root.studio.masterDrive, v, root.studio.limiter) } }
             }
             NeoButton {
                 text: "Limitador: " + (root.studio.limiter ? "activo" : "apagado")
-                tip: "Pendiente (V0.7): este botón aún no procesa audio en el motor"
-                onClicked: root.studio.limiter = !root.studio.limiter
+                tip: "Limitador de seguridad del master: techo −1 dBFS (también al exportar)"
+                onClicked: root.studio.setMasterProcessing(root.studio.masterDrive, root.studio.masterTone, !root.studio.limiter)
             }
             NeoButton { text: "Exportar mezcla"; onClicked: root.studio.exportMix() }
         }
