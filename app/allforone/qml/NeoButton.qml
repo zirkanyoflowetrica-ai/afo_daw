@@ -27,7 +27,9 @@ Item {
     }
     readonly property real gap: extra.children.length && text.length ? 7 : 0
     implicitWidth: Math.round(lbl.implicitWidth + extra.childrenRect.width + gap + 2 * padX + 2 * border)
-    implicitHeight: Math.round(fontSize * 1.4 + 2 * padY + 2 * border)
+    implicitHeight: Math.round(lbl.height + 2 * padY + 2 * border)
+    property bool wrap: false
+    property bool leftAlign: false              // text-align:left (contenido a la izquierda)                   // texto en varias líneas si el botón es más estrecho que el texto
     width: implicitWidth
     height: implicitHeight
     activeFocusOnTab: true
@@ -47,7 +49,8 @@ Item {
         border.width: root.border
         border.color: Theme.line
         Row {
-            anchors.centerIn: parent
+            x: root.leftAlign ? root.padX + root.border : (parent.width - width) / 2
+            anchors.verticalCenter: parent.verticalCenter
             spacing: root.gap
             Item { id: extra; width: childrenRect.width; height: childrenRect.height; anchors.verticalCenter: parent.verticalCenter }
             Text {
@@ -58,7 +61,13 @@ Item {
                 font.family: Theme.font
                 font.pixelSize: root.fontSize
                 font.weight: root.fontWeight
-                height: root.fontSize * 1.4          // line-height: 1.4, texto centrado en la línea
+                // line-height: 1.4, texto centrado en la línea
+                width: root.wrap ? Math.min(implicitWidth, root.width - 2 * root.padX - 2 * root.border - extra.width - root.gap) : implicitWidth
+                wrapMode: root.wrap ? Text.WordWrap : Text.NoWrap
+                horizontalAlignment: Text.AlignHCenter
+                // (con RichText, lineCount siempre vale 1: las líneas se cuentan por la altura del contenido)
+                height: Math.max(1, Math.round(contentHeight / fm.lineSpacing)) * root.fontSize * 1.4
+                FontMetrics { id: fm; font: lbl.font }
                 verticalAlignment: Text.AlignVCenter
                 anchors.verticalCenter: parent.verticalCenter
                 visible: text.length > 0

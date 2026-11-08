@@ -18,6 +18,7 @@ Column {
         boundsBehavior: Flickable.StopAtBounds
         interactive: contentWidth > width
         clip: true
+        onContentXChanged: root.studio.stripScroll = contentX     // los cables del Afinador siguen a las tiras
         Row {
             id: strips
             spacing: 8

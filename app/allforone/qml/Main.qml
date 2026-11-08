@@ -38,7 +38,19 @@ Window {
     property bool limiter: true                // pendiente (V0.7): todavía no procesa audio
     Mixer { id: mx; studio: win }
     readonly property real bar16: 16 * 4 * 60 / Math.max(40, bpm)
-    readonly property var cableLinks: L.links(hidden)
+    property real stripScroll: 0               // desplazamiento horizontal de las tiras de la consola
+    onStripScrollChanged: geomRev++
+    // Cables fijos + uno del Afinador a la tira de cada voz que va a afinar (intensidad > 0 %)
+    readonly property var cableLinks: {
+        var out = L.links(hidden)
+        if (mx.tuneStrength > 0 && !hidden.afina && !hidden.mezcla) {
+            mx.items; mx.tune; tracks
+            var S = mx.tunedStrips()
+            for (var k = 0; k < S.length; k++)
+                out.push({ key: "afina-tira-" + S[k].i, f: "afina", t: "mezcla", mx: S[k].i, slot: k, total: S.length })
+        }
+        return out
+    }
     readonly property var portList: {
         var out = []
         for (var i = 0; i < cableLinks.length; i++) {
@@ -54,8 +66,13 @@ Window {
         return p ? { x: p.x, y: p.y, w: p.width, h: p.height } : { x: 0, y: 0, w: 1, h: 1 }
     }
     function anchorOf(link, end) {
-        var id = end === "from" ? link.f : link.t
-        return L.anchor(geom(id), portOverride[link.key + ":" + end] || L.defaultPin(link, end))
+        var id = end === "from" ? link.f : link.t, g = geom(id)
+        return L.anchor(g, portOverride[link.key + ":" + end] || defaultPin(link, end, g))
+    }
+    function defaultPin(link, end, g) {
+        if (link.mx === undefined) return L.defaultPin(link, end)
+        if (end === "to") return { side: "top", u: L.clamp((12 + link.mx * 92 + 42 - stripScroll) / g.w, .04, .96) }   // centro de la tira
+        return { side: "right", u: L.clamp(.12 + .76 * (link.slot + 1) / (link.total + 1), .08, .92) }
     }
     function fitIds(ids) {
         var rs = []
@@ -73,9 +90,20 @@ Window {
     // Para la autoprueba y las comparaciones: estado del mezclador, mezclar y encuadrar un módulo a zoom 1
     function mixerSnapshot() {
         return { items: mx.items, runs: mx.runs.length, busy: mx.busy, status: mx.status, live: mx.live,
+                 tune: mx.tune, links: cableLinks.map(function (l) { return l.key }),
+                 lastTuned: mx.runs.length ? !!mx.runs[mx.runs.length - 1].tuned : false,
                  tracks: tracks.map(function (t) { return { id: t.id, vol: t.vol, pan: t.pan } }) }
     }
     function mixNow(remix) { mx.mix(!!remix) }
+    function setTuneStrength(v) { mx.tuneStrength = v }
+    function tuneCommand(what, v) { if (what === "confirm") mx.confirmTune(); else mx.setTuneParam(what, v) }
+    function mixerCommand(what) {
+        if (what === "tracks") mx.sendMasterToTracks()
+        else if (what === "listenMaster") mx.listen("master", "B")
+        else if (what === "listenReview") mx.listen("review", "A")
+        else if (what === "stop") mx.listen("review", "stop")
+    }
+    function setView(z, x, y) { zoom = z; tx = x; ty = y }
     function showPanelAt(id, x, y) { var p = panelItems[id]; zoom = 1; tx = x - p.x; ty = y - p.y }
     function setHidden(id, b) {
         var h = Object.assign({}, hidden); h[id] = b; hidden = h
@@ -386,7 +414,7 @@ Window {
                     pid: modelData[0]; title: modelData[1]; modelName: modelData[2]
                     viewZ: win.zoom
                     visible: !win.hidden[pid]
-                    autoHeight: ["pistas", "audios", "mezcla", "master"].indexOf(pid) >= 0
+                    autoHeight: ["pistas", "audios", "mezcla", "master", "afina", "mastia", "antes"].indexOf(pid) >= 0
                     z: index + 1
                     Component.onCompleted: {
                         var o = (win.savedLayout.pos || {})[pid] || modelData[3]
@@ -407,11 +435,15 @@ Window {
 
                     Loader {
                         width: panel.bodyWidth
-                        sourceComponent: ({ pistas: tracksComp, audios: audiosComp, mezcla: mixComp, master: masterComp })[panel.pid] || pendingComp
+                        sourceComponent: ({ pistas: tracksComp, audios: audiosComp, mezcla: mixComp, master: masterComp,
+                                            afina: tuneComp, mastia: masteringComp, antes: reviewComp })[panel.pid] || pendingComp
                     }
                     Component { id: audiosComp; AudiosBody { mixer: mx; studio: win } }
                     Component { id: mixComp; MixBody { mixer: mx; studio: win } }
                     Component { id: masterComp; MasterBody { studio: win } }
+                    Component { id: tuneComp; TuneBody { mixer: mx } }
+                    Component { id: masteringComp; MasteringBody { mixer: mx } }
+                    Component { id: reviewComp; ReviewBody { mixer: mx } }
                     Component {
                         id: tracksComp
                         TracksBody {
@@ -435,7 +467,7 @@ Window {
                     Component {
                         id: pendingComp
                         PendingBody {
-                            phase: ({ afina: 2, mastia: 2, antes: 2, cinta: 4 })[panel.pid] || 3
+                            phase: ({ cinta: 4 })[panel.pid] || 3
                             summary: ({
                                 piano: "Piano roll con teclado y rejilla de notas.",
                                 inst: "Banco de instrumentos con presets por pista.",

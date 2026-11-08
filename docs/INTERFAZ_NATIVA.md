@@ -19,7 +19,7 @@ python tools/native_compare.py [--oscuro]   # comparación píxel a píxel con l
 |---|---|---|
 | 0 | Ventana, cabecera (transporte, tempo, zoom, Ver todo, Restaurar diseño, tema), lienzo infinito con puntos, 12 módulos movibles y redimensionables, cables con curva, conectores y cuadrados de curva arrastrables, diseño y tema guardados, módulo **Pistas** con el motor real, arrastrar audios a la ventana | **Hecha** |
 | 1 | Audios, Mezcla (consola, faders, rol de voz, MEZCLAR AUTOMÁTICAMENTE), Mezcla final (VU, master, exportar) | **Hecha** |
-| 2 | Afinador, Master IA, Antes / Después | Pendiente |
+| 2 | Afinador, Master IA, Antes / Después | **Hecha** |
 | 3 | Piano roll, Instrumentos, Batería, Pistas con IA, con sonido del motor (hoy son la demo Web Audio) | Pendiente |
 | 4 | Grabador de cintas grabando con el motor; autoprueba completa sobre QML; retirar Qt WebEngine | Pendiente |
 
@@ -77,5 +77,27 @@ desfasado unos píxeles, el suavizado del texto y alguna línea que parte distin
 automática no es comparable: la web tiene encima 3 tiras DEMO de la plantilla que la nativa todavía
 no muestra (fase 3).
 
-Aún no en la nativa: escuchar los masters y el A/B (Master IA y Antes / Después, fase 2). La
-mezcla sí se genera y queda en `datos/mezclas`.
+## Fase 2: cómo se hizo
+
+- `TuneBody.qml` (Afinador): pantalla CONFIRMADO / SIN CONFIRMAR con tonalidad y BPM, modos
+  Automático / Asistido / Manual, Tónica, Escala, BPM, Analizar música, ✔ Confirmar, estado,
+  Intensidad, voces a afinar (P, L, R, _B) y la lista de tiras conectadas. Con intensidad > 0 % sale
+  **un cable a la tira exacta** de cada voz con ese rol; los cables siguen a las tiras al desplazar
+  la consola. La curva de tono antes/después sigue pendiente y el módulo lo dice.
+- `MasteringBody.qml` (Master IA): los 4 masters del V4.2 + «Según referencia» con LUFS, true peak
+  y limitación medidos; escucha A (sin master) / B (master) en el motor a la misma posición;
+  → Enviar a Pistas, Exportar sesión ZIP (en segundo plano) y Abrir carpeta.
+- `ReviewBody.qml` (Antes / Después): selector de pista, ▶ A original / ▶ B procesada / ■ en el
+  motor, y las decisiones del mezclador para esa pista.
+- `Mixer.qml` añade el estado del afinador (la confirmación se anula si cambian los audios, los
+  roles o la tonalidad) y las acciones de escucha. `Note.qml` es el recuadro de notas.
+- Un botón con RichText informa `lineCount = 1` aunque tenga dos líneas: `NeoButton` cuenta las
+  líneas por la altura del contenido.
+
+Comprobado con `--nativo --selftest` (motor real): cable del Afinador a la tira de la voz P;
+confirmar F menor 91 BPM en modo manual; **REMEZCLAR con afinación al 60 %: la mezcla sale
+«afinada»**; master enviado a Pistas; escucha B del master, A/B de una pista y parada en el motor.
+
+Diferencias que quedan con la web: el texto de la curva pendiente no sale estirado (en la web el
+SVG lo deforma), y en Master IA los tres botones caben en una fila porque el texto nativo es algo
+más estrecho.

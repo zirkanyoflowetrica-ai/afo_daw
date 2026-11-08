@@ -19,6 +19,9 @@ QtObject {
     readonly property color grip: dark ? "#3a3446" : "#ffffff"
     readonly property color accent: "#ffc233"
     readonly property color focus: "#2a6bff"
+    // botón pulsado de pestañas y A/B: negro en claro, claro con texto negro en oscuro
+    readonly property color pressedBg: dark ? "#efe9ff" : "#000000"
+    readonly property color pressedInk: dark ? "#000000" : "#ffffff"
 
     // Colores de módulo (PC en la plantilla y en afo_panels.js)
     readonly property var pc: ({

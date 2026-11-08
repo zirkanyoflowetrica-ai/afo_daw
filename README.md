@@ -31,8 +31,8 @@ Todo lo que AllForOne escribe (datos, registros, cachés, temporales) queda dent
 5. Escucha y compara en **Master IA** y **Antes / Después**. El botón **◐** cambia al tema oscuro.
 
 **Interfaz nativa (en desarrollo, sin navegador interno):** `python -m allforone --nativo` desde
-`app/`. Ya funcionan el lienzo, Pistas, Audios, la consola Mezcla con la mezcla automática y
-Mezcla final; el resto llega por fases
+`app/`. Ya funcionan el lienzo, Pistas, Audios, la consola Mezcla con la mezcla automática,
+Mezcla final, Afinador, Master IA y Antes / Después; el resto llega por fases
 (`docs/INTERFAZ_NATIVA.md`).
 
 ## Estructura

@@ -22,6 +22,19 @@ QtObject {
     property int run: -1
     property var live: ({})                     // por id de pista del motor: decisiones reales del mezclador
     property int workingTrack: -1
+    // Afinador (PSOLA): tonalidad y BPM confirmados antes de afinar
+    property var tune: ({ mode: "Automático", key: "F", scale: "Menor natural", bpm: 91, prefer: true,
+                          voices: { lead: true, l: false, r: false, b: false }, analysis: null, confirmed: null,
+                          status: "Pendiente: analiza y confirma antes de afinar." })
+    property real tuneStrength: 0               // intensidad 0..100 (0 = sin afinación)
+    property var keys: ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
+    property var scales: ["Cromatica", "Mayor", "Menor natural", "Menor armonica", "Pentatonica mayor", "Pentatonica menor"]
+    // Master IA y Antes / Después
+    property int masterSel: 3
+    property string masterAb: "B"
+    property int reviewSel: 0
+    property string reviewAb: "A"
+    readonly property var currentRun: run >= 0 && run < runs.length ? runs[run] : null
 
     function stepDb() { return 5 + stepKnob / 20 }
     function call(cmd, data) {
@@ -33,6 +46,7 @@ QtObject {
         if (info.ok) {
             data = { profiles: info.profiles.map(function (p) { return [p[0], p[1]] }), modes: info.modes, masters: info.masters, types: info.types }
             mode = data.modes[0]
+            keys = info.keys; scales = info.scales
             ready = true
         } else { status = info.error; ready = false }
     }
@@ -49,6 +63,7 @@ QtObject {
                        auto_kind: s.auto_kind, auto_role: s.auto_role, trackId: -1, note: "" })
         }
         items = out
+        unconfirm()
         return fresh
     }
     function itemOfTrack(id) {
@@ -85,12 +100,13 @@ QtObject {
         it.role = role
         if (MD.KIND_FOR_ROLE[role] && MD.VOCAL_KINDS.indexOf(it.kind) >= 0) it.kind = MD.KIND_FOR_ROLE[role]
         touch()
+        unconfirm()
     }
     function setTrackRole(id, role) {
         for (var i = 0; i < items.length; i++) if (items[i].trackId === id) { setItemRole(i, role); return }
     }
-    function removeItem(i) { var out = items.slice(); out.splice(i, 1); items = out }
-    function clear() { items = []; live = {}; status = "Lista vacía."; progress = 0 }
+    function removeItem(i) { var out = items.slice(); out.splice(i, 1); items = out; unconfirm() }
+    function clear() { items = []; live = {}; status = "Lista vacía."; progress = 0; unconfirm() }
 
     // ---------------- importar ----------------
     function importToTracks(paths) {
@@ -117,9 +133,8 @@ QtObject {
             stems: items.map(function (s) { return { path: s.path, name: s.name, kind: s.kind, role: s.role, auto_kind: s.auto_kind, auto_role: s.auto_role } }),
             reference: reference, profile: profile, mode: mode, profile_name: p ? p[1] : "",
             step_db: stepDb(), space: spaceKnob,
-            // El Afinador llega en la fase 2: sin afinación (intensidad 0 %)
-            tune: { mode: "Automático", key: "F", scale: "Menor natural", bpm: 91, prefer: true, strength: 0,
-                    voices: { lead: true, l: false, r: false, b: false } }
+            tune: { mode: tune.mode, key: tune.key, scale: tune.scale, bpm: tune.bpm, prefer: tune.prefer,
+                    strength: tuneStrength, voices: tune.voices }
         }
     }
     function mix(remix) {
@@ -142,18 +157,71 @@ QtObject {
             // Las decisiones reales se llevan a la consola: fader (nivel) y perilla (paneo)
             studio.setTrackMix(id, MD.dbToFader(ev.gain_db), 50 + 50 * (+ev.pan || 0))
         } else if (ev.type === "progress") {
-            if (ev.panel !== "afina") { status = ev.desc || "Trabajando…"; if (ev.p !== undefined) progress = ev.p }
+            if (ev.panel === "afina") setTune({ status: ev.desc })
+            else { status = ev.desc || "Trabajando…"; if (ev.p !== undefined) progress = ev.p }
+        } else if (ev.type === "analysis") {
+            var t = { analysis: ev, status: ev.summary + "\n\nRevisa la propuesta y pulsa «Confirmar»." }
+            if (ev.key && tune.mode !== "Manual") { t.key = ev.key; t.scale = ev.scale || tune.scale }
+            if (ev.bpm && tune.mode !== "Manual") t.bpm = Math.round(ev.bpm * 10) / 10
+            setTune(t)
         } else if (ev.type === "done") {
             var rs = runs.slice(); rs.push(ev.run); runs = rs; run = rs.length - 1
-            busy = false; workingTrack = -1; progress = 100
+            busy = false; workingTrack = -1; progress = 100; reviewSel = 0
             status = "Mezcla #" + rs.length + " lista en " + ev.run.seconds + " s · " + Object.keys(ev.run.masters).length +
                      " masters · " + ev.run.review.length + " pistas A/B" + (ev.run.tuned ? " · afinada" : "")
             studio.toast("Mezcla automática terminada · la consola refleja los niveles y el paneo")
         } else if (ev.type === "error") {
             busy = false; workingTrack = -1; status = "Error: " + ev.error
+            if (ev.panel === "analysis") setTune({ status: "Error: " + ev.error })
             studio.toast(ev.error)
         } else if (ev.type === "idle") {
             if (busy) { busy = false; workingTrack = -1 }
         }
     }
+
+    // ---------------- Afinador ----------------
+    function setTune(changes) { tune = Object.assign({}, tune, changes) }
+    function unconfirm() { if (tune.confirmed) setTune({ confirmed: null }) }
+    function setTuneParam(k, v) { var c = {}; c[k] = v; c.confirmed = null; setTune(c) }
+    function toggleVoice(k) { var v = Object.assign({}, tune.voices); v[k] = !v[k]; setTune({ voices: v }) }
+    function analyze() {
+        var r = fail(call("analyze", request()))
+        if (r.ok) setTune({ status: "Analizando instrumentos…" })
+    }
+    function confirmTune() {
+        var r = call("confirm", request())
+        if (r.ok) setTune({ confirmed: r.confirmed, status: r.status })
+        else setTune({ confirmed: null, status: r.error || "Sin confirmar" })
+    }
+    // Tiras que el Afinador va a tocar: pistas con el rol de las voces marcadas
+    function tunedStrips() {
+        var V = tune.voices, want = []
+        if (V.lead) want.push("P")
+        if (V.l) want.push("L", "B_L")
+        if (V.r) want.push("R", "B_R")
+        if (V.b) want.push("B", "B_L", "B_R")
+        var out = [], tr = studio.tracks
+        for (var i = 0; i < tr.length; i++) {
+            var it = itemOfTrack(tr[i].id)
+            if (it && it.role !== "—" && want.indexOf(it.role) >= 0) out.push({ i: i, role: it.role, name: tr[i].name })
+        }
+        return out
+    }
+
+    // ---------------- Master IA y Antes / Después ----------------
+    function listen(what, ab) {
+        var d = { what: what, ab: ab, run: run, sel: what === "master" ? masterSel : reviewSel }
+        if (ab !== "stop") { if (what === "master") masterAb = ab; else reviewAb = ab }
+        var r = fail(call("listen", d))
+        if (r.ok && r.file) studio.toast("Escuchando " + r.file)
+    }
+    function sendMasterToTracks() {
+        var r = fail(call("tracks", { run: run, sel: masterSel }))
+        if (r.ok) { r.tracks.forEach(function (t) { studio.addTrack(t, false) }); studio.toast("Master añadido a Pistas") }
+    }
+    function exportZip() {
+        var r = fail(call("zip", { run: run, sel: masterSel }))
+        if (r.ok) studio.toast("Comprimiendo la sesión en segundo plano → " + r.path)
+    }
+    function openFolder() { fail(call("folder", { run: run, sel: masterSel })) }
 }

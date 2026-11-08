@@ -199,3 +199,32 @@ def _native_mixer_checks(rep, app, host, window, prop) -> None:
     moved = [t for t in faders if abs(t["vol"] - 70) > 0.5]
     rep.check("la consola refleja la mezcla: faders en la ganancia real medida",
               len(faders) >= 3 and len(moved) >= 1 and len(st["live"]) >= 3, faders)
+
+    # Fase 2: Afinador (cable a la tira de la voz), confirmar tonalidad, Master IA y Antes / Después
+    call("setTuneStrength", 60)
+    _wait(app, lambda: False, 0.3, host)
+    links = snap()["links"]
+    rep.check("el Afinador se cablea a la tira de la voz que afina", any(k.startswith("afina-tira-") for k in links), links)
+    call("tuneCommand", "mode", "Manual")
+    call("tuneCommand", "confirm", "")
+    tune = snap()["tune"]
+    rep.check("confirmar tonalidad y BPM (modo manual)", bool(tune.get("confirmed")), tune.get("status"))
+    call("mixNow", True)                          # REMEZCLAR con afinación al 60 %
+    done = _wait(app, lambda: snap()["runs"] >= 2 or "Error" in snap()["status"], 240, host)
+    st = snap()
+    rep.check("REMEZCLAR con afinación: la mezcla sale afinada", done and st["runs"] >= 2 and bool(st.get("lastTuned")), st["status"])
+    call("setTuneStrength", 0)
+
+    before = len(host.engine.tracks())
+    call("mixerCommand", "tracks")
+    rep.check("Master IA → Pistas (pista nueva en el motor)", _wait(app, lambda: len(host.engine.tracks()) > before, 10, host),
+              f"pistas en el motor: {len(host.engine.tracks())}")
+    if host.engine.device_info().get("open"):
+        call("mixerCommand", "listenMaster")
+        rep.check("escucha B del master en el motor", _wait(app, lambda: host.engine.preview_playing(), 3, host))
+        call("mixerCommand", "listenReview")
+        rep.check("escucha A/B de una pista en el motor", _wait(app, lambda: host.engine.preview_playing(), 3, host))
+        call("mixerCommand", "stop")
+        rep.check("parar la escucha", _wait(app, lambda: not host.engine.preview_playing(), 3, host))
+    else:
+        rep.add("escucha A/B en el motor", "omitido", "sin dispositivo de salida abierto")
