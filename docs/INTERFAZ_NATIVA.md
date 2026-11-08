@@ -18,7 +18,7 @@ python tools/native_compare.py [--oscuro]   # comparación píxel a píxel con l
 | Fase | Contenido | Estado |
 |---|---|---|
 | 0 | Ventana, cabecera (transporte, tempo, zoom, Ver todo, Restaurar diseño, tema), lienzo infinito con puntos, 12 módulos movibles y redimensionables, cables con curva, conectores y cuadrados de curva arrastrables, diseño y tema guardados, módulo **Pistas** con el motor real, arrastrar audios a la ventana | **Hecha** |
-| 1 | Audios, Mezcla (consola, faders, rol de voz, MEZCLAR AUTOMÁTICAMENTE), Mezcla final (VU, master, exportar) | Pendiente |
+| 1 | Audios, Mezcla (consola, faders, rol de voz, MEZCLAR AUTOMÁTICAMENTE), Mezcla final (VU, master, exportar) | **Hecha** |
 | 2 | Afinador, Master IA, Antes / Después | Pendiente |
 | 3 | Piano roll, Instrumentos, Batería, Pistas con IA, con sonido del motor (hoy son la demo Web Audio) | Pendiente |
 | 4 | Grabador de cintas grabando con el motor; autoprueba completa sobre QML; retirar Qt WebEngine | Pendiente |
@@ -47,3 +47,35 @@ Los módulos de fases pendientes muestran en su cuerpo que aún no están migrad
 | Lienzo | 30 % (claro) / 18 % (oscuro) | Cuerpos de los módulos de las fases 1–4 y pistas DEMO de la plantilla, que la nativa no muestra |
 
 Encuadre inicial: zoom 0,6157 (web 0,6159).
+
+## Fase 1: cómo se hizo
+
+- `Mixer.qml` + `mixdata.js`: el estado del Mezclador V4.2 (antes `AFO_MX` en `afo_panels.js`):
+  fichas de audio, tipo y rol de voz, plantilla, escalón L/R, espacio vocal, progreso, historial y
+  las decisiones reales por tira. Habla con Python por el mismo `afo.mixer(...)`.
+- `AudiosBody.qml`: contador, zona para soltar, + Audios / + Referencia / ⇢ Crear pistas / Vaciar,
+  lista con tipo y rol editables. Soltar audios en cualquier parte de la ventana crea ficha, pista
+  y tira (los WAV de 64 bits se convierten en segundo plano y se enlazan al llegar).
+- `MixBody.qml`: una tira por pista con tipo, rol, LCD de la decisión del mezclador (ganancia y
+  posición medidas), Pan, fader y medidor del motor; debajo, MEZCLAR / REMEZCLAR, progreso, estado e
+  historial. Al terminar, faders y paneo se mueven a lo que decidió el mezclador.
+- `MasterBody.qml`: VU con balística ~300 ms sobre el pico L/R del motor (no mide sonoridad), fader
+  master (70 = 0 dB) con medidores L/R reales y Exportar mezcla. **Saturación, Tono y Limitador
+  siguen sin procesar audio**: lo dicen al pasar el ratón y al usarlos.
+- Controles nuevos: `Knob.qml`, `Fader.qml`, `Meter.qml`, `Select.qml`, `Lcd.qml`.
+- Rol de voz también en cada fila de Pistas; cambiarlo en Audios, Pistas o la consola lo cambia en
+  los tres.
+
+Comprobado con `--nativo --selftest` (motor real): soltar 3 audios (uno en 64 bits) → 3 fichas,
+pistas y tiras; clasificación por nombre; MEZCLAR en ~2,4 s; faders en 59 / 51 / 53, idénticos a la
+web; medidores del master con el nivel del motor. Con los 10 stems reales de PPPP: 10 tiras con su
+rol (P, L, R) deducido del nombre.
+
+Comparación por módulo a zoom 1 tras importar y mezclar (compensando desplazamientos de ±4 px):
+Mezcla final 11,8 %, Audios 21,8 %, cabecera de Mezcla 6,6 %. Lo que queda es el rayado de fondo
+desfasado unos píxeles, el suavizado del texto y alguna línea que parte distinto. El bloque de mezcla
+automática no es comparable: la web tiene encima 3 tiras DEMO de la plantilla que la nativa todavía
+no muestra (fase 3).
+
+Aún no en la nativa: escuchar los masters y el A/B (Master IA y Antes / Después, fase 2). La
+mezcla sí se genera y queda en `datos/mezclas`.

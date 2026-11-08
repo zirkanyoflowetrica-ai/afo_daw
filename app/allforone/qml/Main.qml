@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Window
 import QtQuick.Shapes
 import "layout.js" as L
+import "mixdata.js" as MD
 
 // AllForOne con interfaz nativa (Qt Quick). Referencia visual: PLANTILLA_DAW.html.
 // Lógica del lienzo portada de la plantilla; el audio y los datos vienen de Python (`afo`).
@@ -30,6 +31,12 @@ Window {
     property real ty: 0
     property real zoom: 1
     property var panelItems: ({})
+    property real masterPos: 70                // fader master (70 = 0 dB)
+    property var masterDb: [-100, -100]
+    property var trackDb: ({})
+    property real vu: 0
+    property bool limiter: true                // pendiente (V0.7): todavía no procesa audio
+    Mixer { id: mx; studio: win }
     readonly property real bar16: 16 * 4 * 60 / Math.max(40, bpm)
     readonly property var cableLinks: L.links(hidden)
     readonly property var portList: {
@@ -63,6 +70,13 @@ Window {
         tx = cx - (cx - tx) * f; ty = cy - (cy - ty) * f; zoom = z
     }
     function setDark(b) { Theme.dark = b }
+    // Para la autoprueba y las comparaciones: estado del mezclador, mezclar y encuadrar un módulo a zoom 1
+    function mixerSnapshot() {
+        return { items: mx.items, runs: mx.runs.length, busy: mx.busy, status: mx.status, live: mx.live,
+                 tracks: tracks.map(function (t) { return { id: t.id, vol: t.vol, pan: t.pan } }) }
+    }
+    function mixNow(remix) { mx.mix(!!remix) }
+    function showPanelAt(id, x, y) { var p = panelItems[id]; zoom = 1; tx = x - p.x; ty = y - p.y }
     function setHidden(id, b) {
         var h = Object.assign({}, hidden); h[id] = b; hidden = h
         if (!b) Qt.callLater(fitIds, [id])
@@ -97,11 +111,35 @@ Window {
         var args = Array.prototype.slice.call(arguments, 1)
         try { return JSON.parse(afo[name].apply(afo, args)) } catch (e) { return { ok: false, error: String(e) } }
     }
-    function addTrack(info) {
+    // stem = false: la pista no es un audio para el mezclador (tono de prueba, master enviado a Pistas)
+    function addTrack(info, stem) {
         var t = tracks.slice()
         t.push({ id: info.id, name: info.name, len: info.length_seconds || 0, peaks: info.peaks || [],
-                 note: info.note || "", mute: false, solo: false })
+                 note: info.note || "", mute: false, solo: false, vol: 70, pan: 50 })
         tracks = t; selected = t.length - 1
+        if (stem !== false) mx.linkTrack(info)
+    }
+    function removeTrackAt(i) {
+        var t = tracks.slice(), gone = t.splice(i, 1)[0]
+        call("removeTrack", gone.id); tracks = t
+        if (selected >= t.length) selected = t.length - 1
+        mx.unlinkTrack(gone.id)
+    }
+    // Fader (0..100, 70 = 0 dB) y paneo (0..100, 50 = centro) de una pista, en la interfaz y en el motor
+    function setTrackMix(id, vol, pan) {
+        var t = tracks.slice()
+        for (var i = 0; i < t.length; i++) if (t[i].id === id) {
+            t[i] = Object.assign({}, t[i], { vol: Math.round(vol), pan: pan })
+            if (engineOk) { call("setTrackVolume", id, Math.round(vol)); call("setTrackPan", id, (pan - 50) / 50) }
+        }
+        tracks = t
+    }
+    function trackLevel(id) { var v = trackDb[String(id)]; return v === undefined ? -100 : v }
+    function setMaster(v) { masterPos = v; if (engineOk) call("setMasterVolume", v) }
+    function exportMix() {
+        toast("Renderizando mezcla…")
+        var r = call("exportMix")
+        toast(r.ok ? "Exportado: " + r.path : (r.cancelled ? "Exportación cancelada" : r.error))
     }
     function syncTrackStates() {
         call("setTrackStates", JSON.stringify(tracks.map(function (t) { return [t.id, t.mute, t.solo] })))
@@ -114,14 +152,7 @@ Window {
             toast(r.tracks.length + " archivo(s) en el motor" + (conv ? " · convirtiendo " + conv + " a 32 bits" : ""))
         } else if (!r.cancelled) toast(r.error)
     }
-    function importPaths(paths) {
-        var r = call("importPaths", JSON.stringify(paths))
-        if (r.ok) {
-            r.tracks.forEach(addTrack)
-            var conv = (r.converting || []).length
-            toast(r.tracks.length + " archivo(s) en el motor" + (conv ? " · convirtiendo " + conv + " a 32 bits" : ""))
-        } else toast(r.error)
-    }
+    function importPaths(paths) { mx.importToTracks(paths) }   // audio → ficha + pista + tira
     function timeText() {
         if (step < 0) return "1.1"
         var s = step % 16, b = step >> 4
@@ -133,13 +164,18 @@ Window {
             var st; try { st = JSON.parse(s) } catch (e) { return }
             win.playing = st.playing
             if (st.playing || st.position > 0) win.step = Math.floor(st.position * win.bpm / 15) % 256
+            win.masterDb = st.master
+            win.trackDb = st.tracks
+            // VU: balística aproximada (~300 ms) sobre el pico medio L/R. No es una medida de sonoridad.
+            var target = st.playing ? (MD.dbToPct(st.master[0]) + MD.dbToPct(st.master[1])) / 2 : 0
+            win.vu += (target - win.vu) * 0.25
         }
         function onMixerEvent(s) {
             var ev; try { ev = JSON.parse(s) } catch (e) { return }
-            if (ev.type !== "import") return
-            if (ev.phase === "convert") toast(ev.desc)
-            else if (ev.phase === "track") { addTrack(ev.track); toast("Convertido y en el motor: " + ev.track.name) }
-            else if (ev.phase === "error") toast(ev.error)
+            if (ev.type !== "import") { mx.onEvent(ev); return }
+            if (ev.phase === "convert") { mx.status = ev.desc + (ev.left ? " (quedan " + ev.left + ")" : ""); mx.progress = Math.min(95, mx.progress + 5) }
+            else if (ev.phase === "track") { addTrack(ev.track); mx.status = ev.track.name + ": " + (ev.track.note || "importado"); mx.progress = 0 }
+            else if (ev.phase === "error") { toast(ev.error); mx.status = ev.error; mx.progress = 0 }
         }
     }
 
@@ -350,7 +386,7 @@ Window {
                     pid: modelData[0]; title: modelData[1]; modelName: modelData[2]
                     viewZ: win.zoom
                     visible: !win.hidden[pid]
-                    autoHeight: pid === "pistas"
+                    autoHeight: ["pistas", "audios", "mezcla", "master"].indexOf(pid) >= 0
                     z: index + 1
                     Component.onCompleted: {
                         var o = (win.savedLayout.pos || {})[pid] || modelData[3]
@@ -371,35 +407,35 @@ Window {
 
                     Loader {
                         width: panel.bodyWidth
-                        sourceComponent: panel.pid === "pistas" ? tracksComp : pendingComp
+                        sourceComponent: ({ pistas: tracksComp, audios: audiosComp, mezcla: mixComp, master: masterComp })[panel.pid] || pendingComp
                     }
+                    Component { id: audiosComp; AudiosBody { mixer: mx; studio: win } }
+                    Component { id: mixComp; MixBody { mixer: mx; studio: win } }
+                    Component { id: masterComp; MasterBody { studio: win } }
                     Component {
                         id: tracksComp
                         TracksBody {
                             tracks: win.tracks
+                            mixer: mx
                             selected: win.selected
                             bar16: win.bar16
                             headPos: win.step < 0 ? 0 : (win.step % 256) / 256
                             onAddAudio: { if (win.engineOk) win.importAudio(); else win.toast("Motor nativo no disponible") }
                             onAddTone: {
                                 var r = win.call("addTestTone")
-                                if (r.ok) { win.addTrack(r.track); win.toast("Tono de prueba 440 Hz (sintético) añadido") } else win.toast(r.error)
+                                if (r.ok) { win.addTrack(r.track, false); win.toast("Tono de prueba 440 Hz (sintético) añadido") } else win.toast(r.error)
                             }
                             onNotYet: function (what) { win.toast("«" + what + "» todavía no está en la interfaz nativa") }
                             onSelectTrack: function (i) { win.selected = i }
                             onToggleMute: function (i) { var t = win.tracks.slice(); t[i] = Object.assign({}, t[i], { mute: !t[i].mute }); win.tracks = t; win.syncTrackStates() }
                             onToggleSolo: function (i) { var t = win.tracks.slice(); t[i] = Object.assign({}, t[i], { solo: !t[i].solo }); win.tracks = t; win.syncTrackStates() }
-                            onRemoveTrack: function (i) {
-                                var t = win.tracks.slice(), gone = t.splice(i, 1)[0]
-                                win.call("removeTrack", gone.id); win.tracks = t
-                                if (win.selected >= t.length) win.selected = t.length - 1
-                            }
+                            onRemoveTrack: function (i) { win.removeTrackAt(i) }
                         }
                     }
                     Component {
                         id: pendingComp
                         PendingBody {
-                            phase: ({ audios: 1, mezcla: 1, master: 1, afina: 2, mastia: 2, antes: 2, cinta: 4 })[panel.pid] || 3
+                            phase: ({ afina: 2, mastia: 2, antes: 2, cinta: 4 })[panel.pid] || 3
                             summary: ({
                                 piano: "Piano roll con teclado y rejilla de notas.",
                                 inst: "Banco de instrumentos con presets por pista.",
@@ -572,6 +608,7 @@ Window {
             var dev = info.device || {}
             toast(dev.open ? "Motor nativo listo · " + dev.type + " · " + dev.output : "Motor nativo listo · sin dispositivo de salida abierto")
         } else toast("Motor nativo no disponible: " + (info.error || "desconocido"))
+        mx.connect()
         firstFit.start()
     }
     Timer { id: firstFit; interval: 60; onTriggered: win.fitIds(["inst", "drums", "pistas"]) }

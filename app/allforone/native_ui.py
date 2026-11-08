@@ -129,7 +129,7 @@ def run_native_selftest(app, host, report_path: str | None, screenshot_path: str
     rep.check("encuadre inicial aplicado", abs(float(prop("zoom")) - 1.0) > 1e-6, prop("zoom"))
 
     tone = json.loads(bridge.addTestTone())
-    QMetaObject.invokeMethod(window, "addTrack", Q_ARG("QVariant", tone["track"]))
+    QMetaObject.invokeMethod(window, "addTrack", Q_ARG("QVariant", tone["track"]), Q_ARG("QVariant", False))
     tracks = prop("tracks") or []
     rep.check("Pistas muestra la pista del motor con su forma de onda",
               len(tracks) == 1 and len(tracks[0]["peaks"]) == 600, [t["name"] for t in tracks])
@@ -140,9 +140,14 @@ def run_native_selftest(app, host, report_path: str | None, screenshot_path: str
         rep.check("transporte del motor visible en QML",
                   _wait(app, lambda: bool(prop("playing")) and int(prop("step")) > 0, 3.0, host),
                   {"step": prop("step")})
+        rep.check("medidores del master con el nivel real del motor",
+                  _wait(app, lambda: max(prop("masterDb")) > -40 and float(prop("vu")) > 1, 2.0, host),
+                  {"master_db": prop("masterDb"), "vu": round(float(prop("vu")), 1)})
         bridge.stop()
     else:
         rep.add("transporte del motor visible en QML", "omitido", "sin dispositivo de salida abierto")
+
+    _native_mixer_checks(rep, app, host, window, prop)
 
     QMetaObject.invokeMethod(window, "setDark", Q_ARG("QVariant", True))
     QMetaObject.invokeMethod(window, "saveLayout")
@@ -157,3 +162,40 @@ def run_native_selftest(app, host, report_path: str | None, screenshot_path: str
     rep.add("captura de la interfaz nativa", "info", str(shot))
     window.close()
     return _finish(rep, report_path)
+
+
+def _native_mixer_checks(rep, app, host, window, prop) -> None:
+    """Fase 1: Audios → pistas y tiras, rol de voz, MEZCLAR AUTOMÁTICAMENTE y consola."""
+    from PySide6.QtCore import QMetaObject, Q_ARG, Q_RETURN_ARG
+
+    from .selftest import _wait, _write_demo_stems
+
+    def snap():
+        v = QMetaObject.invokeMethod(window, "mixerSnapshot", Q_RETURN_ARG("QVariant"))
+        return v.toVariant() if hasattr(v, "toVariant") else v
+
+    def call(name, *args):
+        QMetaObject.invokeMethod(window, name, *[Q_ARG("QVariant", a) for a in args])
+
+    stems = _write_demo_stems(paths.user_data_dir() / "autoprueba" / "stems")
+    call("importPaths", stems)
+    linked = lambda: [i for i in snap()["items"] if i["trackId"] >= 0]
+    if not rep.check("soltar 3 audios: cada uno crea su ficha, su pista y su tira",
+                     _wait(app, lambda: len(linked()) >= 3, 20, host), [i["name"] for i in snap()["items"]]):
+        return
+    items = snap()["items"]
+    voz = next((i for i in items if i["name"] == "Voz_Principal"), {})
+    rep.check("WAV en coma flotante de 64 bits convertido y enlazado", bool(voz.get("note")) and voz.get("trackId", -1) >= 0, voz.get("note"))
+    rep.check("clasificación por nombre (tipo y rol)", voz.get("kind") == "Voz principal" and voz.get("role") == "P",
+              [f"{i['name']}:{i['kind']}:{i['role']}" for i in items])
+
+    call("mixNow", False)
+    done = _wait(app, lambda: snap()["runs"] >= 1 or "Error" in snap()["status"], 240, host)
+    st = snap()
+    if not rep.check("MEZCLAR AUTOMÁTICAMENTE desde la interfaz nativa", done and st["runs"] >= 1, st["status"]):
+        return
+    stems_ids = {i["trackId"] for i in st["items"]}
+    faders = [t for t in st["tracks"] if t["id"] in stems_ids]
+    moved = [t for t in faders if abs(t["vol"] - 70) > 0.5]
+    rep.check("la consola refleja la mezcla: faders en la ganancia real medida",
+              len(faders) >= 3 and len(moved) >= 1 and len(st["live"]) >= 3, faders)

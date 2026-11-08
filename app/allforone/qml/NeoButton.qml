@@ -23,7 +23,7 @@ Item {
     // Los símbolos (■ ▶ ◐ ✕ …) no están en Space Grotesk: el navegador los toma de Segoe UI Symbol
     function styled(t) {
         return t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
-                .replace(/([←-➿])/g, '<font face="Segoe UI Symbol">$1</font>')
+                .replace(/([←-➿⬀-⯿])/g, '<font face="Segoe UI Symbol">$1</font>')
     }
     readonly property real gap: extra.children.length && text.length ? 7 : 0
     implicitWidth: Math.round(lbl.implicitWidth + extra.childrenRect.width + gap + 2 * padX + 2 * border)

@@ -15,7 +15,7 @@ Item {
         anchors.fill: parent
         ShapePath {
             strokeColor: root.strokeColor; strokeWidth: 2; fillColor: "transparent"
-            strokeStyle: ShapePath.DashLine; dashPattern: [3, 1.5]
+            strokeStyle: ShapePath.DashLine; dashPattern: [3, 2]; capStyle: ShapePath.FlatCap
             startX: 1; startY: 1
             PathLine { x: root.width - 1; y: 1 }
             PathLine { x: root.width - 1; y: root.height - 1 }

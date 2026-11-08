@@ -1,11 +1,13 @@
 import QtQuick
 import "layout.js" as L
+import "mixdata.js" as MD
 
 // Módulo Pistas: las pistas reales del motor (audio importado y tono de prueba), con su forma
 // de onda leída del archivo, M / S / ✕ y el cursor de reproducción del motor.
 Column {
     id: root
-    property var tracks: []              // [{id, name, len, peaks, note, mute, solo}]
+    property var tracks: []              // [{id, name, len, peaks, note, mute, solo, vol, pan}]
+    property var mixer                      // fichas del mezclador: tipo y rol de voz de cada pista
     property int selected: -1
     property real headPos: 0             // 0..1 dentro de los 16 compases del carril
     property real bar16: 40              // segundos que ocupa el 100 % del carril
@@ -97,6 +99,25 @@ Column {
                                                 tip: "Solo"; onClicked: root.toggleSolo(row.index) }
                                     NeoButton { text: "✕"; fontSize: 12; padX: 6; padY: 0; shadow: 2
                                                 tip: "Quitar pista"; onClicked: root.removeTrack(row.index) }
+                                }
+                                Row {                       // .afo-trole: tipo y rol de voz
+                                    id: trole
+                                    readonly property var item: { root.mixer.items; return root.mixer.itemOfTrack(row.modelData.id) }
+                                    visible: !!item
+                                    width: parent.width; spacing: 4; topPadding: 2
+                                    Rectangle {
+                                        width: parent.width - 58 - 4; height: 14; anchors.verticalCenter: parent.verticalCenter
+                                        color: MD.kindColor(trole.item ? trole.item.kind : ""); border.width: 2; border.color: "#000"
+                                        Text { x: 4; width: parent.width - 8; anchors.verticalCenter: parent.verticalCenter; elide: Text.ElideRight
+                                               text: MD.kindShort(trole.item ? trole.item.kind : ""); color: "#000"
+                                               font.family: Theme.font; font.pixelSize: 9; font.weight: 700 }
+                                    }
+                                    Select {
+                                        width: 58; options: MD.ROLES; current: trole.item ? trole.item.role : "—"
+                                        fontSize: 11; fontWeight: 700; padX: 2; padY: 1; centered: true
+                                        fill: "#fff"; ink: "#000"; tip: MD.roleTip()
+                                        onPicked: function (v) { root.mixer.setTrackRole(row.modelData.id, v) }
+                                    }
                                 }
                             }
                         }
