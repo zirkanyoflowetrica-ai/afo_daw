@@ -16,7 +16,6 @@ y el Mezclador Automático V4.2 integrado por fases.
    Tus mezclas y ajustes quedan en `EXE\datos` y se conservan al actualizar.
 
 Todo lo que AllForOne escribe (datos, registros, cachés, temporales) queda dentro de esta carpeta.
-`limpiar_fuera_de_AFO.bat` borra lo que versiones anteriores de los scripts crearon fuera.
 
 ## Uso rápido
 
@@ -46,7 +45,7 @@ tests/                      pruebas Python (pytest)
 app/allforone/mixer_v42/    Mezclador Automático V4.2 original (sin cambios)
 app/allforone/mixer_service.py  adaptador del mezclador para los paneles
 app/allforone/audio_import.py    formatos que el motor no lee (WAV de 64 bits): copia convertida
-tools/                      build.ps1, package.ps1, limpiar_fuera.ps1, visual_compare.py
+tools/                      build.ps1, package.ps1, visual_compare.py
 docs/                       especificación, auditoría, cambios de la plantilla, informes
 ```
 

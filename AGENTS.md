@@ -21,7 +21,7 @@ Especificación completa: `docs/MASTER_PROMPT.md`. Resumen de lo que no se negoc
 
 ```
 build_and_run.bat                      # Windows: entorno, CMake/MSVC, ctest, pytest, --selftest, arranca
-package_windows.bat                    # Windows: dist\AllForOne\AllForOne.exe + autoprueba fuera del proyecto
+package_windows.bat                    # Windows: EXE\AllForOne.exe + release\*.zip + autoprueba en .cache\tmp
 python -m allforone --selftest         # desde app/ (también AllForOne.exe --selftest)
 python tools/visual_compare.py         # diferencia píxel a píxel con la plantilla
 ```
