@@ -3,7 +3,7 @@
   Uso normal: doble clic en package_windows.bat
 
   Resultado:
-    EXE\AllForOne.exe            programa (+ DLL, Qt WebEngine, plantilla, mezclador, afo_audio.pyd)
+    EXE\AllForOne.exe            programa (+ DLL de Qt Quick, interfaz QML, mezclador, afo_audio.pyd)
     EXE\datos\                   tus datos (mezclas, ajustes, registros); se conservan al actualizar
     AllForOne.lnk                acceso directo en la raiz del proyecto
     release\AllForOne-<version>-win64.zip   para publicar (sin tus datos)
@@ -83,12 +83,14 @@ $nargs = @('-m', 'nuitka',
     '--assume-yes-for-downloads',
     '--enable-plugin=pyside6',
     '--include-package=allforone',
-    "--include-data-dir=$Root\app\allforone\ui=allforone/ui",
     "--include-data-dir=$Root\app\allforone\qml=allforone/qml",
     '--include-qt-plugins=qml',
+    # La interfaz es Qt Quick: nada de Chromium en la distribucion
+    '--nofollow-import-to=PySide6.QtWebEngineCore', '--nofollow-import-to=PySide6.QtWebEngineWidgets',
+    '--nofollow-import-to=PySide6.QtWebEngineQuick', '--nofollow-import-to=PySide6.QtWebChannel',
     '--nofollow-import-to=gradio', '--nofollow-import-to=torch', '--nofollow-import-to=transformers',
     '--nofollow-import-to=beat_this', '--nofollow-import-to=mdxnet_infer',
-    "--windows-icon-from-ico=$Root\app\allforone\ui\icon.ico",
+    "--windows-icon-from-ico=$Root\app\allforone\qml\assets\icon.ico",
     '--windows-console-mode=attach',
     '--output-filename=AllForOne.exe',
     '--company-name=AllForOne',
@@ -113,12 +115,12 @@ Copy-Item (Join-Path $Root 'LICENSE') $Out -ErrorAction SilentlyContinue
 Copy-Item (Join-Path $Root 'README.md') $Out -ErrorAction SilentlyContinue
 
 Step "Comprobaciones de la distribucion"
-foreach ($rel in @('AllForOne.exe', 'allforone\ui\index.html', 'allforone\ui\afo_bridge.js', 'allforone\ui\fonts\space-grotesk-latin-wght-normal.woff2', 'allforone\qml\Main.qml', 'allforone\qml\fonts\SpaceGrotesk-Bold.ttf')) {
+foreach ($rel in @('AllForOne.exe', 'allforone\qml\Main.qml', 'allforone\qml\modules\FxBody.qml', 'allforone\qml\theme\qmldir', 'allforone\qml\assets\fonts\SpaceGrotesk-Bold.ttf', 'allforone\qml\assets\icon.ico')) {
     if (-not (Test-Path (Join-Path $Out $rel))) { Fail "Falta $rel en la distribucion" }
 }
-if (-not (Get-ChildItem $Out -Recurse -Filter 'QtWebEngineProcess.exe')) { Fail "Falta QtWebEngineProcess.exe" }
+if (Get-ChildItem $Out -Recurse -Filter 'QtWebEngineProcess.exe') { Fail "La distribucion lleva Qt WebEngine (Chromium) y ya no lo usa" }
 if (-not (Get-ChildItem $Out -Recurse -Filter 'afo_audio*.pyd')) { Fail "Falta afo_audio*.pyd" }
-Ok "Ejecutable, plantilla, fuentes, Qt WebEngine y afo_audio presentes"
+Ok "Ejecutable, interfaz QML, fuentes y afo_audio presentes; sin Chromium"
 
 Step "Autoprueba desde una copia fuera del proyecto, con entorno limpio"
 $Portable = Join-Path $Cache "tmp\AllForOne_portable_$Stamp"

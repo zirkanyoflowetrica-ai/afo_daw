@@ -1,16 +1,17 @@
 # Interfaz nativa (Qt Quick) — sin HTML ni Chromium
 
-Objetivo: que AllForOne sea una app de escritorio 100 % nativa conservando la imagen y el
-funcionamiento de `PLANTILLA_DAW.html`, que pasa a ser la **referencia visual**.
+AllForOne es una app de escritorio 100 % nativa que conserva la imagen y el funcionamiento de
+`templates/PLANTILLA_DAW.html`, la **referencia visual**. Desde la fase 5 es la única interfaz: la
+versión web (Qt WebEngine + QWebChannel) se retiró.
 
 Se conserva tal cual: motor C++ (`native/`), `EngineHost`, el Mezclador V4.2 y su adaptador, la
 importación de audio y el `Bridge` de Python (sus métodos son slots de Qt: QML los llama
-directamente, igual que antes JavaScript por QWebChannel). Solo cambia la capa que dibuja.
+directamente, igual que antes JavaScript por QWebChannel). Solo cambió la capa que dibuja.
 
 ```
-python -m allforone --nativo            # abrir la interfaz nativa
-python -m allforone --nativo --selftest # autoprueba con el motor real
-python tools/native_compare.py [--oscuro]   # comparación píxel a píxel con la interfaz web
+python -m allforone              # abrir AllForOne
+python -m allforone --selftest   # autoprueba: motor, render e interfaz con el motor real
+python tools/native_compare.py   # comparación píxel a píxel con la plantilla
 ```
 
 ## Fases
@@ -22,9 +23,8 @@ python tools/native_compare.py [--oscuro]   # comparación píxel a píxel con l
 | 2 | Afinador, Master IA, Antes / Después | **Hecha** |
 | 3 | Piano roll, Instrumentos, Batería, Pistas con IA, con sonido del motor (hoy son la demo Web Audio) | **Hecha** |
 | 4 | Grabador de cintas grabando con el motor, configuración de audio (drivers, ASIO), módulo Efectos (Biblioteca nativa, Hito 1) | **Hecha** |
-| 5 | Interfaz nativa como predeterminada y retirar Qt WebEngine | Pendiente |
+| 5 | Interfaz nativa como única interfaz, Qt WebEngine retirado, QML ordenado en carpetas | **Hecha** |
 
-Los módulos de fases pendientes muestran en su cuerpo que aún no están migrados y dónde usarlos.
 
 ## Fase 0: cómo se hizo
 
@@ -67,7 +67,7 @@ Encuadre inicial: zoom 0,6157 (web 0,6159).
 - Rol de voz también en cada fila de Pistas; cambiarlo en Audios, Pistas o la consola lo cambia en
   los tres.
 
-Comprobado con `--nativo --selftest` (motor real): soltar 3 audios (uno en 64 bits) → 3 fichas,
+Comprobado con `--selftest` (motor real): soltar 3 audios (uno en 64 bits) → 3 fichas,
 pistas y tiras; clasificación por nombre; MEZCLAR en ~2,4 s; faders en 59 / 51 / 53, idénticos a la
 web; medidores del master con el nivel del motor. Con los 10 stems reales de PPPP: 10 tiras con su
 rol (P, L, R) deducido del nombre.
@@ -95,7 +95,7 @@ no muestra (fase 3).
 - Un botón con RichText informa `lineCount = 1` aunque tenga dos líneas: `NeoButton` cuenta las
   líneas por la altura del contenido.
 
-Comprobado con `--nativo --selftest` (motor real): cable del Afinador a la tira de la voz P;
+Comprobado con `--selftest` (motor real): cable del Afinador a la tira de la voz P;
 confirmar F menor 91 BPM en modo manual; **REMEZCLAR con afinación al 60 %: la mezcla sale
 «afinada»**; master enviado a Pistas; escucha B del master, A/B de una pista y parada en el motor.
 
@@ -132,7 +132,7 @@ y lo indica en la pista, en la tira y en el módulo. Quitar Instrumentos o Bater
 desconecta sus pistas (no suenan), como en la plantilla.
 
 Comprobado: render real del motor (nota La a 440 Hz exactamente en su tiempo, silencio antes;
-batería en negras; rehacer el patrón sustituye el clip); `--nativo --selftest`: las 3 pistas de la
+batería en negras; rehacer el patrón sustituye el clip); `--selftest`: las 3 pistas de la
 plantilla suenan en el render, editar el piano roll cambia el patrón, escuchar una nota, + Instrumento
 crea pista con sintetizador, IA sin audio, desconectar silencia. Vista inicial frente a la web:
 cabecera 8 %, lienzo 20 % (antes 30 %).
@@ -162,9 +162,29 @@ espectro del Analizador; navegador con las 6 secciones y 20 carpetas de la Bibli
 `docs/BIBLIOTECA_NATIVA.md`.
 
 Comprobado: `tests/test_engine_fx.py` (13 pruebas de señal + dispositivo + grabación real) y
-`--nativo --selftest`: «+ Voz», armar en una entrada real (si el dispositivo no tiene entradas, la
+`--selftest`: «+ Voz», armar en una entrada real (si el dispositivo no tiene entradas, la
 autoprueba cambia a ASIO4ALL como lo haría el usuario y al final vuelve al de antes), grabar 1 s y
 ver la onda; insertar EQ y Analizador en una pista, espectro real del tono, bypass y quitar.
 Vista inicial frente a la web: cabecera 12 % (los botones «Audio» y «Efectos», que la web no
 tiene; el chip de Efectos va en la primera fila para no añadir otra fila de chips), lienzo 20 %.
+
+## Fase 5: cómo se hizo
+
+- `python -m allforone` abre la interfaz Qt Quick; `--nativo` se sigue aceptando y no hace nada.
+- Retirados: `app/allforone/ui/` (index.html, afo_bridge.js, afo_panels.*), la ventana Qt WebEngine
+  de `main.py`, los slots del grabador web (`takeBegin/Chunk/End`), `tests/test_template_fidelity.py`,
+  `tools/visual_compare.py` y `docs/CAMBIOS_PLANTILLA.md`. El paquete ya no lleva Chromium
+  (`package.ps1` falla si aparece `QtWebEngineProcess.exe`).
+- Una sola autoprueba, `--selftest`: extensión nativa, motor, render del tono a 440 Hz y después
+  toda la interfaz QML con el motor real (las comprobaciones del Mezclador V4.2 que hacía la web,
+  como los 4 masters, −14 LUFS y el ZIP bajo demanda, pasaron aquí).
+- QML ordenado: `Main.qml` y `theme/` (Theme, singleton), `controls/` (NeoButton, Knob, Fader,
+  Meter, Lcd, Select, ModulePanel…), `modules/` (un cuerpo por módulo y el diálogo de audio),
+  `state/` (Mixer, Sequencer y las librerías JS), `assets/` (fuentes Space Grotesk e icono).
+  La plantilla de referencia vive en `templates/`.
+- `tools/native_compare.py` compara ahora con la propia plantilla (dibujada con Qt WebEngine solo en
+  esa herramienta de desarrollo, con la fuente local y el mismo encuadre inicial). A 1600×900:
+  cabecera 37 % (la plantilla tiene 8 chips de módulo y AllForOne 12, más Audio, Efectos y el
+  botón de tema: los chips se recolocan), lienzo 23,5 % (módulos que la plantilla no tiene, como
+  Audios, Afinador y Mezcla, y el texto de las pistas reales).
 

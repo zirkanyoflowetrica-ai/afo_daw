@@ -1,6 +1,7 @@
 """Verificación integrada: `AllForOne --selftest` (también con el .exe empaquetado).
 
-Comprueba de verdad cada eslabón y escribe un informe JSON. Nada se da por aprobado sin
+Comprueba de verdad cada eslabón (extensión nativa, motor, render, interfaz QML y cada módulo)
+y escribe un informe JSON. Nada se da por aprobado sin
 ejecutarse; lo que depende de hardware se marca como "omitido" con su motivo.
 """
 from __future__ import annotations
@@ -82,88 +83,13 @@ def run_selftest(app, host, report_path: str | None, screenshot_path: str | None
     except Exception as exc:
         rep.add("verificación cruzada numpy/soundfile", "fail", str(exc))
 
-    # 4-6. Interfaz original + QWebChannel
-    from .main import build_window
-    window, view, bridge = build_window(host)
-    window.show()
-    loaded = {"ok": None}
-    view.loadFinished.connect(lambda ok: loaded.__setitem__("ok", ok))
-    rep.check("Qt WebEngine carga la plantilla", _wait(app, lambda: loaded["ok"] is not None, 30, host) and loaded["ok"], str(view.url().toString()))
-    rep.check("JavaScript llama a Python (QWebChannel)", _wait(app, lambda: bridge.js_hello_count > 0, 20, host), f"hello x{bridge.js_hello_count}")
+    # La pista del tono solo servía para medir el render: fuera, para empezar la interfaz limpia
+    host.engine.remove_track(tr["id"])
+    host.tracks.pop(tr["id"], None)
 
-    js_result = {}
-
-    def run_js(code: str, key: str, timeout=10):
-        js_result.pop(key, None)
-        view.page().runJavaScript(code, 0, lambda r: js_result.__setitem__(key, r))
-        _wait(app, lambda: key in js_result, timeout, host)
-        return js_result.get(key)
-
-    _wait(app, lambda: run_js("!!(window.AFO&&AFO.engineOk)", "eng", 2), 10, host)
-    probe = run_js("""JSON.stringify({
-        panels: document.querySelectorAll('.panel').length,
-        ids: [...document.querySelectorAll('.panel')].map(p=>p.id),
-        bg: getComputedStyle(document.body).backgroundColor,
-        font: getComputedStyle(document.body).fontFamily,
-        fontLoaded: document.fonts.check('500 14px "Space Grotesk"'),
-        header: getComputedStyle(document.querySelector('.ph')).backgroundColor,
-        engineOk: !!(window.AFO&&AFO.engineOk),
-        audioBtn: !!document.querySelector('[data-add="audio"]'),
-        meterRandom: /Math\\.random/.test(String(meters))
-    })""", "probe")
-    try:
-        p = json.loads(probe or "{}")
-    except Exception:
-        p = {}
-    original_ids = ["p-piano", "p-inst", "p-drums", "p-cinta", "p-ia", "p-pistas", "p-mezcla", "p-master"]
-    ids = p.get("ids") or []
-    rep.check("8 módulos originales de la plantilla presentes", all(i in ids for i in original_ids), ids[:8])
-    rep.check("4 módulos del Mezclador V4.2 en el lienzo", all(i in ids for i in ["p-audios", "p-afina", "p-mastia", "p-antes"]), ids[8:])
-    rep.check("fondo crema #fff1c9", p.get("bg") == "rgb(255, 241, 201)", p.get("bg"))
-    rep.check("tipografía Space Grotesk local cargada", bool(p.get("fontLoaded")), p.get("font"))
-    rep.check("cabeceras negras", p.get("header") == "rgb(0, 0, 0)", p.get("header"))
-    rep.check("interfaz conectada al motor", bool(p.get("engineOk")))
-    rep.check("medidores sin valores aleatorios", p.get("meterRandom") is False)
-
-    # JS -> Python -> C++: añadir el tono desde la interfaz como lo haría el usuario
-    before = len(host.engine.tracks())
-    run_js("document.querySelector('[data-afo=\"tone\"]').click()", "click")
-    rep.check("botón '+ Tono de prueba' crea pista en el motor (JS→Python→C++)",
-              _wait(app, lambda: len(host.engine.tracks()) > before, 10, host), f"pistas en el motor: {len(host.engine.tracks())}")
-    _wait(app, lambda: False, 0.5, host)
-    shown = run_js("JSON.stringify(tracks.filter(t=>t.engineId).map(t=>({n:t.name,p:(t.peaks||[]).length})))", "shown")
-    rep.check("pista del motor visible con forma de onda", bool(shown) and '"p":600' in shown, shown)
-
-    # Mezclador V4.2 integrado en los paneles: arrastrar stems, mezclar, masters, A/B, enviar a Pistas
-    run_mixer_checks(rep, app, host, view, bridge, run_js)
-
-    # 7-8. Reproducción en tiempo real (requiere dispositivo)
-    if dev.get("open"):
-        host.engine.set_position_seconds(0)
-        host.reset_peak()
-        host.engine.play()
-
-        tracks_peak = {"db": -100.0}
-
-        def advancing():
-            lv = host.read_levels()   # mismo lector único que usa la interfaz
-            tracks_peak["db"] = max([tracks_peak["db"], *lv["tracks"].values()])
-            return host.engine.position_seconds() > 1.5
-
-        moved = _wait(app, advancing, 6, host)
-        peak = {"db": host.peak_master_db}
-        rep.check("transporte avanza en tiempo real", moved, f"{host.engine.position_seconds():.2f}s")
-        rep.check("medidor master reacciona a audio real", peak["db"] > -40, f"pico master {peak['db']:.1f} dBFS; pico de pistas {tracks_peak['db']:.1f} dBFS")
-        host.engine.stop()
-    else:
-        rep.add("reproducción en tiempo real", "skipped", "sin dispositivo de salida abierto en este equipo")
-
-    shot = Path(screenshot_path) if screenshot_path else out_dir / "selftest_ui.png"
-    _wait(app, lambda: False, 1.0, host)
-    view.grab().save(str(shot))
-    rep.add("captura de la interfaz", "info", str(shot))
-    window.close()
-    return _finish(rep, report_path)
+    # 4-… Interfaz nativa (QML) con el motor real: cada módulo, como lo usaría el usuario
+    from .native_ui import run_native_selftest
+    return run_native_selftest(app, host, report_path, screenshot_path, rep)
 
 
 def _finish(rep: Report, report_path: str | None) -> int:
@@ -203,65 +129,8 @@ def _write_demo_stems(folder: Path) -> list[str]:
     return out
 
 
-def run_mixer_checks(rep, app, host, view, bridge, run_js):
-    from PySide6.QtCore import QMimeData, QPointF, Qt, QUrl
-    from PySide6.QtGui import QDragEnterEvent, QDropEvent
-    from PySide6.QtWidgets import QApplication
-
-    info = bridge.mixsvc.info()
-    if not rep.check("Mezclador V4.2 cargado (módulos originales)", info.get("ok", False), info.get("error", f"{len(info.get('profiles', []))} plantillas, {len(info.get('masters', []))} masters")):
-        return
-    stems = _write_demo_stems(paths.user_data_dir() / "autoprueba" / "stems")
-    before_tracks = len(host.engine.tracks())
-
-    # Soltar los archivos sobre el panel Audios con un evento de arrastre real de Qt
-    run_js("fit(['audios']);", "fit")
-    _wait(app, lambda: False, 0.6, host)
-    box = json.loads(run_js("JSON.stringify((()=>{const r=document.querySelector('#p-audios .afo-drop').getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}})())", "box") or "{}")
-    target = view.focusProxy() or view
-    md = QMimeData()
-    md.setUrls([QUrl.fromLocalFile(p) for p in stems])
-    pt = QPointF(box.get("x", 10), box.get("y", 10))
-    enter = QDragEnterEvent(pt.toPoint(), Qt.DropAction.CopyAction, md, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier)
-    QApplication.sendEvent(target, enter)   # como en un arrastre real: primero entra, luego suelta
-    ev = QDropEvent(pt, Qt.DropAction.CopyAction, md, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier)
-    QApplication.sendEvent(target, ev)
-    got = {}
-
-    def stems_loaded():
-        got["n"] = run_js("AFO_MX.items.filter(i=>i.track).length", "n", 2)
-        return (got.get("n") or 0) >= 3
-    if not rep.check("soltar 3 audios sobre «Audios» (arrastre de Qt con ruta real)", _wait(app, stems_loaded, 15, host), f"audios con pista: {got.get('n')}"):
-        return
-    kinds = run_js("JSON.stringify(AFO_MX.items.map(s=>s.name+':'+s.kind+':'+s.role))", "kinds")
-    rep.add("clasificación por nombre", "info", kinds)
-
-    # El audio de voz es WAV float de 64 bits: JUCE no lo lee y hay que convertirlo al vuelo
-    rep.check("cada audio crea su pista en el motor", len(host.engine.tracks()) >= before_tracks + 3,
-              f"pistas en el motor: {len(host.engine.tracks())}")
-    conv = run_js("JSON.stringify(AFO_MX.items.filter(i=>i.note).map(i=>i.name))", "conv")
-    rep.check("WAV en coma flotante de 64 bits importado (conversión automática)", bool(conv) and "Voz_Principal" in conv, conv)
-    strips = run_js("document.querySelectorAll('#b-mezcla .strip').length", "strips", 2)
-    roles = run_js("document.querySelectorAll('#b-mezcla .afo-role').length", "roles", 2)
-    rep.check("cada pista tiene su tira en la consola, con selector de rol", (strips or 0) >= 3 and (roles or 0) >= 3,
-              f"{strips} tiras, {roles} selectores de rol")
-    prow = run_js("document.querySelectorAll('#b-pistas .afo-role').length", "prow", 2)
-    rep.check("rol de voz también editable en Pistas", (prow or 0) >= 3, f"{prow} selectores en Pistas")
-
-    # Cables del Afinador a las tiras concretas de las voces que va a afinar
-    wires = run_js("(()=>{KV.tnStr=60;AFO_MX.tune.voices={lead:true,l:false,r:false,b:false};"
-                   "AFO_renderMixer();sync();const n=links().filter(l=>l.f==='afina'&&l.t==='mezcla').length;KV.tnStr=0;return n})()", "wires", 3)
-    rep.check("el Afinador se cablea a la tira de la voz que afina", (wires or 0) >= 1, f"{wires} cable(s) afina→tira")
-
-    # MEZCLAR AUTOMÁTICAMENTE (sin afinación: intensidad 0 %)
-    run_js("document.querySelector('[data-mx=\"mix\"]').click()", "click")
-    t0 = time.monotonic()
-    done = _wait(app, lambda: (run_js("AFO_MX.runs.length", "runs", 2) or 0) >= 1 or "Error" in str(run_js("AFO_MX.status", "st", 2)), 240, host)
-    status = run_js("AFO_MX.status", "st")
-    ok = done and (run_js("AFO_MX.runs.length", "runs") or 0) >= 1
-    rep.check("MEZCLAR AUTOMÁTICAMENTE produce una sesión", ok, f"{status} ({time.monotonic() - t0:.1f} s)")
-    if not ok:
-        return
+def check_mix_run(rep, bridge) -> None:
+    """Lo que produce MEZCLAR AUTOMÁTICAMENTE (Mezclador V4.2): masters, mezcla y ZIP bajo demanda."""
     run = bridge.mixsvc.runs[-1]
     masters = run["masters"]
     rep.check("4 masters del V4.2 generados", len([k for k in masters if "LUFS" in k]) == 4,
@@ -271,32 +140,10 @@ def run_mixer_checks(rep, app, host, view, bridge, run_js):
               f"{plat.get('lufs', 0):.1f} LUFS / {plat.get('true_peak', 0):.2f} dBTP")
     import soundfile as sf
     info_mix = sf.info(run["mix"])
-    rep.check("mezcla sin master es audio real", info_mix.frames > info_mix.samplerate * 5, f"{info_mix.frames / info_mix.samplerate:.1f} s, {info_mix.channels} canales")
+    rep.check("mezcla sin master es audio real", info_mix.frames > info_mix.samplerate * 5,
+              f"{info_mix.frames / info_mix.samplerate:.1f} s, {info_mix.channels} canales")
     rep.check("comparaciones A/B por pista", len(run["review"]) >= 3, f"{len(run['review'])} pistas")
-    live = run_js("JSON.stringify(Object.entries(AFO_MX.live).map(([i,v])=>({i:+i,g:v.gain_db,pan:v.pan,fader:+(document.querySelector('#b-mezcla input[data-v=\"'+i+'\"]')||{}).value})))", "live")
-    try:
-        rows = json.loads(live or "[]")
-    except Exception:
-        rows = []
-    moved = [r for r in rows if r.get("fader") and abs(r["fader"] - 70) > 0.5]
-    rep.check("la consola refleja la mezcla: faders movidos a la ganancia real medida",
-              len(rows) >= 3 and bool(moved), f"{len(rows)} tiras con datos, {len(moved)} con fader distinto de 0 dB: {rows}")
-    # El ZIP ya no se crea en cada mezcla (para una canción entera son GB): se arma al pedirlo.
+    # El ZIP no se crea en cada mezcla (para una canción entera son GB): se arma al pedirlo.
     rep.check("la mezcla NO deja un ZIP sin pedirlo", not Path(run["zip"]).exists(), run["zip"])
     zipped = bridge.mixsvc.make_zip(run)
     rep.check("ZIP de sesión bajo demanda", Path(zipped).stat().st_size > 10000, zipped)
-
-    # Enviar el master a Pistas desde el panel Master IA
-    before = len(host.engine.tracks())
-    run_js("document.querySelector('[data-ms=\"tracks\"]').click()", "c2")
-    rep.check("Master IA → Pistas (pista nueva en el motor)", _wait(app, lambda: len(host.engine.tracks()) > before, 10, host),
-              f"pistas en el motor: {len(host.engine.tracks())}")
-
-    # Escucha A/B (requiere dispositivo)
-    if host.engine.device_info().get("open"):
-        r = json.loads(bridge.mixer("listen", json.dumps({"what": "master", "sel": 3, "ab": "B", "run": run["id"]})))
-        _wait(app, lambda: False, 0.5, host)
-        rep.check("escucha A/B del master (previsualización nativa)", r.get("ok") and host.engine.preview_playing(), r)
-        host.engine.preview_stop()
-    else:
-        rep.add("escucha A/B del master", "skipped", "sin dispositivo de salida abierto")

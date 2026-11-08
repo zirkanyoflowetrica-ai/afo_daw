@@ -7,7 +7,6 @@ __pycache__/
 *.pyc
 app/allforone/_native/*.pyd
 app/allforone/_native/*.so
-app/allforone/ui/_original_localfont.html
 *.build/
 *.dist/
 *.onefile-build/

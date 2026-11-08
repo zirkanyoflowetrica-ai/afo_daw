@@ -1,8 +1,7 @@
-"""Interfaz nativa (Qt Quick / QML): sin HTML, sin Chromium.
+"""Interfaz de AllForOne: Qt Quick / QML nativo, sin HTML ni Chromium.
 
-Reproduce PLANTILLA_DAW.html, que pasa a ser la referencia visual, y habla con Python a través
-del mismo `Bridge` que usa la versión web (sus métodos son slots de Qt, así que QML los llama
-directamente). Se abre con `python -m allforone --nativo` mientras dura la migración.
+Reproduce PLANTILLA_DAW.html, que es la referencia visual, y habla con Python a través del
+`Bridge` (sus métodos son slots de Qt, así que QML los llama directamente).
 """
 from __future__ import annotations
 
@@ -55,7 +54,7 @@ def load_fonts() -> list[str]:
     from PySide6.QtGui import QFontDatabase
 
     families = []
-    for f in sorted((qml_dir() / "fonts").glob("*.ttf")):
+    for f in sorted((qml_dir() / "assets" / "fonts").glob("*.ttf")):
         fid = QFontDatabase.addApplicationFont(str(f))
         if fid < 0:
             log.warning("No se pudo cargar la fuente %s", f.name)
@@ -87,7 +86,7 @@ def build_native_window(host):
     if not roots:
         raise RuntimeError("No se pudo cargar la interfaz nativa:\n" + "\n".join(errors))
     window = roots[0]
-    icon = paths.ui_dir() / "icon.ico"
+    icon = qml_dir() / "assets" / "icon.ico"
     if icon.exists():
         window.setIcon(QIcon(str(icon)))
     engine._afo = (bridge, store, errors)  # type: ignore[attr-defined]  # mantener vivos
@@ -126,8 +125,8 @@ def _native_fx_checks(rep, app, host, window, bridge, track_id: int) -> None:
     rep.check("quitar los efectos vacía la cadena", not st["chain"] and not host.engine.effects(track_id))
 
 
-def run_native_selftest(app, host, report_path: str | None, screenshot_path: str | None) -> int:
-    """`AllForOne --nativo --selftest`: la interfaz QML con el motor real, comprobada de verdad."""
+def run_native_selftest(app, host, report_path: str | None, screenshot_path: str | None, rep=None) -> int:
+    """Parte de `AllForOne --selftest`: la interfaz QML con el motor real, comprobada de verdad."""
     from PySide6.QtCore import QMetaObject, Q_ARG
     from PySide6.QtQuick import QQuickWindow  # noqa: F401  (tipa la ventana raíz)
 
@@ -137,9 +136,10 @@ def run_native_selftest(app, host, report_path: str | None, screenshot_path: str
         v = window.property(name)
         return v.toVariant() if hasattr(v, "toVariant") else v
 
-    rep = Report()
-    if not rep.check("motor nativo iniciado", host.ok, host.error or ""):
-        return _finish(rep, report_path)
+    if rep is None:
+        rep = Report()
+        if not rep.check("motor nativo iniciado", host.ok, host.error or ""):
+            return _finish(rep, report_path)
     try:
         engine, window, bridge = build_native_window(host)
     except Exception as exc:
@@ -184,7 +184,7 @@ def run_native_selftest(app, host, report_path: str | None, screenshot_path: str
     else:
         rep.add("transporte del motor visible en QML", "omitido", "sin dispositivo de salida abierto")
 
-    _native_mixer_checks(rep, app, host, window, prop)
+    _native_mixer_checks(rep, app, host, window, bridge, prop)
 
     QMetaObject.invokeMethod(window, "setDark", Q_ARG("QVariant", True))
     QMetaObject.invokeMethod(window, "saveLayout")
@@ -201,11 +201,11 @@ def run_native_selftest(app, host, report_path: str | None, screenshot_path: str
     return _finish(rep, report_path)
 
 
-def _native_mixer_checks(rep, app, host, window, prop) -> None:
+def _native_mixer_checks(rep, app, host, window, bridge, prop) -> None:
     """Fase 1: Audios → pistas y tiras, rol de voz, MEZCLAR AUTOMÁTICAMENTE y consola."""
     from PySide6.QtCore import QMetaObject, Q_ARG, Q_RETURN_ARG
 
-    from .selftest import _wait, _write_demo_stems
+    from .selftest import _wait, _write_demo_stems, check_mix_run
 
     def snap():
         v = QMetaObject.invokeMethod(window, "mixerSnapshot", Q_RETURN_ARG("QVariant"))
@@ -231,6 +231,7 @@ def _native_mixer_checks(rep, app, host, window, prop) -> None:
     st = snap()
     if not rep.check("MEZCLAR AUTOMÁTICAMENTE desde la interfaz nativa", done and st["runs"] >= 1, st["status"]):
         return
+    check_mix_run(rep, bridge)
     stems_ids = {i["trackId"] for i in st["items"]}
     faders = [t for t in st["tracks"] if t["id"] in stems_ids]
     moved = [t for t in faders if abs(t["vol"] - 70) > 0.5]

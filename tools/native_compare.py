@@ -1,11 +1,14 @@
-"""Comparación visual: interfaz web actual (Qt WebEngine) vs interfaz nativa (Qt Quick).
+"""Comparación visual: la plantilla de referencia (templates/PLANTILLA_DAW.html) vs la interfaz nativa.
 
-Uso:  python tools/native_compare.py [--out logs/visual_nativo] [--size 1600x900] [--oscuro]
+Uso:  python tools/native_compare.py [--out logs/visual_nativo] [--size 1600x900]
 
-Ambas arrancan con datos limpios y el diseño inicial. Mide por separado la cabecera (barra de
-transporte y módulos), donde el contenido es el mismo, y la ventana entera, donde los cuerpos de
-los módulos que aún no se han migrado son distintos a propósito. Genera web.png, nativo.png,
-diff.png (en rojo lo que cambia), side_by_side.png y native_report.json.
+Herramienta de desarrollo: dibuja la plantilla con Qt WebEngine (viene con PySide6; la aplicación
+ya no lo usa) y la interfaz QML con datos limpios y el diseño inicial. Mide por separado la
+cabecera (transporte y chips de módulos) y el lienzo, donde AllForOne tiene más módulos que la
+plantilla (Audios, Afinador, Master IA, Antes / Después, Efectos) y pistas reales en vez de la
+demo. La fuente Space Grotesk se sirve desde app/allforone/qml/assets/fonts (sin internet).
+Genera plantilla.png, nativo.png, diff.png (en rojo lo que cambia), side_by_side.png y
+native_report.json.
 """
 from __future__ import annotations
 
@@ -19,6 +22,19 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "app"))
+TEMPLATE = ROOT / "templates" / "PLANTILLA_DAW.html"
+FONTS = ROOT / "app" / "allforone" / "qml" / "assets" / "fonts"
+GOOGLE_FONT = '<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">'
+
+
+def local_template() -> str:
+    faces = "".join(
+        f"@font-face{{font-family:'Space Grotesk';font-weight:{w};src:url('{(FONTS / f).as_uri()}')}}"
+        for w, f in ((400, "SpaceGrotesk-Medium.ttf"), (500, "SpaceGrotesk-Medium.ttf"),
+                     (600, "SpaceGrotesk-SemiBold.ttf"), (700, "SpaceGrotesk-Bold.ttf")))
+    html = TEMPLATE.read_text(encoding="utf-8")
+    assert GOOGLE_FONT in html, "la plantilla cambió su enlace de fuentes"
+    return html.replace(GOOGLE_FONT, f"<style>{faces}</style>")
 
 
 def main() -> int:
@@ -26,7 +42,6 @@ def main() -> int:
     ap.add_argument("--out", default=str(ROOT / "logs" / "visual_nativo"))
     ap.add_argument("--size", default="1600x900")
     ap.add_argument("--settle", type=float, default=4.0)
-    ap.add_argument("--oscuro", action="store_true", help="comparar el tema oscuro")
     args = ap.parse_args()
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
@@ -38,15 +53,16 @@ def main() -> int:
     _prepare_qt_environment()
 
     import numpy as np
-    from PySide6.QtCore import QCoreApplication, QMetaObject, Q_ARG, Qt
+    from PySide6.QtCore import QCoreApplication, Qt, QUrl
     from PySide6.QtGui import QImage
     from PySide6.QtQuick import QQuickWindow  # noqa: F401  (tipa la ventana raíz como QQuickWindow)
+    from PySide6.QtWebEngineCore import QWebEngineSettings
+    from PySide6.QtWebEngineWidgets import QWebEngineView
     from PySide6.QtWidgets import QApplication
 
     QCoreApplication.setAttribute(Qt.ApplicationAttribute.AA_ShareOpenGLContexts)
     app = QApplication(sys.argv[:1])
     from allforone.engine_host import EngineHost
-    from allforone.main import build_window
     from allforone.native_ui import build_native_window
 
     def wait(seconds):
@@ -55,23 +71,22 @@ def main() -> int:
             app.processEvents()
             time.sleep(0.01)
 
-    host = EngineHost.create()
-    win, view, _bridge = build_window(host)
+    view = QWebEngineView()
+    view.settings().setAttribute(QWebEngineSettings.WebAttribute.LocalContentCanAccessFileUrls, True)
+    view.setHtml(local_template(), QUrl.fromLocalFile(str(TEMPLATE)))
     view.setFixedSize(w, h)
-    win.show()
+    view.show()
     wait(args.settle)
-    if args.oscuro:
-        view.page().runJavaScript("AFO.setTheme('dark')")
-        wait(0.5)
-    img_web = view.grab().toImage()
-    win.close()
+    view.page().runJavaScript("fit(['inst','drums','pistas'])")   # mismo encuadre inicial que la nativa
+    wait(1.0)
+    img_ref = view.grab().toImage()
+    view.close()
 
+    host = EngineHost.create()
     qml_engine, qwin, _b2 = build_native_window(host)
     qwin.setWidth(w)
     qwin.setHeight(h)
     qwin.show()
-    if args.oscuro:
-        QMetaObject.invokeMethod(qwin, "setDark", Q_ARG("QVariant", True))
     wait(args.settle)
     img_nat = qwin.grabWindow()
     qwin.close()
@@ -81,7 +96,7 @@ def main() -> int:
         arr = np.frombuffer(img.constBits(), np.uint8, img.bytesPerLine() * img.height()).reshape(img.height(), img.bytesPerLine())
         return arr[:, : img.width() * 3].reshape(img.height(), img.width(), 3).copy()
 
-    a, b = to_np(img_web), to_np(img_nat)
+    a, b = to_np(img_ref), to_np(img_nat)
     hh, ww = min(a.shape[0], b.shape[0]), min(a.shape[1], b.shape[1])
     a, b = a[:hh, :ww], b[:hh, :ww]
     mask = np.abs(a.astype(int) - b.astype(int)).max(axis=2) > 24
@@ -93,11 +108,11 @@ def main() -> int:
         arr = np.ascontiguousarray(arr)
         QImage(arr.data, arr.shape[1], arr.shape[0], arr.shape[1] * 3, QImage.Format.Format_RGB888).save(str(out / name))
 
-    save(a, "web.png")
+    save(a, "plantilla.png")
     save(b, "nativo.png")
     save(diff, "diff.png")
     save(np.concatenate([a, np.full((hh, 12, 3), 0, np.uint8), b], axis=1), "side_by_side.png")
-    report = {"size": [ww, hh], "threshold": 24, "theme": "oscuro" if args.oscuro else "claro",
+    report = {"size": [ww, hh], "threshold": 24, "reference": "templates/PLANTILLA_DAW.html",
               "header_pixels_changed_pct": round(float(mask[:head].mean() * 100), 3),
               "canvas_pixels_changed_pct": round(float(mask[head:].mean() * 100), 3),
               "total_pixels_changed_pct": round(float(mask.mean() * 100), 3)}

@@ -1,4 +1,9 @@
 # ALLFORONE — MASTER DEVELOPMENT PROMPT
+
+> **Nota (noviembre 2026):** esta especificación pedía cargar la plantilla HTML en Qt WebEngine con
+> QWebChannel. Esa interfaz se sustituyó por una interfaz nativa Qt Quick que reproduce la plantilla
+> (`docs/INTERFAZ_NATIVA.md`); la plantilla está en `templates/PLANTILLA_DAW.html` y sigue siendo
+> la referencia visual. Donde abajo dice HTML/QWebChannel, léase QML/`bridge.py`.
 ## DAW modular profesional | Python + C++ | Interfaz HTML original | VST3 | Mezcla automática | IA | Compilación Windows
 
 # 0. INSTRUCCIÓN SUPREMA

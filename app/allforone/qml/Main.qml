@@ -1,8 +1,12 @@
 import QtQuick
 import QtQuick.Window
 import QtQuick.Shapes
-import "layout.js" as L
-import "mixdata.js" as MD
+import "theme"
+import "controls"
+import "modules"
+import "state"
+import "state/layout.js" as L
+import "state/mixdata.js" as MD
 
 // AllForOne con interfaz nativa (Qt Quick). Referencia visual: PLANTILLA_DAW.html.
 // Lógica del lienzo portada de la plantilla; el audio y los datos vienen de Python (`afo`).
@@ -539,7 +543,7 @@ Window {
                         sourceComponent: ({ pistas: tracksComp, audios: audiosComp, mezcla: mixComp, master: masterComp,
                                             afina: tuneComp, mastia: masteringComp, antes: reviewComp,
                                             inst: instComp, drums: drumsComp, piano: pianoComp, ia: iaComp,
-                                            cinta: cintaComp, fx: fxComp })[panel.pid] || pendingComp
+                                            cinta: cintaComp, fx: fxComp })[panel.pid]
                     }
                     Component { id: audiosComp; AudiosBody { mixer: mx; studio: win } }
                     Component { id: mixComp; MixBody { mixer: mx; studio: win } }
@@ -575,24 +579,6 @@ Window {
                             onToggleMute: function (i) { var t = win.tracks.slice(); t[i] = Object.assign({}, t[i], { mute: !t[i].mute }); win.tracks = t; win.syncTrackStates() }
                             onToggleSolo: function (i) { var t = win.tracks.slice(); t[i] = Object.assign({}, t[i], { solo: !t[i].solo }); win.tracks = t; win.syncTrackStates() }
                             onRemoveTrack: function (i) { win.removeTrackAt(i) }
-                        }
-                    }
-                    Component {
-                        id: pendingComp
-                        PendingBody {
-                            phase: 3
-                            summary: ({
-                                piano: "Piano roll con teclado y rejilla de notas.",
-                                inst: "Banco de instrumentos con presets por pista.",
-                                drums: "Caja de ritmos de 16 pasos.",
-                                ia: "Generador de pistas (DEMO).",
-                                mezcla: "Consola con tiras reales, rol de voz y MEZCLAR AUTOMÁTICAMENTE (Mezclador V4.2).",
-                                master: "Medidor VU, fader master con medidores reales y exportación.",
-                                audios: "Carga de stems: cada audio crea su pista y su tira. Ya puedes arrastrar audios a la ventana o usar «+ Audio» en Pistas.",
-                                afina: "Tonalidad, BPM y afinación PSOLA por voz.",
-                                mastia: "Los 4 masters del Mezclador V4.2 con LUFS y true peak reales.",
-                                antes: "Comparación A/B por pista al mismo volumen."
-                            })[panel.pid] || ""
                         }
                     }
                 }

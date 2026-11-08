@@ -1,17 +1,15 @@
-"""Objeto expuesto a JavaScript mediante QWebChannel (nombre: "afo").
+"""Objeto que la interfaz nativa (QML) ve como `afo`: sus métodos son slots de Qt.
 
-JavaScript dibuja; Python coordina; C++ procesa el audio. Por el canal solo viajan comandos,
-estados y datos visuales compactos (picos de forma de onda), nunca bloques de audio.
+QML dibuja; Python coordina; C++ procesa el audio. Por aquí solo viajan comandos, estados y
+datos visuales compactos (picos de forma de onda, medidores), nunca bloques de audio.
 Todas las respuestas son JSON: {"ok": bool, ...}.
 """
 from __future__ import annotations
 
-import base64
 import json
 import logging
 import math
 import queue
-import re
 import shutil
 import threading
 from datetime import datetime
@@ -78,7 +76,7 @@ class Bridge(QObject):
         super().__init__()
         self.host = host
         self.parent_widget = parent_widget
-        self.js_hello_count = 0
+        self.hello_count = 0
         self.last_error: str | None = None
         self._timer = QTimer(self)
         self._timer.setInterval(33)  # ~30 Hz para cursor y medidores
@@ -86,14 +84,13 @@ class Bridge(QObject):
         if host.ok:
             self._timer.start()
         # El mezclador trabaja en otro hilo: sus eventos se encolan y se emiten desde el hilo
-        # principal (QWebChannel solo reenvía a JavaScript señales emitidas en su propio hilo).
+        # principal (las señales que ve QML deben salir de su hilo).
         self._mixer_events: queue.SimpleQueue = queue.SimpleQueue()
         self.mixsvc = MixerService(self._mixer_events.put)
         self._mixer_timer = QTimer(self)
         self._mixer_timer.setInterval(50)
         self._mixer_timer.timeout.connect(self._drain_mixer_events)
         self._mixer_timer.start()
-        self._takes: dict[str, dict] = {}   # tomas del grabador que están llegando por trozos
         self._to_convert: list[str] = []    # audios que el motor no lee y hay que convertir
         self._converting: str | None = None
 
@@ -124,7 +121,7 @@ class Bridge(QObject):
     # --- conexión -------------------------------------------------------------
     @Slot(result=str)
     def hello(self) -> str:
-        self.js_hello_count += 1
+        self.hello_count += 1
         return json.dumps(self.host.info())
 
     @Slot(str)
@@ -366,51 +363,6 @@ class Bridge(QObject):
             return _ok(bands=[round(v, 1) for v in self.host.engine.effect_spectrum(effect_id, max(8, min(256, bands)))])
         except Exception as exc:
             return _err(str(exc))
-
-    # El grabador de la plantilla produce un Blob en el navegador. JavaScript lo decodifica,
-    # arma un WAV PCM de 24 bits y lo manda por trozos: aquí solo se escriben los bytes.
-    @Slot(str, result=str)
-    def takeBegin(self, name: str) -> str:
-        token = f"t{len(self._takes) + 1}_{datetime.now():%H%M%S}"
-        safe = re.sub(r"[^\w.\- ]+", "_", name or "toma").strip() or "toma"
-        self._takes[token] = {"name": safe, "parts": [], "bytes": 0}
-        return _ok(token=token)
-
-    @Slot(str, str, result=str)
-    def takeChunk(self, token: str, b64: str) -> str:
-        t = self._takes.get(token)
-        if t is None:
-            return _err("Toma desconocida (vuelve a empezar)")
-        try:
-            data = base64.b64decode(b64, validate=True)
-        except Exception as exc:
-            self._takes.pop(token, None)
-            return _err(f"Trozo de audio inválido: {exc}")
-        t["bytes"] += len(data)
-        if t["bytes"] > 512 * 1024 * 1024:
-            self._takes.pop(token, None)
-            return _err("Toma demasiado larga (más de 512 MB)")
-        t["parts"].append(data)
-        return _ok()
-
-    @Slot(str, result=str)
-    def takeEnd(self, token: str) -> str:
-        t = self._takes.pop(token, None)
-        if t is None:
-            return _err("Toma desconocida (vuelve a empezar)")
-        folder = paths.user_data_dir() / "tomas"
-        folder.mkdir(parents=True, exist_ok=True)
-        dest = folder / f"{t['name']}_{datetime.now():%Y%m%d_%H%M%S}.wav"
-        try:
-            dest.write_bytes(b"".join(t["parts"]))
-        except OSError as exc:
-            return _err(f"No se pudo guardar la toma: {exc}")
-        try:
-            stem = self.mixsvc.describe_paths([str(dest)])[0]
-        except Exception as exc:
-            return _err(f"Toma guardada en {dest}, pero el mezclador no pudo clasificarla: {exc}")
-        log.info("Toma guardada: %s (%.1f MB)", dest, dest.stat().st_size / 1e6)
-        return _ok(stem=stem, path=str(dest))
 
     # --- pistas -------------------------------------------------------------------
     @Slot(result=str)

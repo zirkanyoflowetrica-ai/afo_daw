@@ -13,10 +13,6 @@ def package_dir() -> Path:
     return Path(__file__).resolve().parent
 
 
-def ui_dir() -> Path:
-    return package_dir() / "ui"
-
-
 def is_frozen() -> bool:
     return bool(getattr(sys, "frozen", False) or "__compiled__" in globals())
 
@@ -45,11 +41,5 @@ def logs_dir() -> Path:
 
 def media_dir() -> Path:
     p = user_data_dir() / "media"
-    p.mkdir(parents=True, exist_ok=True)
-    return p
-
-
-def web_profile_dir() -> Path:
-    p = user_data_dir() / "web"
     p.mkdir(parents=True, exist_ok=True)
     return p

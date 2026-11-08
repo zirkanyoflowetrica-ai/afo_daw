@@ -24,7 +24,7 @@ existe de verdad y cómo está hecho; el mapa completo del navegador está en
 | API Python | `afo_audio.effect_catalog()`, `Engine.add_effect`, `move_effect`, `set_effect_param`, `set_effect_enabled`, `effects`, `effect_meters`, `effect_spectrum` |
 | Slots de la interfaz | `bridge.py`: `fxCatalog`, `fxAdd`, `fxList`, `fxMove`, `fxRemove`, `fxParam`, `fxEnable`, `fxMeters`, `fxSpectrum` |
 | Módulo «Efectos» (Rack FX-96) | `app/allforone/qml/FxBody.qml` |
-| Pruebas de señal | `tests/test_engine_fx.py`; en la interfaz, `--nativo --selftest` |
+| Pruebas de señal | `tests/test_engine_fx.py`; en la interfaz, `--selftest` |
 
 Todos derivan de `FxBase`: parámetros `ParameterWithStateValue` (automatizables y guardados en el
 Edit de Tracktion), suavizado en bloques de 32 muestras, `ScopedNoDenormals`, sin reservar memoria

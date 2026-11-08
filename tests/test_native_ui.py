@@ -1,4 +1,4 @@
-"""Interfaz nativa (Qt Quick, sin Chromium): autoprueba en un proceso aparte y diseño guardado."""
+"""Autoprueba integrada (motor + interfaz Qt Quick, sin Chromium) en un proceso aparte y diseño guardado."""
 import json
 import os
 import subprocess
@@ -10,13 +10,13 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_native_selftest(tmp_path):
+def test_selftest(tmp_path):
     env = dict(os.environ, PYTHONPATH=str(ROOT / "app"), AFO_DATA_DIR=str(tmp_path / "data"))
     if sys.platform.startswith("linux") and not env.get("DISPLAY"):
         pytest.skip("Linux sin DISPLAY: ejecutar con xvfb-run")
     report = tmp_path / "report.json"
-    r = subprocess.run([sys.executable, "-m", "allforone", "--nativo", "--selftest", "--report", str(report)],
-                       cwd=ROOT / "app", env=env, capture_output=True, text=True, timeout=180)
+    r = subprocess.run([sys.executable, "-m", "allforone", "--selftest", "--report", str(report)],
+                       cwd=ROOT / "app", env=env, capture_output=True, text=True, timeout=240)
     data = json.loads(report.read_text(encoding="utf-8"))
     failed = [x for x in data["results"] if x["status"] == "fail"]
     names = {x["name"] for x in data["results"] if x["status"] == "ok"}
@@ -37,6 +37,17 @@ def test_layout_store_roundtrip(tmp_path):
 
 def test_qml_has_no_web():
     qml = ROOT / "app" / "allforone" / "qml"
-    text = "".join(p.read_text(encoding="utf-8") for p in qml.glob("*.qml")) + (qml / "layout.js").read_text(encoding="utf-8")
+    text = "".join(p.read_text(encoding="utf-8") for p in [*qml.rglob("*.qml"), *qml.rglob("*.js")])
+    assert len(list(qml.rglob("*.qml"))) > 25
     for web in ("QtWebEngine", "WebEngineView", "QtWebChannel", "WebView"):
         assert web not in text, web
+
+
+def test_app_has_no_web():
+    """La interfaz web se retiró: ni su carpeta ni Qt WebEngine en el código de la aplicación."""
+    app = ROOT / "app" / "allforone"
+    assert not (app / "ui").exists()
+    for p in app.glob("*.py"):
+        text = p.read_text(encoding="utf-8")
+        assert "QtWebEngine" not in text and "QWebChannel" not in text, p.name
+

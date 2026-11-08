@@ -207,7 +207,7 @@ if (-not (Test-Path $stampFile) -or (Get-Content $stampFile -Raw).Trim() -ne $ha
     Set-Content -Path $stampFile -Value $hash
     Ok "Dependencias instaladas"
 } else { Ok "Dependencias ya instaladas (sin cambios en requirements)" }
-$code = Run-Native $Py @('-c', "import PySide6, PySide6.QtWebEngineCore, pybind11, numpy, soundfile; print('    PySide6', PySide6.__version__, '| pybind11', pybind11.__version__, '| numpy', numpy.__version__)")
+$code = Run-Native $Py @('-c', "import PySide6, PySide6.QtQuick, pybind11, numpy, soundfile; print('    PySide6', PySide6.__version__, '| pybind11', pybind11.__version__, '| numpy', numpy.__version__)")
 if ($code -ne 0) { Fail "Las dependencias de Python no se importan correctamente" }
 $VenvScripts = Join-Path $Venv 'Scripts'
 $CMake = Join-Path $VenvScripts 'cmake.exe'
