@@ -45,7 +45,7 @@ con almacenamiento limpio y compara píxel a píxel (umbral 24/255):
   subtítulos "DEMO ·". Fondo, cabeceras, colores, bordes, sombras, cables, conectores, perillas,
   faders, piano roll, secuenciador y tipografía: idénticos.
 
-Capturas: `docs/visual/original.png`, `docs/visual/allforone.png`, `docs/visual/diff.png`.
+Capturas: las genera `tools/visual_compare.py` en `logs/visual/` (no se versionan).
 
 
 ## V0.2 — Paneles del Mezclador V4.2, tema oscuro e icono
@@ -128,4 +128,4 @@ conectado.
 ### Audio que el motor no sabía leer
 
 `PLANTILLA_DAW.html` no cambia, pero sí el comportamiento al soltar archivos: ahora entran los
-WAV en coma flotante de 64 bits (ver `docs/INFORME_V0.3.md`).
+WAV en coma flotante de 64 bits (ver `app/allforone/audio_import.py`).

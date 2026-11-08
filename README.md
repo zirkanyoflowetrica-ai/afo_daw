@@ -4,7 +4,7 @@ DAW modular gratuito para Windows: la interfaz original `PLANTILLA_DAW.html` con
 aplicación de escritorio con motor de audio nativo C++ (JUCE + Tracktion Engine), lógica en Python
 y el Mezclador Automático V4.2 integrado por fases.
 
-**Versión actual: 0.3.0 (beta)** — ver `docs/INFORME_V0.3.md` (qué funciona, qué no y cómo se probó).
+**Versión actual: 0.3.0 (beta).** La interfaz nativa (sin navegador interno) se describe en `docs/INTERFAZ_NATIVA.md`.
 
 ## Compilar y abrir (Windows 11 x64)
 
@@ -40,19 +40,19 @@ sintetizador del motor) y Pistas con IA (demo); falta el Grabador (fase 4)
 
 ```
 PLANTILLA_DAW.html          interfaz original (referencia, no se edita)
-Mezclador_Automatico.zip    mezclador V4.2 original (referencia)
 CMakeLists.txt, cmake/      motor nativo y dependencias fijadas
 native/src/                 AfoEngine (fachada sobre Tracktion Engine) y AfoSynth (sintetizador)
 native/bindings/            extensión Python afo_audio (pybind11)
 native/tests/               pruebas nativas (ctest)
-app/allforone/              aplicación Python (PySide6 + Qt WebEngine + QWebChannel)
-app/allforone/ui/           index.html (= plantilla + 3 líneas), afo_bridge.js, fuentes locales
+app/allforone/              aplicación Python (PySide6): coordina motor, mezclador e interfaz
+app/allforone/qml/          interfaz nativa Qt Quick (--nativo)
+app/allforone/ui/           interfaz web actual: index.html (= plantilla + 3 líneas), afo_bridge.js
 tests/                      pruebas Python (pytest)
 app/allforone/mixer_v42/    Mezclador Automático V4.2 original (sin cambios)
 app/allforone/mixer_service.py  adaptador del mezclador para los paneles
 app/allforone/audio_import.py    formatos que el motor no lee (WAV de 64 bits): copia convertida
-tools/                      build.ps1, package.ps1, visual_compare.py
-docs/                       especificación, auditoría, cambios de la plantilla, informes
+tools/                      build.ps1, package.ps1, visual_compare.py, native_compare.py
+docs/                       especificación, cambios de la plantilla e interfaz nativa
 ```
 
 ## Licencia

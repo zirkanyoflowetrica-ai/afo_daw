@@ -1,8 +1,0 @@
-V4.2 — Plantillas profesionales como criterios, no presets fijos
-
-- Biblioteca de nueve perfiles: trap oscuro, melódico, latino, rage, drill, rap moderno, boom bap, guitar trap y minimalista.
-- Guías por stem con análisis de nombres, roles y capas múltiples de sintetizadores, guitarras, pianos, voces y batería.
-- Guía visible y actualizable desde la interfaz antes de procesar.
-- Cada sesión exporta guía_mezcla_por_stems.md y .json, con la función orientativa y las decisiones reales.
-- Modo por defecto sin cambios de sonido; modo opcional con sesgos de balance muy discretos (máximo 1 dB por stem), nunca EQ o cadenas fijas.
-- Afinación individual, confirmación tonal/BPM, escalón L/R, reverb/delay y masters no se alteraron.

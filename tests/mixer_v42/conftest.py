@@ -16,7 +16,7 @@ sys.path.insert(0, str(MIXER))
 
 collect_ignore = []
 if importlib.util.find_spec("gradio") is not None:
-    spec = importlib.util.spec_from_file_location("app", ROOT / "docs" / "mezclador_v42" / "app_original_gradio.py")
+    spec = importlib.util.spec_from_file_location("app", Path(__file__).with_name("app_original_gradio.py"))
     module = importlib.util.module_from_spec(spec)
     sys.modules["app"] = module
     spec.loader.exec_module(module)
