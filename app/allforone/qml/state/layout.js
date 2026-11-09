@@ -3,6 +3,10 @@
 
 function clamp(v, a, b) { return Math.max(a, Math.min(b, v)) }
 
+// Versión del lienzo: sube cuando cambian los módulos o su colocación de fábrica (el diseño guardado
+// de otra versión no se aplica)
+var VERSION = 2
+
 // Módulos: [id, nombre, modelo, [x, y, ancho], alto por defecto medido en la interfaz web]
 var PANELS = [
     ["piano", "Piano roll", "Teclas S-61", [0, 0, 780], 645],
@@ -18,7 +22,7 @@ var PANELS = [
     ["mastia", "Master IA", "Master M-4", [3620, 1040, 440], 563],
     ["antes", "Antes / Después", "A/B Comp", [4160, 1040, 420], 316],
     ["fx", "Efectos", "Rack FX-96", [4640, 60, 780], 760],
-    ["fxm", "Efectos master", "Rack FX-M", [5520, 60, 780], 640]
+    ["fxm", "Efectos master", "Rack FX-M", [4640, 1700, 780], 640]
 ]
 
 // Cables fijos entre módulos (orden de la interfaz web: plantilla + afo_panels.js)

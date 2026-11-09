@@ -206,10 +206,14 @@ Window {
             if (p.resized) o.push(p.fixedHeight)
             pos[id] = o
         }
-        layoutStore.save(JSON.stringify({ pos: pos, ports: portOverride, bends: bends, theme: Theme.dark ? "dark" : "light" }))
+        layoutStore.save(JSON.stringify({ v: L.VERSION, pos: pos, ports: portOverride, bends: bends, theme: Theme.dark ? "dark" : "light" }))
     }
+    // Un diseño de otra versión del lienzo (módulos distintos) no se aplica: se usa el de fábrica y
+    // solo se conserva el tema
     property var savedLayout: {
-        try { return JSON.parse(layoutStore.load()) } catch (e) { return {} }
+        var d
+        try { d = JSON.parse(layoutStore.load()) } catch (e) { return {} }
+        return d.v === L.VERSION ? d : { theme: d.theme }
     }
     function resetLayout() {
         for (var i = 0; i < L.PANELS.length; i++) {

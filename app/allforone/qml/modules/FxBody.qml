@@ -39,7 +39,8 @@ Column {
         for (var i = 0; i < catalog.length; i++) m[catalog[i].af] = catalog[i]
         return m
     }
-    readonly property int follow: master ? 0 : studio.rackTrack
+    // sin tira elegida, el rack del canal muestra la primera pista (el master tiene su propio rack)
+    readonly property int follow: master ? 0 : studio.rackTrack > 0 ? studio.rackTrack : targets.length > 1 ? Number(targets[1][0]) : -1
     onFollowChanged: if (follow >= 0 && follow !== target) pickTarget(follow)
     readonly property string targetName: (targets.filter(function (o) { return o[0] === String(target) })[0] || ["", "Master"])[1]
     readonly property var targets: {
@@ -76,9 +77,9 @@ Column {
         var r = studio.call("fxList", target)
         if (r.ok) setChain(r.chain)
     }
-    function pickTarget(id) {
+    function pickTarget(id, byUser) {
         target = id; sel = -1; menuFor = -1; reload()
-        if (!master && id > 0 && studio.rackTrack !== id) studio.rackTrack = id
+        if (byUser && !master && id > 0 && studio.rackTrack !== id) studio.rackTrack = id   // la consola marca esa tira
     }
     function add(key) {
         var r = studio.call("fxAdd", target, key, -1)
@@ -206,7 +207,7 @@ Column {
             width: 190; spacing: 2
             Text { text: "Canal (o elige una tira en Mezcla)"; color: Theme.ink; font.family: Theme.font; font.pixelSize: 10; font.weight: 600 }
             Select { width: parent.width; fontSize: 12; padY: 4; options: root.targets; current: String(root.target)
-                     onPicked: function (v) { root.pickTarget(Number(v)) } }
+                     onPicked: function (v) { root.pickTarget(Number(v), true) } }
         }
     }
 
@@ -617,7 +618,7 @@ Column {
         var r = studio.call("fxCatalog")
         catalog = r.ok ? r.catalog : []
         if (master) studio.fxMasterBody = root
-        else { studio.fxBody = root; if (studio.rackTrack > 0) target = studio.rackTrack }
+        else { studio.fxBody = root; if (follow > 0) target = follow }
         reload()
     }
 }

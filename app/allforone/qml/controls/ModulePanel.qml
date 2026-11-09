@@ -162,6 +162,7 @@ Item {
         Rectangle {
             id: grip
             readonly property string side: modelData
+            visible: root.viewZ >= 0.45          // con la vista muy alejada se arrastraban sin querer al mover
             width: 16; height: 16
             x: side.indexOf("w") >= 0 ? -9 : side.indexOf("e") >= 0 ? root.width - 7 : root.width / 2 - 8
             y: side.indexOf("n") >= 0 ? -9 : side.indexOf("s") >= 0 ? root.height - 7 : root.height / 2 - 8
