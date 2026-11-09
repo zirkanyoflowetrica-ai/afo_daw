@@ -259,9 +259,12 @@ def _native_mixer_checks(rep, app, host, window, bridge, prop) -> None:
 
     stems = _write_demo_stems(paths.user_data_dir() / "autoprueba" / "stems")
     call("importPaths", stems)
-    linked = lambda: [i for i in snap()["items"] if i["trackId"] >= 0]
+    names = {Path(s).stem for s in stems}
+    # por nombre: la toma del Grabador también es una ficha enlazada, y la voz de 64 bits llega
+    # más tarde (se convierte en otro hilo)
+    linked = lambda: [i for i in snap()["items"] if i["trackId"] >= 0 and i["name"] in names]  # noqa: E731
     if not rep.check("soltar 3 audios: cada uno crea su ficha, su pista y su tira",
-                     _wait(app, lambda: len(linked()) >= 3, 20, host), [i["name"] for i in snap()["items"]]):
+                     _wait(app, lambda: len(linked()) >= len(names), 20, host), [i["name"] for i in snap()["items"]]):
         return
     items = snap()["items"]
     voz = next((i for i in items if i["name"] == "Voz_Principal"), {})
