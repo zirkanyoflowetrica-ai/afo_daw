@@ -5,24 +5,25 @@ function clamp(v, a, b) { return Math.max(a, Math.min(b, v)) }
 
 // Versión del lienzo: sube cuando cambian los módulos o su colocación de fábrica (el diseño guardado
 // de otra versión no se aplica)
-var VERSION = 2
+var VERSION = 3
 
-// Módulos: [id, nombre, modelo, [x, y, ancho], alto por defecto medido en la interfaz web]
+// Módulos: [id, nombre, modelo, [x, y, ancho], alto por defecto]. De izquierda a derecha sigue el
+// camino del sonido: fuentes → Pistas → Mezcla → efectos y master. Al abrir, nada se solapa (Main.settleAll).
 var PANELS = [
     ["piano", "Piano roll", "Teclas S-61", [0, 0, 780], 645],
-    ["inst", "Instrumentos", "Banco VST-1", [1080, 0, 440], 560],
-    ["drums", "Batería", "Ritmos R-16", [1080, 560, 780], 576],
-    ["cinta", "Grabador de cintas", "Cinta RX-2", [1080, 1140, 420], 471],
-    ["ia", "Pistas con IA", "Cerebro AI-1", [0, 800, 380], 511],
-    ["pistas", "Pistas", "Mesa MT-8", [2200, 300, 760], 441],
-    ["mezcla", "Mezcla", "Consola 6C", [3260, 60, 760], 748],
-    ["master", "Mezcla final", "Master VU", [4120, 260, 380], 463],
-    ["audios", "Audios", "Carga A-30", [2200, 1040, 700], 369],
-    ["afina", "Afinador", "PSOLA AT-1", [3000, 1040, 520], 701],
-    ["mastia", "Master IA", "Master M-4", [3620, 1040, 440], 563],
-    ["antes", "Antes / Después", "A/B Comp", [4160, 1040, 420], 316],
-    ["fx", "Efectos", "Rack FX-96", [4640, 60, 780], 760],
-    ["fxm", "Efectos master", "Rack FX-M", [4640, 1700, 780], 640]
+    ["inst", "Instrumentos", "Banco VST-1", [880, 0, 440], 560],
+    ["drums", "Batería", "Ritmos R-16", [880, 680, 780], 640],
+    ["cinta", "Grabador de cintas", "Cinta RX-2", [420, 760, 420], 471],
+    ["ia", "Pistas con IA", "Cerebro AI-1", [0, 760, 380], 511],
+    ["pistas", "Pistas", "Mesa MT-8", [1760, 0, 900], 441],
+    ["mezcla", "Mezcla", "Consola 6C", [2760, 0, 780], 748],
+    ["master", "Mezcla final", "Master VU", [4500, 0, 400], 463],
+    ["audios", "Audios", "Carga A-30", [1760, 640, 760], 369],
+    ["afina", "Afinador", "PSOLA AT-1", [2760, 880, 520], 701],
+    ["mastia", "Master IA", "Master M-4", [4500, 560, 440], 563],
+    ["antes", "Antes / Después", "A/B Comp", [3620, 920, 420], 316],
+    ["fx", "Efectos", "Rack FX-96", [3620, 0, 800], 760],
+    ["fxm", "Efectos master", "Rack FX-M", [5000, 0, 780], 640]
 ]
 
 // Cables fijos entre módulos (orden de la interfaz web: plantilla + afo_panels.js)

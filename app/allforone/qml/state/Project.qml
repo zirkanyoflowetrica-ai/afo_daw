@@ -83,12 +83,17 @@ QtObject {
                 if (d.type === "voz" && d.path && id >= 0) {
                     var v = s.call("setTrackAudio", id, d.path, d.start || 0)
                     if (v.ok) {
-                        sq.replace(uid, { len: v.track.length_seconds, peaks: v.track.peaks, start: v.track.start_seconds || 0 })
+                        sq.replace(uid, { len: v.track.length_seconds, peaks: v.track.peaks, start: v.track.start_seconds || 0,
+                                          aclips: s.clipsOf(id) })
                         mx.unlinkTrack(id); mx.linkTrack(v.track)
                     } else s.toast(v.error)
                 }
             }
             if (d.type === "audio") sq.replace(uid, { mute: !!d.mute, solo: !!d.solo })
+            if (d.aclips && d.aclips.length && id >= 0) {    // cortes, volumen y fundidos guardados
+                var ce = s.call("clipEdit", id, JSON.stringify({ op: "set", clips: d.aclips }))
+                if (ce.ok) sq.replace(uid, { aclips: ce.clips }); else s.toast(ce.error)
+            }
             s.setTrackMixUid(uid, d.vol === undefined ? 70 : d.vol, d.pan === undefined ? 50 : d.pan)
             var it = id >= 0 ? mx.itemOfTrack(id) : null
             if (it && d.mix) { it.kind = d.mix.kind; it.role = d.mix.role; mx.touch() }

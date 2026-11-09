@@ -46,7 +46,18 @@ Todo lo que AllForOne escribe (datos, registros, cachés, temporales) queda dent
    master. En el detalle (≡) de cada efecto: medidores, presets propios y **Automatización** (dibuja
    la curva de un parámetro sobre los 16 compases; suena al reproducir y al exportar).
 8. **Proyecto:** **Guardar** / **Abrir** en la cabecera (Ctrl+S / Ctrl+O) guardan y recuperan la
-   sesión entera en un archivo `.afo`: pistas, notas, tomas, efectos con su automatización y master.
+   sesión entera en un archivo `.afo`: pistas, notas, tomas, cortes de audio, efectos con su
+   automatización, plugins VST3 con su estado y master.
+9. **Menú lateral (☰):** *Módulos* lleva a cada módulo (miniatura en vivo; doble clic en el nombre
+   para renombrarlo; **+** agrega otro rack de Efectos o una pista), *Instrumentos* (sintetizador del
+   motor, Drum pad, voz, audio y tus instrumentos VST3) y *Efectos* (la Biblioteca nativa por
+   familias y tus efectos VST3; se agregan al rack elegido). **Buscar plugins** explora las carpetas
+   VST3 de Windows una vez (la primera puede tardar un par de minutos) y guarda la lista.
+10. **Pistas como en un DAW:** □ en la cabecera de un módulo (o doble clic) lo maximiza al visor; Esc
+   vuelve. En Pistas: mover clips (con rejilla), recortar por los bordes, dividir (S o herramienta
+   Cortar), duplicar (Ctrl+D), borrar (Supr), volumen por clip (arrastra la etiqueta dB o Vol −/+),
+   normalizar, fundidos de entrada y salida, deshacer / rehacer (Ctrl+Z / Ctrl+Y) y zoom. Los módulos
+   chocan entre sí: al arrastrar uno se detiene antes de pisar otro, y si crece empuja a los de abajo.
 
 **Interfaz (Qt Quick, sin navegador interno):** `python -m allforone` desde `app/`. Funcionan el
 lienzo, Pistas, Audios, la consola Mezcla con la mezcla automática, Mezcla final, Afinador, Master

@@ -82,6 +82,21 @@ sesión con EQ automatizada, un efecto puenteado y un efecto en el master, se bo
 el render coincide (±0,05 dB por segundo). El A/B es el del módulo Antes / Después y el bypass de
 cada efecto. `--selftest` repite el ciclo desde la interfaz con todas las pistas de la autoprueba.
 
+## Plugins VST3 externos y edición de clips (API 10)
+
+- `scan_plugins` explora las carpetas VST3 estándar con `juce::PluginDirectoryScanner` y guarda la
+  lista en `plugins_vst3.xml` (carpeta de datos). Un archivo «pedal» salta en la siguiente búsqueda
+  un plugin que colgó el programa. `known_plugins` lee la lista sin volver a explorar.
+- `add_plugin_effect` inserta un `te::ExternalPlugin` en la cadena de una pista o del master
+  (`describe` lo devuelve con `key = "vst3"`, `name` y `plugin_id`); `effect_state` da su estado en
+  base64 para el proyecto; `show_effect_editor` abre su ventana (o el editor genérico de JUCE).
+- `set_track_instrument` pone un instrumento VST3 en una pista de Instrumento (recibe su clip MIDI y
+  desactiva el sintetizador del motor; `""` lo devuelve); `track_instrument_state`,
+  `show_instrument_editor`.
+- Clips de audio: `clips`, `set_clip_range` (inicio, largo, desplazamiento), `split_clip`,
+  `duplicate_clip`, `remove_clip`, `set_clip_gain`, `set_clip_fades`, `clip_peak_db` (para
+  normalizar) y `set_clips` (reemplaza la lista entera: deshacer y abrir proyecto).
+
 ## Siguientes hitos (metas, no funciones existentes)
 
 | Hito | Módulos |

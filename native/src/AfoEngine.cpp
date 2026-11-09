@@ -46,6 +46,8 @@ struct TrackSlot
     te::LevelMeasurer::Client meter;
     TrackInfo info;
     AfoSynthPlugin* synth = nullptr;         // solo en pistas de Instrumento/Batería
+    te::Plugin::Ptr instrument;              // instrumento VST3 externo (sustituye al sintetizador)
+    std::string instrumentId;
     AfoMeterPlugin* loud = nullptr;          // medidor de sonoridad tras el fader
 };
 
@@ -107,9 +109,24 @@ struct Engine::Impl
     AfoMeterPlugin* masterLoud = nullptr;       // sonoridad tras la sección master
 
     // Efectos nativos insertados (el Edit es el dueño; aquí solo referencias)
-    struct FxSlot { int id = 0, trackId = 0; te::Plugin::Ptr plugin; fx::FxBase* fx = nullptr; };
+    // fx == nullptr: plugin VST3 externo (extId)
+    struct FxSlot { int id = 0, trackId = 0; te::Plugin::Ptr plugin; fx::FxBase* fx = nullptr; std::string extId; };
     std::map<int, FxSlot> fxSlots;
     int nextFxId = 1;
+
+    // Plugins VST3 externos
+    juce::File dataFolder;
+    juce::KnownPluginList known;
+    bool knownLoaded = false;
+    std::vector<te::Plugin::Ptr> keep;
+    std::map<te::Plugin*, std::unique_ptr<juce::DocumentWindow>> windows;
+    juce::File pluginsFile() const { return dataFolder.getChildFile ("plugins_vst3.xml"); }
+    void loadKnownPlugins();
+    juce::PluginDescription findPlugin (const std::string& id);
+    te::ExternalPlugin* createExternal (const std::string& id, const std::string& state);
+    std::string stateOf (te::Plugin&);
+    bool showEditor (te::Plugin&);
+    void closeEditor (te::Plugin*);
 
     // Grabación
     int armedTrack = 0;
@@ -124,6 +141,7 @@ struct Engine::Impl
     {
         juce::File base = dataDir.empty() ? juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile (appName)
                                           : toFile (dataDir);
+        dataFolder = base;
         engine = std::make_unique<te::Engine> (std::make_unique<LocalPropertyStorage> (juce::String (appName), base.getChildFile ("tracktion")),
                                                std::make_unique<AfoUIBehaviour>(), std::make_unique<AfoEngineBehaviour>());
         engine->getPluginManager().createBuiltInType<AfoSynthPlugin>();
@@ -158,6 +176,7 @@ struct Engine::Impl
         if (edit != nullptr)
             edit->getTransport().stop (false, true);
 
+        windows.clear();                         // las ventanas de los plugins, antes que los plugins
         detachMasterMeter();
         if (armedInput != nullptr)
             armedInput->levelMeasurer.removeClient (inputClient);
@@ -265,7 +284,14 @@ struct Engine::Impl
     EffectInfo describe (const FxSlot& f) const
     {
         EffectInfo e;
-        e.id = f.id; e.trackId = f.trackId; e.key = f.fx->desc.key; e.enabled = f.plugin->isEnabled();
+        e.id = f.id; e.trackId = f.trackId; e.enabled = f.plugin->isEnabled();
+        e.latencySeconds = f.plugin->getLatencySeconds();
+        if (f.fx == nullptr)                    // plugin VST3 externo
+        {
+            e.key = "vst3"; e.name = toStd (f.plugin->getName()); e.pluginId = f.extId;
+            return e;
+        }
+        e.key = f.fx->desc.key;
         for (auto& p : f.fx->desc.params)
         {
             e.values.push_back (f.fx->value (p.id));
@@ -517,6 +543,426 @@ std::vector<TrackInfo> Engine::tracks() const
     return r;
 }
 
+// ---------------- plugins VST3 externos ----------------
+namespace
+{
+    PluginDesc toDesc (const juce::PluginDescription& d)
+    {
+        PluginDesc p;
+        p.id = toStd (d.createIdentifierString());
+        p.name = toStd (d.name);
+        p.vendor = toStd (d.manufacturerName);
+        p.category = toStd (d.category);
+        p.path = toStd (d.fileOrIdentifier);
+        p.format = toStd (d.pluginFormatName);
+        p.instrument = d.isInstrument;
+        return p;
+    }
+
+    // Ventana del editor de un plugin (la de JUCE: Qt y JUCE comparten el hilo de mensajes)
+    struct PluginWindow : public juce::DocumentWindow
+    {
+        PluginWindow (juce::AudioProcessorEditor* ed, const juce::String& title)
+            : juce::DocumentWindow (title, juce::Colours::black, juce::DocumentWindow::closeButton)
+        {
+            setUsingNativeTitleBar (true);
+            setContentOwned (ed, true);
+            setResizable (ed->isResizable(), false);
+            centreWithSize (getWidth(), getHeight());
+            setAlwaysOnTop (true);
+            setVisible (true);
+        }
+        void closeButtonPressed() override { setVisible (false); }
+    };
+}
+
+void Engine::Impl::loadKnownPlugins()
+{
+    if (knownLoaded) return;
+    knownLoaded = true;
+    if (auto xml = juce::XmlDocument::parse (pluginsFile()))
+        known.recreateFromXml (*xml);
+    for (auto& d : known.getTypes())
+        engine->getPluginManager().knownPluginList.addType (d);
+}
+
+juce::PluginDescription Engine::Impl::findPlugin (const std::string& id)
+{
+    loadKnownPlugins();
+    for (auto& d : known.getTypes())
+        if (toStd (d.createIdentifierString()) == id)
+            return d;
+    throw std::invalid_argument ("afo_audio: plugin desconocido (búscalo de nuevo): " + id);
+}
+
+te::ExternalPlugin* Engine::Impl::createExternal (const std::string& id, const std::string& state)
+{
+    auto desc = findPlugin (id);
+    auto plugin = edit->getPluginCache().createNewPlugin (te::ExternalPlugin::xmlTypeName, desc);
+    auto* ext = dynamic_cast<te::ExternalPlugin*> (plugin.get());
+    if (ext == nullptr || ext->getAudioPluginInstance() == nullptr)
+        throw std::runtime_error ("afo_audio: no se pudo cargar el plugin " + toStd (desc.name)
+                                  + (ext != nullptr ? " (" + toStd (ext->getLoadError()) + ")" : ""));
+    if (! state.empty())
+    {
+        juce::MemoryBlock mb;
+        if (mb.fromBase64Encoding (juce::String (state)))
+            ext->getAudioPluginInstance()->setStateInformation (mb.getData(), (int) mb.getSize());
+    }
+    keep.push_back (plugin);            // la caché del Edit lo suelta si nadie lo referencia antes de insertarlo
+    return ext;
+}
+
+std::string Engine::Impl::stateOf (te::Plugin& p)
+{
+    auto* ext = dynamic_cast<te::ExternalPlugin*> (&p);
+    if (ext == nullptr || ext->getAudioPluginInstance() == nullptr)
+        return {};
+    juce::MemoryBlock mb;
+    ext->getAudioPluginInstance()->getStateInformation (mb);
+    return toStd (mb.toBase64Encoding());
+}
+
+bool Engine::Impl::showEditor (te::Plugin& p)
+{
+    auto* ext = dynamic_cast<te::ExternalPlugin*> (&p);
+    if (ext == nullptr || ext->getAudioPluginInstance() == nullptr)
+        return false;
+    auto& w = windows[&p];
+    if (w == nullptr)
+    {
+        auto* inst = ext->getAudioPluginInstance();
+        juce::AudioProcessorEditor* ed = inst->hasEditor() ? inst->createEditorIfNeeded() : nullptr;
+        if (ed == nullptr)
+            ed = new juce::GenericAudioProcessorEditor (*inst);
+        w = std::make_unique<PluginWindow> (ed, ext->getName());
+    }
+    w->setVisible (true);
+    w->toFront (true);
+    return true;
+}
+
+void Engine::Impl::closeEditor (te::Plugin* p)
+{
+    windows.erase (p);
+}
+
+PluginScan Engine::scanPlugins (const std::vector<std::string>& extraFolders)
+{
+    requireMessageThread();
+    impl->loadKnownPlugins();
+    PluginScan r;
+    juce::VST3PluginFormat vst3;
+    auto path = vst3.getDefaultLocationsToSearch();
+    for (auto& f : extraFolders)
+        if (toFile (f).isDirectory())
+            path.add (toFile (f));
+    for (int i = 0; i < path.getNumPaths(); ++i)
+        r.folders.push_back (toStd (path.getRawString (i)));
+    // Si un plugin cuelga AllForOne al abrirlo, la próxima búsqueda lo salta (archivo «pedal»)
+    auto pedal = impl->pluginsFile().getSiblingFile ("plugins_scan_pendiente.txt");
+    juce::PluginDirectoryScanner scanner (impl->known, vst3, path, true, pedal, false);
+    juce::String name;
+    while (scanner.scanNextFile (true, name)) {}
+    for (auto& f : scanner.getFailedFiles())
+        r.failed.push_back (toStd (f));
+    if (auto xml = impl->known.createXml())
+        xml->writeTo (impl->pluginsFile());
+    for (auto& d : impl->known.getTypes())
+        impl->engine->getPluginManager().knownPluginList.addType (d);
+    r.plugins = knownPlugins();
+    return r;
+}
+
+std::vector<PluginDesc> Engine::knownPlugins()
+{
+    requireMessageThread();
+    impl->loadKnownPlugins();
+    std::vector<PluginDesc> r;
+    for (auto& d : impl->known.getTypes())
+        if (d.pluginFormatName == "VST3")
+            r.push_back (toDesc (d));
+    std::sort (r.begin(), r.end(), [] (const PluginDesc& a, const PluginDesc& b) { return a.name < b.name; });
+    return r;
+}
+
+EffectInfo Engine::addPluginEffect (int trackId, const std::string& pluginId, int index, const std::string& state)
+{
+    requireMessageThread();
+    auto& list = impl->pluginList (trackId);
+    auto* ext = impl->createExternal (pluginId, state);
+    te::Plugin::Ptr plugin (ext);
+    auto c = impl->chain (trackId);
+    int at = list.indexOf (impl->anchor (trackId));
+    if (index >= 0 && index < (int) c.size())
+        at = list.indexOf (c[(size_t) index]->plugin.get());
+    list.insertPlugin (plugin, juce::jmax (0, at), nullptr);
+    impl->keep.clear();
+    if (list.indexOf (plugin.get()) < 0)
+        throw std::runtime_error ("afo_audio: Tracktion no aceptó el plugin " + toStd (ext->getName()));
+    Impl::FxSlot s { impl->nextFxId++, trackId, plugin, nullptr, pluginId };
+    impl->fxSlots[s.id] = s;
+    impl->edit->getTransport().ensureContextAllocated();
+    return impl->describe (impl->fxSlots[s.id]);
+}
+
+std::string Engine::effectState (int effectId)
+{
+    requireMessageThread();
+    return impl->stateOf (*impl->fxSlot (effectId).plugin);
+}
+
+bool Engine::showEffectEditor (int effectId)
+{
+    requireMessageThread();
+    return impl->showEditor (*impl->fxSlot (effectId).plugin);
+}
+
+bool Engine::setTrackInstrument (int trackId, const std::string& pluginId, const std::string& state)
+{
+    requireMessageThread();
+    auto& s = impl->slot (trackId);
+    if (s.synth == nullptr)
+        throw std::invalid_argument ("afo_audio: la pista no es de instrumento");
+    if (s.instrument != nullptr)
+    {
+        impl->closeEditor (s.instrument.get());
+        s.instrument->deleteFromParent();
+        s.instrument = nullptr;
+        s.instrumentId.clear();
+    }
+    if (pluginId.empty())                       // vuelve el sintetizador del motor
+    {
+        s.synth->setEnabled (true);
+        return true;
+    }
+    auto* ext = impl->createExternal (pluginId, state);
+    te::Plugin::Ptr plugin (ext);
+    s.track->pluginList.insertPlugin (plugin, 0, nullptr);   // el clip MIDI de la pista llega aquí
+    impl->keep.clear();
+    s.synth->setEnabled (false);
+    s.instrument = plugin;
+    s.instrumentId = pluginId;
+    impl->edit->getTransport().ensureContextAllocated();
+    return true;
+}
+
+std::string Engine::trackInstrument (int trackId)
+{
+    return impl->slot (trackId).instrumentId;
+}
+
+std::string Engine::trackInstrumentState (int trackId)
+{
+    requireMessageThread();
+    auto& s = impl->slot (trackId);
+    return s.instrument != nullptr ? impl->stateOf (*s.instrument) : std::string();
+}
+
+bool Engine::showInstrumentEditor (int trackId)
+{
+    requireMessageThread();
+    auto& s = impl->slot (trackId);
+    return s.instrument != nullptr && impl->showEditor (*s.instrument);
+}
+
+// ---------------- clips de audio ----------------
+namespace
+{
+    te::WaveAudioClip* waveClip (te::Edit& edit, long long id)
+    {
+        auto* c = te::findClipForID (edit, te::EditItemID::fromRawID ((juce::uint64) id));
+        auto* w = dynamic_cast<te::WaveAudioClip*> (c);
+        if (w == nullptr)
+            throw std::out_of_range ("afo_audio: clip inexistente " + std::to_string (id));
+        return w;
+    }
+
+    ClipInfo clipInfoOf (te::WaveAudioClip& c, int trackId)
+    {
+        ClipInfo r;
+        r.id = (long long) c.itemID.getRawID();
+        r.trackId = trackId;
+        auto pos = c.getPosition();
+        r.start = pos.getStart().inSeconds();
+        r.length = pos.getLength().inSeconds();
+        r.offset = pos.getOffset().inSeconds();
+        r.gainDb = c.getGainDB();
+        r.fadeIn = c.getFadeIn().inSeconds();
+        r.fadeOut = c.getFadeOut().inSeconds();
+        r.sourceLength = c.getSourceLength().inSeconds();
+        return r;
+    }
+
+    // Id de la pista de AllForOne que contiene el clip
+    int trackIdOf (const std::map<int, std::unique_ptr<TrackSlot>>& slots, te::Clip& c)
+    {
+        for (auto& [id, s] : slots)
+            if (s->track.get() == c.getTrack())
+                return id;
+        return 0;
+    }
+
+    // Tras editar: la pista empieza en su primer clip y dura hasta el final del último
+    void refreshLength (TrackSlot& s)
+    {
+        double start = 1e18, end = 0.0;
+        for (auto* c : s.track->getClips())
+        {
+            start = std::min (start, c->getPosition().getStart().inSeconds());
+            end = std::max (end, c->getPosition().getEnd().inSeconds());
+        }
+        if (end > 0.0)
+        {
+            s.info.startSeconds = start;
+            s.info.lengthSeconds = end - start;
+        }
+    }
+}
+
+std::vector<ClipInfo> Engine::clips (int trackId)
+{
+    requireMessageThread();
+    auto& s = impl->slot (trackId);
+    std::vector<ClipInfo> r;
+    for (auto* c : s.track->getClips())
+        if (auto* w = dynamic_cast<te::WaveAudioClip*> (c))
+            r.push_back (clipInfoOf (*w, trackId));
+    std::sort (r.begin(), r.end(), [] (const ClipInfo& a, const ClipInfo& b) { return a.start < b.start; });
+    return r;
+}
+
+ClipInfo Engine::setClipRange (long long clipId, double start, double length, double offset)
+{
+    requireMessageThread();
+    auto* c = waveClip (*impl->edit, clipId);
+    const double src = c->getSourceLength().inSeconds();
+    offset = juce::jlimit (0.0, std::max (0.0, src - 0.01), offset);
+    length = juce::jlimit (0.01, std::max (0.01, src - offset), length);
+    start = std::max (0.0, start);
+    c->setPosition ({ { te::TimePosition::fromSeconds (start), te::TimeDuration::fromSeconds (length) },
+                      te::TimeDuration::fromSeconds (offset) });
+    // un fundido no puede ser más largo que el clip
+    const double fin = std::min (c->getFadeIn().inSeconds(), length);
+    c->setFadeIn (te::TimeDuration::fromSeconds (fin));
+    c->setFadeOut (te::TimeDuration::fromSeconds (std::min (c->getFadeOut().inSeconds(), length - fin)));
+    const int tid = trackIdOf (impl->slots, *c);
+    if (tid) refreshLength (impl->slot (tid));
+    return clipInfoOf (*c, tid);
+}
+
+std::vector<ClipInfo> Engine::splitClip (long long clipId, double atSeconds)
+{
+    requireMessageThread();
+    auto* c = waveClip (*impl->edit, clipId);
+    const int tid = trackIdOf (impl->slots, *c);
+    auto pos = c->getPosition();
+    if (atSeconds <= pos.getStart().inSeconds() + 0.01 || atSeconds >= pos.getEnd().inSeconds() - 0.01)
+        throw std::runtime_error ("afo_audio: el punto de corte está fuera del clip");
+    auto* ct = dynamic_cast<te::ClipTrack*> (c->getTrack());
+    if (ct == nullptr || ct->splitClip (*c, te::TimePosition::fromSeconds (atSeconds)) == nullptr)
+        throw std::runtime_error ("afo_audio: Tracktion no pudo dividir el clip");
+    return clips (tid);
+}
+
+ClipInfo Engine::duplicateClip (long long clipId)
+{
+    requireMessageThread();
+    auto* c = waveClip (*impl->edit, clipId);
+    const int tid = trackIdOf (impl->slots, *c);
+    auto& s = impl->slot (tid);
+    auto pos = c->getPosition();
+    double end = 0.0;                          // la copia va detrás del último clip de la pista
+    for (auto* o : s.track->getClips())
+        end = std::max (end, o->getPosition().getEnd().inSeconds());
+    const auto start = te::TimePosition::fromSeconds (end);
+    auto copy = s.track->insertWaveClip (c->getName(), c->getOriginalFile(),
+                                         { { start, pos.getLength() }, pos.getOffset() }, false);
+    if (copy == nullptr)
+        throw std::runtime_error ("afo_audio: Tracktion no pudo duplicar el clip");
+    copy->setGainDB (c->getGainDB());
+    copy->setFadeIn (c->getFadeIn());
+    copy->setFadeOut (c->getFadeOut());
+    refreshLength (s);
+    return clipInfoOf (*copy, tid);
+}
+
+bool Engine::removeClip (long long clipId)
+{
+    requireMessageThread();
+    te::WaveAudioClip* c = nullptr;
+    try { c = waveClip (*impl->edit, clipId); } catch (const std::out_of_range&) { return false; }
+    const int tid = trackIdOf (impl->slots, *c);
+    c->removeFromParent();
+    if (tid) refreshLength (impl->slot (tid));
+    return true;
+}
+
+ClipInfo Engine::setClipGain (long long clipId, float db)
+{
+    requireMessageThread();
+    auto* c = waveClip (*impl->edit, clipId);
+    c->setGainDB (juce::jlimit (-60.0f, 24.0f, db));
+    return clipInfoOf (*c, trackIdOf (impl->slots, *c));
+}
+
+ClipInfo Engine::setClipFades (long long clipId, double fadeIn, double fadeOut)
+{
+    requireMessageThread();
+    auto* c = waveClip (*impl->edit, clipId);
+    const double len = c->getPosition().getLength().inSeconds();
+    fadeIn = juce::jlimit (0.0, len, fadeIn);
+    fadeOut = juce::jlimit (0.0, len - fadeIn, fadeOut);
+    c->setFadeIn (te::TimeDuration::fromSeconds (fadeIn));
+    c->setFadeOut (te::TimeDuration::fromSeconds (fadeOut));
+    return clipInfoOf (*c, trackIdOf (impl->slots, *c));
+}
+
+float Engine::clipPeakDb (long long clipId)
+{
+    requireMessageThread();
+    auto* c = waveClip (*impl->edit, clipId);
+    juce::AudioFormatManager fm;
+    fm.registerBasicFormats();
+    std::unique_ptr<juce::AudioFormatReader> reader (fm.createReaderFor (c->getOriginalFile()));
+    if (reader == nullptr)
+        throw std::runtime_error ("afo_audio: no se puede leer el audio del clip");
+    auto pos = c->getPosition();
+    const auto sr = reader->sampleRate;
+    const auto from = (juce::int64) (pos.getOffset().inSeconds() * sr);
+    const auto num = (juce::int64) (pos.getLength().inSeconds() * sr);
+    float lowL = 0, highL = 0, lowR = 0, highR = 0;
+    reader->readMaxLevels (from, num, lowL, highL, lowR, highR);
+    const float peak = juce::jmax (std::abs (lowL), std::abs (highL), std::abs (lowR), std::abs (highR));
+    return peak > 0.0f ? juce::Decibels::gainToDecibels (peak) : -100.0f;
+}
+
+std::vector<ClipInfo> Engine::setClips (int trackId, const std::vector<ClipInfo>& list)
+{
+    requireMessageThread();
+    auto& s = impl->slot (trackId);
+    auto file = toFile (s.info.sourcePath);
+    if (! file.existsAsFile())
+        throw std::runtime_error ("afo_audio: la pista no tiene audio");
+    for (auto* c : s.track->getClips())
+        c->removeFromParent();
+    for (auto& ci : list)
+    {
+        auto w = s.track->insertWaveClip (file.getFileNameWithoutExtension(), file,
+                                          { { te::TimePosition::fromSeconds (std::max (0.0, ci.start)),
+                                              te::TimeDuration::fromSeconds (std::max (0.01, ci.length)) },
+                                            te::TimeDuration::fromSeconds (std::max (0.0, ci.offset)) }, false);
+        if (w == nullptr)
+            throw std::runtime_error ("afo_audio: Tracktion no pudo crear el clip");
+        w->setGainDB (ci.gainDb);
+        w->setFadeIn (te::TimeDuration::fromSeconds (ci.fadeIn));
+        w->setFadeOut (te::TimeDuration::fromSeconds (ci.fadeOut));
+    }
+    refreshLength (s);
+    impl->edit->getTransport().ensureContextAllocated();
+    return clips (trackId);
+}
+
 std::vector<float> Engine::trackPeaks (int id, int numBuckets) const
 {
     auto& s = impl->slot (id);
@@ -611,7 +1057,8 @@ void Engine::setTempo (double bpm)
     if (auto* t = impl->edit->tempoSequence.getTempo (0))
         t->setBpm (juce::jlimit (20.0, 400.0, bpm));
     for (auto& [id, f] : impl->fxSlots)
-        f.fx->bpm = (float) juce::jlimit (20.0, 400.0, bpm);
+        if (f.fx != nullptr)
+            f.fx->bpm = (float) juce::jlimit (20.0, 400.0, bpm);
 }
 
 double Engine::tempo() const
@@ -1074,6 +1521,7 @@ bool Engine::removeEffect (int effectId)
     auto it = impl->fxSlots.find (effectId);
     if (it == impl->fxSlots.end())
         return false;
+    impl->closeEditor (it->second.plugin.get());
     it->second.plugin->deleteFromParent();
     impl->fxSlots.erase (it);
     return true;
@@ -1097,7 +1545,8 @@ bool Engine::moveEffect (int effectId, int newIndex)
 bool Engine::setEffectParam (int effectId, const std::string& paramId, float value)
 {
     requireMessageThread();
-    return impl->fxSlot (effectId).fx->setValue (juce::String::fromUTF8 (paramId.c_str()), value);
+    auto& f = impl->fxSlot (effectId);
+    return f.fx != nullptr && f.fx->setValue (juce::String::fromUTF8 (paramId.c_str()), value);
 }
 
 void Engine::setEffectEnabled (int effectId, bool enabled)
@@ -1126,7 +1575,7 @@ bool Engine::setEffectAutomation (int effectId, const std::string& paramId, cons
 {
     requireMessageThread();
     auto& f = impl->fxSlot (effectId);
-    auto* ap = f.fx->parameter (juce::String::fromUTF8 (paramId.c_str()));
+    auto* ap = f.fx != nullptr ? f.fx->parameter (juce::String::fromUTF8 (paramId.c_str())) : nullptr;
     if (ap == nullptr)
         return false;
     const auto range = ap->getValueRange();
@@ -1150,7 +1599,7 @@ std::vector<std::pair<double, float>> Engine::effectAutomation (int effectId, co
     auto it = impl->fxSlots.find (effectId);
     if (it == impl->fxSlots.end())
         throw std::out_of_range ("afo_audio: efecto inexistente " + std::to_string (effectId));
-    if (auto* ap = it->second.fx->parameter (juce::String::fromUTF8 (paramId.c_str())))
+    if (auto* ap = it->second.fx != nullptr ? it->second.fx->parameter (juce::String::fromUTF8 (paramId.c_str())) : nullptr)
     {
         auto& curve = ap->getCurve();
         for (int i = 0; i < curve.getNumPoints(); ++i)
@@ -1159,15 +1608,23 @@ std::vector<std::pair<double, float>> Engine::effectAutomation (int effectId, co
     return r;
 }
 
-std::vector<float> Engine::effectMeters (int effectId)              { return impl->fxSlot (effectId).fx->readMeters(); }
-std::vector<float> Engine::effectSpectrum (int effectId, int bands) { return impl->fxSlot (effectId).fx->spectrum (bands); }
+std::vector<float> Engine::effectMeters (int effectId)
+{
+    auto& f = impl->fxSlot (effectId);
+    return f.fx != nullptr ? f.fx->readMeters() : std::vector<float>();
+}
+std::vector<float> Engine::effectSpectrum (int effectId, int bands)
+{
+    auto& f = impl->fxSlot (effectId);
+    return f.fx != nullptr ? f.fx->spectrum (bands) : std::vector<float>();
+}
 
 Engine::ChainScope Engine::chainScope (int trackId, int bands)
 {
     ChainScope r;
     std::vector<fx::FxBase*> on;
     for (auto* f : impl->chain (trackId))
-        if (f->plugin->isEnabled()) on.push_back (f->fx);
+        if (f->plugin->isEnabled() && f->fx != nullptr) on.push_back (f->fx);
     r.active = (int) on.size();
     if (on.empty())
         return r;

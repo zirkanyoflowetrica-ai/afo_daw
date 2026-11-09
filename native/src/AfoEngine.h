@@ -78,6 +78,23 @@ struct EffectInfo
     std::vector<float> values;                 // en el orden de EffectTypeInfo::params (siguen la automatización)
     std::vector<std::string> automated;        // parámetros con curva de automatización
     double latencySeconds = 0;
+    std::string name;                          // nombre a mostrar (plugins externos)
+    std::string pluginId;                      // plugin VST3 externo ("" = efecto nativo)
+};
+
+// Un plugin VST3 encontrado en el disco
+struct PluginDesc
+{
+    std::string id;                            // identificador de JUCE (formato, nombre, archivo, uid)
+    std::string name, vendor, category, path, format;
+    bool instrument = false;
+};
+
+struct PluginScan
+{
+    std::vector<PluginDesc> plugins;
+    std::vector<std::string> failed;           // archivos que no se pudieron abrir
+    std::vector<std::string> folders;          // carpetas exploradas
 };
 
 struct TrackInfo
@@ -89,6 +106,19 @@ struct TrackInfo
     double lengthSeconds = 0.0;
     double sampleRate = 0.0;
     int numChannels = 0;
+};
+
+// Un clip de audio de una pista (edición como en un DAW). Tiempos en segundos.
+struct ClipInfo
+{
+    long long id = 0;                          // id del clip en Tracktion (EditItemID)
+    int trackId = 0;
+    double start = 0.0;                        // posición en la línea de tiempo
+    double length = 0.0;
+    double offset = 0.0;                       // desde dónde del archivo empieza a sonar
+    float gainDb = 0.0f;
+    double fadeIn = 0.0, fadeOut = 0.0;
+    double sourceLength = 0.0;                 // duración del archivo
 };
 
 // Parámetros de una pista de Instrumento/Batería (ver AfoSynth.h)
@@ -170,6 +200,31 @@ public:
     void setTrackPan (int id, float pan);              // -1..1
     void setTrackMute (int id, bool muted);
     void setTrackSolo (int id, bool solo);
+
+    // Clips de audio: mover, recortar (start/length/offset), dividir, duplicar, borrar, volumen y fundidos.
+    // Todos los clips de una pista usan el audio de la pista. setClips sustituye todos (deshacer, abrir).
+    std::vector<ClipInfo> clips (int trackId);
+    ClipInfo setClipRange (long long clipId, double start, double length, double offset);
+    std::vector<ClipInfo> splitClip (long long clipId, double atSeconds);
+    ClipInfo duplicateClip (long long clipId);
+    bool removeClip (long long clipId);
+    ClipInfo setClipGain (long long clipId, float db);
+    ClipInfo setClipFades (long long clipId, double fadeIn, double fadeOut);
+    float clipPeakDb (long long clipId);                 // pico real del trozo de archivo que suena (sin la ganancia)
+    std::vector<ClipInfo> setClips (int trackId, const std::vector<ClipInfo>& clips);
+
+    // Plugins VST3 externos: buscar (carpetas estándar + extra; la lista se guarda en la carpeta de
+    // datos), insertarlos como efecto en la cadena de una pista o como instrumento de una pista de
+    // Instrumento (recibe su clip MIDI), abrir su ventana y leer su estado (base64) para el proyecto.
+    PluginScan scanPlugins (const std::vector<std::string>& extraFolders);
+    std::vector<PluginDesc> knownPlugins();
+    EffectInfo addPluginEffect (int trackId, const std::string& pluginId, int index, const std::string& state);
+    std::string effectState (int effectId);
+    bool showEffectEditor (int effectId);
+    bool setTrackInstrument (int trackId, const std::string& pluginId, const std::string& state);   // "" = sintetizador del motor
+    std::string trackInstrument (int trackId);
+    std::string trackInstrumentState (int trackId);
+    bool showInstrumentEditor (int trackId);
 
     // Pistas de Instrumento/Batería: sintetizador del motor que toca un clip MIDI
     TrackInfo addSynthTrack (const std::string& name, int mode);

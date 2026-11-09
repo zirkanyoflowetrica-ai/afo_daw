@@ -21,6 +21,7 @@ Window {
     // ---------------- estado ----------------
     property bool engineOk: false
     property bool playing: false
+    property real posSec: 0                   // posición del motor en segundos
     property int bpm: 96
     property int step: -1                     // semicorchea dentro de los 16 compases (como la plantilla)
     property var tracks: []
@@ -35,6 +36,17 @@ Window {
     property real ty: 0
     property real zoom: 1
     property var panelItems: ({})
+    property var names: ({})                   // nombre propio de cada módulo (menú lateral y cabecera)
+    property var panelList: []                 // [{pid, base, extra}] en el orden del menú
+    property string currentId: ""              // último módulo al que se fue desde el menú
+    property string maxId: ""                  // módulo maximizado ("" = lienzo normal)
+    property var maxSaved: null                // geometría y vista de antes de maximizar
+    property bool menuOpen: true
+    property alias menuTab: sideMenu.tab       // 0 módulos · 1 instrumentos · 2 efectos
+    property var extraTargets: ({})            // rack extra → pista del motor que muestra
+    property var plugins: []                   // plugins VST3 encontrados: [{id, name, vendor, instrument, path}]
+    property string pluginStatus: "Aún no se han buscado plugins."
+    property bool pluginScanning: false
     property real masterPos: 70                // fader master (70 = 0 dB)
     property var masterDb: [-100, -100]
     property var trackDb: ({})
@@ -151,7 +163,7 @@ Window {
         var v = L.fit(rs, viewport.width, viewport.height)
         zoom = v.z; tx = v.tx; ty = v.ty
     }
-    function visibleIds() { return L.PANELS.map(function (p) { return p[0] }).filter(function (i) { return !hidden[i] }) }
+    function visibleIds() { return panelList.map(function (p) { return p.pid }).filter(function (i) { return !hidden[i] }) }
     function zoomAt(f, cx, cy) {
         var z = Math.max(.2, Math.min(1.6, zoom * f)); f = z / zoom
         tx = cx - (cx - tx) * f; ty = cy - (cy - ty) * f; zoom = z
@@ -191,11 +203,35 @@ Window {
         else if (what === "meter") meterMode = a
         return mixerSnapshot()
     }
+    // Para la autoprueba: menú lateral, choques, maximizar y racks extra
+    function layoutCommand(what, a, b) {
+        if (what === "overlaps") {
+            var ids = visibleIds(), out = []
+            for (var i = 0; i < ids.length; i++)
+                for (var j = i + 1; j < ids.length; j++) {
+                    var p = geom(ids[i]), q = geom(ids[j])
+                    if (p.x < q.x + q.w && q.x < p.x + p.w && p.y < q.y + q.h && q.y < p.y + p.h) out.push(ids[i] + "/" + ids[j])
+                }
+            return out
+        }
+        if (what === "drag") {
+            var pn = panelItems[a], to = slideTo(pn, pn.x + b[0], pn.y + b[1]), from = [pn.x, pn.y]
+            pn.x = to.x; pn.y = to.y; pushFrom(pn)
+            return { from: from, to: [to.x, to.y] }
+        }
+        if (what === "max") { toggleMax(a); var m = panelItems[a]; return { maxId: maxId, w: m.width, h: m.height, vw: viewport.width, vh: viewport.height, zoom: zoom } }
+        if (what === "extra") return addExtra(a)
+        if (what === "remove") { removeExtra(a); return panelList.map(function (q) { return q.pid }) }
+        if (what === "rename") { renamePanel(a, b); return { title: titleOf(a), panel: panelItems[a] ? panelItems[a].title : "" } }
+        if (what === "goto") { goTo(a); return { currentId: currentId, hidden: !!hidden[a] } }
+        return panelList.map(function (q) { return q.pid })
+    }
     function setView(z, x, y) { zoom = z; tx = x; ty = y }
     function showPanelAt(id, x, y) { var p = panelItems[id]; zoom = 1; tx = x - p.x; ty = y - p.y }
     function setHidden(id, b) {
+        if (b && maxId === id) toggleMax(id)
         var h = Object.assign({}, hidden); h[id] = b; hidden = h
-        if (!b) Qt.callLater(fitIds, [id])
+        if (!b) Qt.callLater(function () { placeFree(id); fitIds([id]) })
     }
 
     // ---------------- diseño guardado ----------------
@@ -203,10 +239,13 @@ Window {
         var pos = {}
         for (var id in panelItems) {
             var p = panelItems[id], o = [p.x, p.y, p.width]
-            if (p.resized) o.push(p.fixedHeight)
+            if (id === maxId && maxSaved) { o = [maxSaved.x, maxSaved.y, maxSaved.w]; if (maxSaved.resized) o.push(maxSaved.h) }
+            else if (p.resized) o.push(p.fixedHeight)
             pos[id] = o
         }
-        layoutStore.save(JSON.stringify({ v: L.VERSION, pos: pos, ports: portOverride, bends: bends, theme: Theme.dark ? "dark" : "light" }))
+        var extra = panelList.filter(function (q) { return q.extra }).map(function (q) { return { pid: q.pid, base: q.base } })
+        layoutStore.save(JSON.stringify({ v: L.VERSION, pos: pos, ports: portOverride, bends: bends, theme: Theme.dark ? "dark" : "light",
+                                          names: names, extra: extra, targets: extraTargets }))
     }
     // Un diseño de otra versión del lienzo (módulos distintos) no se aplica: se usa el de fábrica y
     // solo se conserva el tema
@@ -216,14 +255,256 @@ Window {
         return d.v === L.VERSION ? d : { theme: d.theme }
     }
     function resetLayout() {
+        if (maxId) toggleMax(maxId)
         for (var i = 0; i < L.PANELS.length; i++) {
             var d = L.PANELS[i], p = panelItems[d[0]]
             p.x = d[3][0]; p.y = d[3][1]; p.width = d[3][2]; p.resized = false; p.fixedHeight = d[4]
         }
+        panelList.forEach(function (q) { if (q.extra) placeFree(q.pid) })
         portOverride = {}; bends = {}; portRev++
-        Qt.callLater(fitIds, ["inst", "drums", "pistas"])
+        Qt.callLater(function () { settleAll(); fitIds(["inst", "drums", "pistas"]) })
         saveLayout()
         toast("Diseño original restaurado")
+    }
+
+    // ---------------- módulos que chocan ----------------
+    // Ningún módulo se monta sobre otro: al arrastrar se detiene contra los demás (y se desliza por
+    // su borde), al redimensionar el borde se para y si un módulo crece empuja hacia abajo a los de debajo.
+    readonly property int gap: 28
+    function obstacles(p) {
+        var out = []
+        for (var id in panelItems) {
+            var q = panelItems[id]
+            if (q !== p && q.visible && !hidden[id]) out.push({ x: q.x, y: q.y, w: q.width, h: q.height, item: q })
+        }
+        return out
+    }
+    function hits(a, b) { return a.x < b.x + b.w + gap && b.x < a.x + a.w + gap && a.y < b.y + b.h + gap && b.y < a.y + a.h + gap }
+    function spanY(y, h, b) { return y < b.y + b.h + gap && b.y < y + h + gap }
+    function spanX(x, w, b) { return x < b.x + b.w + gap && b.x < x + w + gap }
+    // Arrastre: primero en horizontal y luego en vertical, parando en el primer módulo del camino.
+    // Los que ya se solapaban al empezar no frenan (para poder sacar un módulo de encima de otro).
+    function slideTo(p, x, y) {
+        if (maxId) return { x: x, y: y }
+        var cur = { x: p.x, y: p.y, w: p.width, h: p.height }
+        var os = obstacles(p).filter(function (b) { return !hits(cur, b) })
+        var nx = x
+        os.forEach(function (b) {
+            if (!spanY(p.y, p.height, b)) return
+            if (x > p.x && b.x >= p.x + p.width && b.x - gap - p.width < nx) nx = Math.max(p.x, b.x - gap - p.width)
+            if (x < p.x && b.x + b.w <= p.x && b.x + b.w + gap > nx) nx = Math.min(p.x, b.x + b.w + gap)
+        })
+        var ny = y
+        os.forEach(function (b) {
+            if (!spanX(nx, p.width, b)) return
+            if (y > p.y && b.y >= p.y + p.height && b.y - gap - p.height < ny) ny = Math.max(p.y, b.y - gap - p.height)
+            if (y < p.y && b.y + b.h <= p.y && b.y + b.h + gap > ny) ny = Math.min(p.y, b.y + b.h + gap)
+        })
+        // si al mover en y aparece un choque en x (esquinas), no se mueve en ese eje
+        var r = { x: nx, y: ny, w: p.width, h: p.height }
+        if (os.some(function (b) { return hits(r, b) })) {
+            r.x = p.x
+            if (os.some(function (b) { return hits(r, b) })) r.y = p.y
+        }
+        return { x: r.x, y: r.y }
+    }
+    // Redimensionar: el borde que se mueve se para delante del primer módulo
+    function sizeTo(p, r) {
+        if (maxId) return r
+        var cur = { x: p.x, y: p.y, w: p.width, h: p.height }
+        var os = obstacles(p).filter(function (b) { return !hits(cur, b) })
+        var right = r.x + r.w, bottom = r.y + r.h
+        os.forEach(function (b) {
+            if (spanY(r.y, r.h, b)) {
+                if (right > p.x + p.width && b.x >= p.x + p.width && b.x - gap < right) right = Math.max(p.x + p.width, b.x - gap)
+                if (r.x < p.x && b.x + b.w <= p.x && b.x + b.w + gap > r.x) r.x = Math.min(p.x, b.x + b.w + gap)
+            }
+        })
+        os.forEach(function (b) {
+            if (spanX(r.x, right - r.x, b)) {
+                if (bottom > p.y + p.height && b.y >= p.y + p.height && b.y - gap < bottom) bottom = Math.max(p.y + p.height, b.y - gap)
+                if (r.y < p.y && b.y + b.h <= p.y && b.y + b.h + gap > r.y) r.y = Math.min(p.y, b.y + b.h + gap)
+            }
+        })
+        return { x: r.x, y: r.y, w: Math.max(p.minW, right - r.x), h: Math.max(p.minH, bottom - r.y) }
+    }
+    // Un módulo que ocupa sitio ajeno empuja hacia abajo a los que pisa (y estos a los suyos)
+    function pushFrom(p, depth) {
+        if (maxId || (depth || 0) > 30) return
+        var r = { x: p.x, y: p.y, w: p.width, h: p.height }
+        obstacles(p).forEach(function (b) {
+            if (hits(r, b) && b.y >= p.y) { b.item.y = p.y + p.height + gap; pushFrom(b.item, (depth || 0) + 1) }
+        })
+    }
+    // Módulos que cambiaron de alto en este ciclo (Qt.callLater juntaría las llamadas y solo empujaría el último)
+    property var pushQueue: []
+    function queuePush(p) { if (pushQueue.indexOf(p) < 0) pushQueue.push(p); Qt.callLater(flushPush) }
+    function flushPush() {
+        var q = pushQueue; pushQueue = []
+        q.sort(function (a, b) { return a.y - b.y })
+        q.forEach(function (p) { pushFrom(p) })
+    }
+    // Recoloca todo de arriba abajo para que nada se solape (al abrir y al restaurar el diseño)
+    function settleAll() {
+        if (maxId) return
+        var ids = visibleIds().filter(function (i) { return !!panelItems[i] })
+        ids.sort(function (a, b) { return panelItems[a].y - panelItems[b].y || panelItems[a].x - panelItems[b].x })
+        for (var k = 0; k < ids.length; k++) pushFrom(panelItems[ids[k]])
+    }
+    // Lleva un módulo a un hueco libre (a la derecha de lo que pisa) sin mover a los demás
+    function placeFree(id) {
+        var p = panelItems[id]
+        if (!p || maxId) return
+        for (var n = 0; n < 60; n++) {
+            var r = { x: p.x, y: p.y, w: p.width, h: p.height }
+            var hit = obstacles(p).filter(function (b) { return hits(r, b) })[0]
+            if (!hit) return
+            p.x = hit.x + hit.w + gap
+        }
+    }
+
+    // ---------------- maximizar ----------------
+    // El módulo ocupa todo el visor a zoom 1; los demás no se mueven y vuelven al restaurar
+    function toggleMax(id) {
+        var p = panelItems[id]
+        if (!p) return
+        if (maxId === id) {
+            var s = maxSaved
+            p.maximized = false
+            p.x = s.x; p.y = s.y; p.width = s.w; p.fixedHeight = s.h; p.resized = s.resized
+            maxId = ""; maxSaved = null
+            zoom = s.zoom; tx = s.tx; ty = s.ty
+            return
+        }
+        if (maxId) toggleMax(maxId)
+        if (hidden[id]) { var h = Object.assign({}, hidden); h[id] = false; hidden = h }
+        maxSaved = { x: p.x, y: p.y, w: p.width, h: p.fixedHeight, resized: p.resized, zoom: zoom, tx: tx, ty: ty }
+        maxId = id
+        p.maximized = true
+        p.z = ++zTop
+        fitMax()
+    }
+    function fitMax() {
+        var p = panelItems[maxId]
+        if (!p) return
+        p.resized = true
+        p.width = Math.max(p.minW, viewport.width - 24)
+        p.fixedHeight = Math.max(p.minH, viewport.height - 24)
+        zoom = 1; tx = 12 - p.x; ty = 12 - p.y
+    }
+
+    // ---------------- menú lateral ----------------
+    function baseOf(id) { return String(id).split("~")[0] }
+    function spec(id) { var b = baseOf(id); return L.PANELS.filter(function (p) { return p[0] === b })[0] }
+    function titleOf(id) {
+        if (names[id]) return names[id]
+        var d = spec(id), n = String(id).split("~")[1]
+        return d ? d[1] + (n ? " " + n : "") : id
+    }
+    function modelOf(id) { var d = spec(id); return d ? d[2] : "" }
+    function renamePanel(id, name) {
+        var n = Object.assign({}, names)
+        if (String(name).trim().length) n[id] = String(name).trim(); else delete n[id]
+        names = n; saveLayout()
+    }
+    // Ir a un módulo: se muestra si estaba oculto y se encuadra (o se maximiza si hay uno maximizado)
+    function goTo(id) {
+        currentId = id
+        var p = panelItems[id]
+        if (!p) return
+        p.z = ++zTop
+        if (maxId) { if (maxId !== id) toggleMax(id); return }
+        if (hidden[id]) { setHidden(id, false); return }
+        fitIds([id])
+    }
+    // Qué hace el «+» de cada módulo (null = solo existe uno)
+    function addLabel(base) {
+        return ({ piano: "Nueva pista de instrumento", inst: "Nueva pista de instrumento", drums: "Nueva pista de batería",
+                  ia: "Nueva pista con IA", cinta: "Nueva pista de voz para grabar", audios: "Importar audio…",
+                  pistas: "Importar audio…", fx: "Otro rack de efectos (para ver otro canal a la vez)" })[base] || null
+    }
+    function addMore(base) {
+        var type = ({ piano: "inst", inst: "inst", drums: "drum", ia: "ia", cinta: "voz" })[base]
+        if (type) { sq.addTrack(type); goTo(sq.src[type]); return }
+        if (base === "audios" || base === "pistas") {
+            if (engineOk) importAudio(); else toast("Motor nativo no disponible")
+            goTo("pistas"); return
+        }
+        if (base === "fx") addExtra("fx")
+    }
+    function addInstrument(voice) {
+        sq.addTrack("inst"); sq.setCfg("inst", "v", voice); goTo("inst")
+        toast("Pista nueva: " + sq.insts[voice][0])
+    }
+    function addEffect(key) {
+        if (!fxBody || !key) return
+        if (hidden.fx) setHidden("fx", false)
+        fxBody.add(key); goTo("fx")
+    }
+    function addExtra(base, pid, target) {
+        if (!pid) {
+            var n = 2
+            while (panelItems[base + "~" + n]) n++
+            pid = base + "~" + n
+        }
+        if (target !== undefined) { var t = Object.assign({}, extraTargets); t[pid] = target; extraTargets = t }
+        panelModel.append({ pid: pid, base: base })
+        panelList = panelList.concat([{ pid: pid, base: base, extra: true }])
+        Qt.callLater(function () {
+            var p = panelItems[pid], b = panelItems[base]
+            if (p && b && !(savedLayout.pos || {})[pid]) { p.x = b.x; p.y = b.y + b.height + gap; placeFree(pid) }
+            if (!loading) { goTo(pid); saveLayout() }
+        })
+        return pid
+    }
+    function removeExtra(id) {
+        if (maxId === id) toggleMax(id)
+        for (var i = 0; i < panelModel.count; i++) if (panelModel.get(i).pid === id) { panelModel.remove(i); break }
+        var m = Object.assign({}, panelItems); delete m[id]; panelItems = m
+        panelList = panelList.filter(function (q) { return q.pid !== id })
+        var n = Object.assign({}, names); delete n[id]; names = n
+        var t = Object.assign({}, extraTargets); delete t[id]; extraTargets = t
+        saveLayout()
+    }
+    function setExtraTarget(id, track) {
+        if (extraTargets[id] === track) return
+        var t = Object.assign({}, extraTargets); t[id] = track; extraTargets = t; saveLayout()
+    }
+    property bool loading: true
+    ListModel { id: panelModel }
+
+    // ---------------- plugins VST3 externos ----------------
+    function scanPlugins() {
+        if (!engineOk) { toast("Motor nativo no disponible"); return }
+        if (pluginScanning) return
+        pluginScanning = true; pluginStatus = "Buscando plugins VST3… cada uno se abre una vez para leer sus datos: la primera vez puede tardar unos minutos y la ventana no responde mientras tanto."
+        scanTimer.start()
+    }
+    Timer {
+        id: scanTimer; interval: 50
+        onTriggered: {
+            var r = win.call("pluginScan")
+            win.pluginScanning = false
+            if (!r.ok) { win.pluginStatus = r.error; return }
+            win.plugins = r.plugins
+            win.pluginStatus = r.plugins.length + " plugins VST3 en " + r.folders.join(", ")
+                             + (r.failed.length ? " · " + r.failed.length + " no se pudieron abrir" : "")
+        }
+    }
+    function loadPluginList() {
+        var r = call("pluginList")
+        if (r.ok) { plugins = r.plugins; if (r.plugins.length) pluginStatus = r.plugins.length + " plugins VST3 (lista guardada)" }
+    }
+    function addPluginEffect(p) {
+        if (!fxBody) return
+        if (hidden.fx) setHidden("fx", false)
+        fxBody.addPlugin(p.id); goTo("fx")
+    }
+    function addPluginInstrument(p) {
+        sq.addTrack("inst")
+        sq.setCfg("inst", "plugin", p.id)
+        goTo("inst")
+        toast("Pista nueva con " + p.name + " (VST3)")
     }
 
     // ---------------- motor ----------------
@@ -235,9 +516,15 @@ Window {
     function addTrack(info, stem) {
         var t = tracks.slice()
         t.push({ uid: "a" + info.id, id: info.id, type: "audio", name: info.name, len: info.length_seconds || 0, peaks: info.peaks || [],
-                 note: info.note || "", mute: false, solo: false, vol: 70, pan: 50 })
+                 note: info.note || "", mute: false, solo: false, vol: 70, pan: 50, aclips: clipsOf(info.id) })
         tracks = t; selected = t.length - 1
         if (stem !== false) mx.linkTrack(info)
+    }
+    // Clips de audio de una pista del motor (Pistas los edita como en un DAW)
+    function clipsOf(id) { var r = engineOk && id >= 0 ? call("clipList", id) : null; return r && r.ok ? r.clips : [] }
+    function refreshClips(uid) {
+        var i = sq.indexOf(uid); if (i < 0) return
+        var t = tracks.slice(); t[i] = Object.assign({}, t[i], { aclips: clipsOf(t[i].id) }); tracks = t
     }
     function removeTrackAt(i) {
         var t = tracks.slice(), gone = t.splice(i, 1)[0]
@@ -256,6 +543,12 @@ Window {
         if (t && t.id >= 0 && engineOk) { call("setTrackVolume", t.id, Math.round(vol)); call("setTrackPan", t.id, (pan - 50) / 50) }
     }
     function seqSrc(type) { return sq.src[type] }
+    // Pico [L, R] de una pista (el motor da un valor o un par)
+    function trackLR(id) { var v = trackDb[String(id)]; return v === undefined ? [-100, -100] : v.length === 2 ? v : [v, v] }
+    function toggleTrackFlag(uid, k) {
+        var i = sq.indexOf(uid); if (i < 0) return
+        var t = tracks.slice(), c = {}; c[k] = !t[i][k]; t[i] = Object.assign({}, t[i], c); tracks = t; syncTrackStates()
+    }
     function trackLevel(id) { var v = trackDb[String(id)]; return v === undefined ? -100 : v }
     function setMaster(v) { masterPos = v; if (engineOk) call("setMasterVolume", v) }
     function applyTempo(v) { bpm = v; bpmInput.text = String(v); if (engineOk) call("setTempo", v) }
@@ -292,6 +585,7 @@ Window {
         function onStateChanged(s) {
             var st; try { st = JSON.parse(s) } catch (e) { return }
             win.playing = st.playing
+            win.posSec = st.position
             if (st.playing || st.position > 0) win.step = Math.floor(st.position * win.bpm / 15) % 256
             win.masterDb = st.master
             win.trackDb = st.tracks
@@ -342,7 +636,7 @@ Window {
         id: header
         z: 5
         width: parent.width
-        height: Math.round(chips.y + chips.height + 10 + 3)
+        height: Math.round(leftGroup.y + leftGroup.height + 10 + 3)
         color: Theme.header
         Rectangle { y: parent.height - 3; width: parent.width; height: 3; color: Theme.line }
 
@@ -352,6 +646,12 @@ Window {
             spacing: 16
             Row {                                   // .transport
                 spacing: 6
+                NeoButton {
+                    text: "☰"; tip: "Mostrar u ocultar el menú lateral (módulos, instrumentos y efectos)"
+                    pressedState: win.menuOpen
+                    color: win.menuOpen ? Theme.pressedBg : Theme.button; textColor: win.menuOpen ? Theme.pressedInk : Theme.ink
+                    onClicked: win.menuOpen = !win.menuOpen
+                }
                 NeoButton {
                     text: "■"; tip: "Detener"
                     onClicked: { if (win.engineOk) win.call("stop"); win.step = -1 }
@@ -423,67 +723,28 @@ Window {
                     tip: "Driver (Windows Audio, DirectSound, ASIO4ALL…), dispositivo, frecuencia y búfer"
                     onClicked: win.openAudioSettings()
                 }
-                NeoButton {                         // chip del módulo Efectos: aquí para no añadir otra fila de chips
-                    id: fxChip
-                    readonly property bool on: !win.hidden.fx
-                    text: "Efectos" + (on ? "" : "  +")
-                    color: on ? Theme.pc.fx : Theme.button
-                    textColor: on ? "#000" : Theme.ink
-                    pressedState: on
-                    tip: "Biblioteca nativa de efectos (mostrar u ocultar el módulo)"
-                    onClicked: win.setHidden("fx", on)
-                    Rectangle { width: 12; height: 12; border.width: 2; border.color: "#000"
-                                color: fxChip.on ? "#000" : (Theme.dark ? "#1b1822" : "#fff") }
-                }
             }
         }
 
-        Item {                                      // .chips
-            id: chips
-            readonly property real avail: header.width - 28
-            readonly property bool sameRow: leftGroup.width + 16 + chipFlow.implicitW <= avail
-            width: Math.min(avail, chipFlow.implicitW)
-            height: chipFlow.height
-            x: header.width - 14 - width
-            y: sameRow ? 10 : 10 + leftGroup.height + 10
-            Flow {
-                id: chipFlow
-                width: parent.width
-                spacing: 6
-                property real implicitW: {
-                    var w = 0, n = 0
-                    for (var i = 0; i < children.length; i++)
-                        if (children[i].width > 0) { w += children[i].width + (n ? 6 : 0); n++ }
-                    return w
-                }
-                Text {
-                    text: "Módulos:"; color: Theme.ink; height: 34; verticalAlignment: Text.AlignVCenter
-                    font.family: Theme.font; font.pixelSize: 14; font.weight: 700
-                }
-                Repeater {
-                    model: L.PANELS.filter(function (p) { return p[0] !== "fx" })
-                    NeoButton {
-                        id: chip
-                        readonly property string pid: modelData[0]
-                        readonly property bool on: !win.hidden[pid]
-                        text: modelData[1] + (on ? "" : "  +")
-                        color: on ? Theme.pc[pid] : Theme.button
-                        textColor: on ? "#000" : Theme.ink
-                        pressedState: on
-                        onClicked: win.setHidden(pid, on)
-                        Rectangle { width: 12; height: 12; border.width: 2; border.color: "#000"
-                                    color: chip.on ? "#000" : (Theme.dark ? "#1b1822" : "#fff") }
-                    }
-                }
-            }
-        }
+    }
+
+    // ---------------- menú lateral ----------------
+    SideMenu {
+        id: sideMenu
+        studio: win
+        z: 4
+        anchors { top: header.bottom; bottom: parent.bottom; left: parent.left }
+        width: win.menuOpen ? 290 : 0
+        visible: win.menuOpen
     }
 
     // ---------------- lienzo infinito ----------------
     Item {
         id: viewport
-        anchors { top: header.bottom; left: parent.left; right: parent.right; bottom: parent.bottom }
+        anchors { top: header.bottom; left: sideMenu.right; right: parent.right; bottom: parent.bottom }
         clip: true
+        onWidthChanged: if (win.maxId) win.fitMax()
+        onHeightChanged: if (win.maxId) win.fitMax()
 
         Canvas {                                    // rejilla de puntos
             id: dots
@@ -504,6 +765,7 @@ Window {
         }
         MouseArea {                                 // arrastrar el fondo mueve el lienzo
             anchors.fill: parent
+            enabled: !win.maxId
             cursorShape: pressed ? Qt.ClosedHandCursor : Qt.OpenHandCursor
             property point start
             property point orig
@@ -523,6 +785,7 @@ Window {
                 Item {
                     id: cable
                     required property var modelData
+                    visible: !win.maxId
                     readonly property color c: Theme.pc[modelData.f]
                     readonly property var geo: {
                         win.geomRev; win.portRev
@@ -552,44 +815,61 @@ Window {
                             PathSvg { path: cable.geo.d }
                         }
                     }
+                    Rectangle {                      // etiqueta «CANAL → FX» del cable de la consola al rack
+                        readonly property string nm: { win.tracks; var t = win.tracks.filter(function (k) { return k.id === win.rackTrack })[0]; return t ? t.name : "" }
+                        visible: cable.modelData.key === "mezcla-fx" && nm.length > 0
+                        x: cable.geo.m.x - width / 2; y: cable.geo.m.y - height - 16
+                        width: cl.implicitWidth + 16; height: 26
+                        color: "#fff"; border.width: 2; border.color: "#000"
+                        Text { id: cl; anchors.centerIn: parent; text: parent.nm.toUpperCase() + " → FX"; color: "#000"
+                               font.family: Theme.font; font.pixelSize: 12; font.weight: 700 }
+                    }
                 }
             }
 
             // módulos
             Repeater {
-                model: L.PANELS
+                model: panelModel
                 ModulePanel {
                     id: panel
-                    required property var modelData
+                    required property string base
                     required property int index
-                    pid: modelData[0]; title: modelData[1]; modelName: modelData[2]
+                    required pid
+                    readonly property var spec: win.spec(base)
+                    readonly property bool extra: pid !== base
+                    title: win.titleOf(pid); modelName: spec[2]
+                    accent: Theme.pcOf(pid)
                     viewZ: win.zoom
-                    visible: !win.hidden[pid]
-                    autoHeight: pid !== "cinta"
+                    visible: !win.hidden[pid] && (!win.maxId || win.maxId === pid)
+                    autoHeight: base !== "cinta"
+                    mover: win.slideTo
+                    sizer: win.sizeTo
                     z: index + 1
                     Component.onCompleted: {
-                        var o = (win.savedLayout.pos || {})[pid] || modelData[3]
+                        var o = (win.savedLayout.pos || {})[pid] || spec[3]
                         x = L.clamp(o[0], -15000, 15000); y = L.clamp(o[1], -15000, 15000); width = L.clamp(o[2], 240, 5000)
-                        fixedHeight = modelData[4]
+                        fixedHeight = spec[4]
                         if (o.length > 3) { fixedHeight = L.clamp(o[3], 190, 4000); resized = true }
                         var m = Object.assign({}, win.panelItems); m[pid] = panel; win.panelItems = m
                     }
                     onXChanged: win.geomRev++
                     onYChanged: win.geomRev++
                     onWidthChanged: win.geomRev++
-                    onHeightChanged: win.geomRev++
+                    onHeightChanged: { win.geomRev++; if (!win.loading && visible && !maximized) win.queuePush(panel) }
                     onVisibleChanged: win.geomRev++
                     onRaiseRequested: z = ++win.zTop
-                    onEditFinished: win.saveLayout()
+                    onEditFinished: { win.pushFrom(panel); win.saveLayout() }
                     onFocusRequested: win.fitIds([pid])
-                    onCloseRequested: win.setHidden(pid, true)
+                    onCloseRequested: extra ? win.removeExtra(pid) : win.setHidden(pid, true)
+                    onMaximizeRequested: win.toggleMax(pid)
+                    onRenamed: function (name) { win.renamePanel(pid, name) }
 
                     Loader {
                         width: panel.bodyWidth
                         sourceComponent: ({ pistas: tracksComp, audios: audiosComp, mezcla: mixComp, master: masterComp,
                                             afina: tuneComp, mastia: masteringComp, antes: reviewComp,
                                             inst: instComp, drums: drumsComp, piano: pianoComp, ia: iaComp,
-                                            cinta: cintaComp, fx: fxComp, fxm: fxmComp })[panel.pid]
+                                            cinta: cintaComp, fx: panel.extra ? fxExtraComp : fxComp, fxm: fxmComp })[panel.base]
                     }
                     Component { id: audiosComp; AudiosBody { mixer: mx; studio: win } }
                     Component { id: mixComp; MixBody { mixer: mx; studio: win } }
@@ -604,6 +884,7 @@ Window {
                     Component { id: cintaComp; CintaBody { seq: sq; studio: win } }
                     Component { id: fxComp; FxBody { studio: win; shown: panel.visible } }
                     Component { id: fxmComp; FxBody { studio: win; shown: panel.visible; master: true } }
+                    Component { id: fxExtraComp; FxBody { studio: win; shown: panel.visible; extraId: panel.pid } }
                     Component {
                         id: tracksComp
                         TracksBody {
@@ -611,6 +892,9 @@ Window {
                             mixer: mx
                             seq: sq
                             host: panel
+                            studio: win
+                            posSec: win.posSec
+                            bpm: win.bpm
                             Component.onCompleted: win.rowCenter = rowCenter
                             onAddType: function (type) { sq.addTrack(type) }
                             selected: win.selected
@@ -640,7 +924,7 @@ Window {
                     readonly property var pnl: win.panelItems[modelData.pid]
                     readonly property var a: { win.geomRev; win.portRev; return win.anchorOf(modelData.link, modelData.end) }
                     readonly property color c: Theme.pc[modelData.link.f]
-                    visible: !!pnl && pnl.visible
+                    visible: !!pnl && pnl.visible && !win.maxId
                     x: a.x - 13; y: a.y - 13
                     z: pnl ? pnl.z + 0.5 : 0
                     width: 26; height: 26
@@ -683,7 +967,8 @@ Window {
                         var a = win.anchorOf(modelData, "from"), b = win.anchorOf(modelData, "to")
                         return win.bends[modelData.key] || { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }
                     }
-                    z: 100000
+                    z: 0.5                           // sobre su cable, debajo de los módulos
+                    visible: !win.maxId
                     x: m.x - 10.5; y: m.y - 10.5
                     width: 21; height: 21; radius: 4
                     color: bm.containsMouse ? "#ffc233" : Theme.grip
@@ -712,6 +997,7 @@ Window {
             anchors.fill: parent
             z: 10
             acceptedButtons: Qt.NoButton
+            enabled: !win.maxId
             onWheel: function (w) { win.zoomAt(w.angleDelta.y > 0 ? 1.12 : 1 / 1.12, w.x, w.y); w.accepted = true }
         }
 
@@ -735,17 +1021,18 @@ Window {
     // ---------------- ayuda y aviso ----------------
     Rectangle {                                     // #help
         z: 4
-        x: 14; y: win.height - 14 - height
-        width: Math.min(helpText.implicitWidth + 24, win.width - 28)
+        visible: !win.maxId
+        x: viewport.x + 14; y: win.height - 14 - height
+        width: Math.min(helpText.implicitWidth + 24, viewport.width - 28)
         height: helpText.height + 12
         color: Theme.help
         border.width: 2; border.color: "#000"
         Rectangle { x: 3; y: 3; z: -1; width: parent.width; height: parent.height; color: "#000" }
         Text {
             id: helpText
-            x: 10; y: 6; width: Math.min(implicitWidth, win.width - 48)
+            x: 10; y: 6; width: Math.min(implicitWidth, viewport.width - 48)
             wrapMode: Text.Wrap
-            text: "Franja negra: mover módulo · Cuadritos del borde: cambiar ancho y alto · Conectores redondos: arrastra a cualquier lado · Cuadrado del cable: cambiar su curva."
+            text: "Cabecera negra: mover (los módulos chocan, no se montan) · □: maximizar (Esc vuelve) · Bordes: cambiar tamaño · Conectores y cuadrado del cable: arrastrar."
             color: Theme.ink; font.family: Theme.font; font.pixelSize: 12; font.weight: 600
             lineHeight: 1.5
         }
@@ -769,6 +1056,17 @@ Window {
     }
 
     Component.onCompleted: {
+        var list = []
+        for (var i = 0; i < L.PANELS.length; i++) {
+            panelModel.append({ pid: L.PANELS[i][0], base: L.PANELS[i][0] })
+            list.push({ pid: L.PANELS[i][0], base: L.PANELS[i][0], extra: false })
+        }
+        panelList = list
+        var nm = savedLayout.names || {}, okn = {}
+        for (var k0 in nm) if (typeof nm[k0] === "string" && nm[k0].length) okn[k0] = nm[k0].slice(0, 60)
+        names = okn
+        extraTargets = savedLayout.targets || {}
+        ;(savedLayout.extra || []).forEach(function (e) { if (e && e.base === "fx" && /^fx~\d+$/.test(e.pid)) addExtra("fx", e.pid) })
         Theme.dark = savedLayout.theme === "dark"
         var po = savedLayout.ports || {}, ok = {}
         for (var k in po) if (po[k] && ["top", "bottom", "left", "right"].indexOf(po[k].side) >= 0 && isFinite(po[k].u)) ok[k] = { side: po[k].side, u: L.clamp(po[k].u, .03, .97) }
@@ -786,9 +1084,11 @@ Window {
             var dev = info.device || {}
             toast(dev.open ? "Motor nativo listo · " + dev.type + " · " + dev.output : "Motor nativo listo · sin dispositivo de salida abierto")
         } else toast("Motor nativo no disponible: " + (info.error || "desconocido"))
+        if (engineOk) loadPluginList()            // plugins VST3 de la última búsqueda
         mx.connect()
         sq.createDefaults()
         firstFit.start()
     }
-    Timer { id: firstFit; interval: 60; onTriggered: win.fitIds(["inst", "drums", "pistas"]) }
+    Timer { id: firstFit; interval: 60; onTriggered: { win.settleAll(); win.loading = false; win.fitIds(["inst", "drums", "pistas"]) } }
+    Shortcut { sequence: "Escape"; enabled: !!win.maxId; onActivated: win.toggleMax(win.maxId) }
 }

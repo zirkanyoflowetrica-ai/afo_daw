@@ -228,6 +228,42 @@ tiene; el chip de Efectos va en la primera fila para no añadir otra fila de chi
   Audios, Afinador y Mezcla, y el texto de las pistas reales).
 
 
+## Rediseño de los módulos y flujo de DAW (noviembre 2026)
+
+Referencia: `templates/REFERENCIA_PANELES.webp` (imagen del usuario).
+
+- `controls/ModulePanel.qml`: marco del color del módulo, cabecera negra con el título en su color,
+  chip blanco con el modelo, □ maximizar / ❐ restaurar y ✕; cuerpo crema (`Theme.panelColor`) con
+  barra de desplazamiento. Doble clic en el título lo renombra; en la cabecera, maximiza. Las asas de
+  tamaño solo aparecen al pasar el ratón.
+- **Choques** (`Main.qml`): `slideTo` mueve por ejes y se detiene a 28 px del primer módulo que
+  pisaría; `sizeTo` igual al redimensionar; `pushFrom` empuja hacia abajo a los que quedan debajo
+  cuando un módulo crece (cola `queuePush`: `Qt.callLater` juntaría las llamadas y solo empujaría el
+  último); `settleAll` ordena todo al abrir y al restaurar el diseño. Nada de esto actúa con un
+  módulo maximizado.
+- **Maximizar** (`toggleMax`, `fitMax`): el módulo llena el visor a zoom 1; los demás, los cables y
+  los puertos se ocultan; Esc restaura. El diseño guardado conserva la posición previa.
+- **Menú lateral** (`controls/SideMenu.qml`, 290 px): Módulos (miniatura `ShaderEffectSource`,
+  nombre editable, ojo para mostrar / ocultar, **+** para otro rack o pista), Instrumentos y Efectos
+  (familias de la Biblioteca nativa; las que aún no tienen módulos se listan en una línea «Por
+  construir», sin botones). Los racks extra (`fx~2`, …) se guardan con su nombre y su pista.
+- `layout.js` versión 3 (diseño de fábrica nuevo); guarda también `names`, `extra` y `targets`.
+- **Pistas** (`modules/TracksBody.qml`): barra de edición (Mover, Cortar, Dividir, Duplicar,
+  Borrar, Normalizar, Vol −/+, fundidos, rejilla, deshacer / rehacer, zoom), regla con compases
+  (clic = ir ahí), clips de audio con su forma de onda según desplazamiento, ganancia y fundidos.
+  Cada edición llama a `afo.clipEdit` (motor: `splitClip`, `setClipRange`, `setClipGain`,
+  `setClipFades`, `setClips` para deshacer). El proyecto guarda los clips (`aclips`).
+- **Mezcla**: caja CANALES / MIXER con tiras de cabecera de color, PAN, dB del fader, medidor estéreo
+  del motor, S / M y la tira MASTER; el cable al rack lleva la etiqueta «PISTA → FX».
+- **Batería**: Drum pad de 8 pads (teclas 1–8) que suenan en el motor y pueden grabar en el patrón.
+- **VST3**: Instrumentos elige el sintetizador del motor o un VST3 («Abrir instrumento» muestra su
+  ventana); el rack de Efectos acepta efectos VST3 («Abrir plugin»). Su estado viaja en el proyecto;
+  si un plugin falta al abrir, se avisa y se sigue.
+
+`--selftest` lo comprueba: ningún módulo solapado al abrir, arrastre que se detiene, maximizar y
+restaurar, rack extra con nombre, el menú lleva al módulo, y dividir / recortar / fundidos /
+normalizar / deshacer clips en el motor.
+
 ## Después de la fase 5: cierre del Hito 1 en la interfaz
 
 - Cabecera: **Abrir** y **Guardar** proyecto junto al transporte (Ctrl+O, Ctrl+S, Ctrl+Mayús+S).

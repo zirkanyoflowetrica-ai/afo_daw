@@ -21,9 +21,31 @@ Column {
     DashedBox { visible: !root.t; width: root.width; height: visible ? implicitHeight : 0
                 text: "Crea una pista de instrumento para cargar su preset." }
 
+    Row {                                       // instrumento VST3 externo de esta pista
+        visible: !!root.t
+        width: root.width; spacing: 8; topPadding: 8; height: visible ? implicitHeight : 0
+        readonly property var studio: root.seq.studio
+        readonly property var insts: studio.plugins.filter(function (p) { return p.instrument })
+        Text { text: "Sonido"; anchors.verticalCenter: parent.verticalCenter; color: Theme.ink
+               font.family: Theme.font; font.pixelSize: 12; font.weight: 700 }
+        Select {
+            width: Math.min(260, root.width - 220)
+            options: [["", "Sintetizador del motor (preset abajo)"]].concat(parent.insts.map(function (p) { return [p.id, p.name + " · " + p.vendor] }))
+            current: root.t ? root.t.cfg.plugin || "" : ""
+            tip: parent.insts.length ? "Instrumento VST3: recibe las notas del piano roll de esta pista"
+                                     : "Busca plugins VST3 en el menú Instrumentos para elegirlos aquí"
+            onPicked: function (v) { root.seq.setCfg("inst", "plugin", v) }
+        }
+        NeoButton {
+            visible: !!root.t && !!root.t.cfg.plugin
+            text: "Abrir instrumento"; fontSize: 12; padX: 8; padY: 3
+            onClicked: { var r = parent.studio.call("instPluginEditor", root.t.id); if (!r.ok) parent.studio.toast(r.error) }
+        }
+    }
+
     Grid {                                      // .insts: repeat(auto-fill, minmax(120px, 1fr))
         id: grid
-        visible: !!root.t
+        visible: !!root.t && !root.t.cfg.plugin
         columns: Math.max(1, Math.floor((root.width + 8) / 128))
         columnSpacing: 8; rowSpacing: 8
         topPadding: 10; bottomPadding: 10 + 3

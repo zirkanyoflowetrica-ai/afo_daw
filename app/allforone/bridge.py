@@ -155,6 +155,14 @@ class Bridge(QObject):
         return _ok()
 
     @Slot(float, result=str)
+    def seek(self, seconds: float) -> str:
+        """Lleva el cursor de reproducción a ese segundo (clic en la regla o en un carril de Pistas)."""
+        if (g := self._guard()):
+            return g
+        self.host.engine.set_position_seconds(max(0.0, float(seconds)))
+        return _ok()
+
+    @Slot(float, result=str)
     def setTempo(self, bpm: float) -> str:
         if (g := self._guard()):
             return g
@@ -315,7 +323,7 @@ class Bridge(QObject):
         out = []
         for e in self.host.engine.effects(track_id):
             e = dict(e)
-            e["label"] = self._fx_labels.get(e["id"], "")
+            e["label"] = self._fx_labels.get(e["id"], "") or e.get("name", "")
             e["auto"] = e["id"] in auto
             out.append(e)
         return out
@@ -506,6 +514,54 @@ class Bridge(QObject):
         p.mkdir(parents=True, exist_ok=True)
         return str(p)
 
+    # --- edición de clips de audio (Pistas) -------------------------------------------
+    @Slot(int, result=str)
+    def clipList(self, track_id: int) -> str:
+        if (g := self._guard()):
+            return g
+        try:
+            return _ok(clips=self.host.engine.clips(int(track_id)))
+        except Exception as exc:
+            return _err(f"No se pudieron leer los clips: {exc}")
+
+    @Slot(int, str, result=str)
+    def clipEdit(self, track_id: int, op_json: str) -> str:
+        """Una edición de clip: range (mover/recortar), split, dup, remove, gain, fades, normalize o set
+        (sustituir todos: deshacer y abrir proyecto). Devuelve los clips de la pista y su duración."""
+        if (g := self._guard()):
+            return g
+        eng = self.host.engine
+        try:
+            op = json.loads(op_json)
+            kind = op.get("op")
+            cid = int(op.get("clip", 0))
+            if kind == "range":
+                eng.set_clip_range(cid, float(op["start"]), float(op["length"]), float(op["offset"]))
+            elif kind == "split":
+                eng.split_clip(cid, float(op["at"]))
+            elif kind == "dup":
+                eng.duplicate_clip(cid)
+            elif kind == "remove":
+                eng.remove_clip(cid)
+            elif kind == "gain":
+                eng.set_clip_gain(cid, float(op["db"]))
+            elif kind == "fades":
+                eng.set_clip_fades(cid, float(op["in"]), float(op["out"]))
+            elif kind == "normalize":           # pico del trozo a op["target"] dBFS (−1 por defecto)
+                peak = eng.clip_peak_db(cid)
+                if peak <= -99:
+                    return _err("El clip está en silencio: no se puede normalizar")
+                eng.set_clip_gain(cid, float(op.get("target", -1.0)) - peak)
+            elif kind == "set":
+                eng.set_clips(int(track_id), op["clips"])
+            else:
+                return _err(f"Edición desconocida: {kind}")
+            info = next((t for t in eng.tracks() if t["id"] == int(track_id)), {})
+            return _ok(clips=eng.clips(int(track_id)), start=info.get("start_seconds", 0.0),
+                       length=info.get("length_seconds", 0.0))
+        except Exception as exc:
+            return _err(f"No se pudo editar el clip: {exc}")
+
     @Slot(str, str, result=str)
     def projectSave(self, doc_json: str, path: str) -> str:
         """Guarda la sesión. `path` vacío = elegir archivo; la interfaz recuerda el último."""
@@ -652,9 +708,65 @@ class Bridge(QObject):
         if (g := self._guard()):
             return g
         try:
-            return _ok(length=self.host.update_synth(int(track_id), json.loads(payload)))
+            data = json.loads(payload)
+            cfg = data.get("cfg") or {}
+            if data.get("type") == "inst":      # instrumento VST3 elegido para la pista (o el del motor)
+                want = cfg.get("plugin") or ""
+                if self.host.engine.track_instrument(int(track_id)) != want:
+                    self.host.engine.set_track_instrument(int(track_id), want, cfg.get("pluginState") or "")
+            return _ok(length=self.host.update_synth(int(track_id), data))
         except Exception as exc:
             return _err(f"Sintetizador: {exc}")
+
+    # --- plugins VST3 externos ------------------------------------------------------
+    @Slot(result=str)
+    def pluginScan(self) -> str:
+        """Busca VST3 en las carpetas estándar de Windows. Cada plugin se abre una vez para leer sus
+        datos; la lista queda guardada en la carpeta de datos."""
+        if (g := self._guard()):
+            return g
+        try:
+            return _ok(**self.host.engine.scan_plugins([]))
+        except Exception as exc:
+            return _err(f"No se pudieron buscar plugins: {exc}")
+
+    @Slot(result=str)
+    def pluginList(self) -> str:
+        if (g := self._guard()):
+            return g
+        try:
+            return _ok(plugins=self.host.engine.known_plugins())
+        except Exception as exc:
+            return _err(f"No se pudo leer la lista de plugins: {exc}")
+
+    @Slot(int, str, int, result=str)
+    def fxAddPlugin(self, track_id: int, plugin_id: str, index: int) -> str:
+        if (g := self._guard()):
+            return g
+        try:
+            e = self.host.engine.add_plugin_effect(int(track_id), plugin_id, int(index), "")
+            self._fx_labels[e["id"]] = e["name"]
+            return _ok(effect=e, chain=self._chain(track_id))
+        except Exception as exc:
+            return _err(f"No se pudo cargar el plugin: {exc}")
+
+    @Slot(int, result=str)
+    def fxPluginEditor(self, effect_id: int) -> str:
+        if (g := self._guard()):
+            return g
+        try:
+            return _ok(shown=self.host.engine.show_effect_editor(int(effect_id)))
+        except Exception as exc:
+            return _err(f"No se pudo abrir el plugin: {exc}")
+
+    @Slot(int, result=str)
+    def instPluginEditor(self, track_id: int) -> str:
+        if (g := self._guard()):
+            return g
+        try:
+            return _ok(shown=self.host.engine.show_instrument_editor(int(track_id)))
+        except Exception as exc:
+            return _err(f"No se pudo abrir el instrumento: {exc}")
 
     @Slot(str, result=str)
     def synthAudition(self, payload: str) -> str:

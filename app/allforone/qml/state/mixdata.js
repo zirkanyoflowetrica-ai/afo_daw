@@ -37,4 +37,7 @@ function kindShort(k) {
 // Medidores: dBFS → 0..100 en escala -60..0 dB
 function dbToPct(db) { return Math.max(0, Math.min(100, (db + 60) / 60 * 100)) }
 // Ley de fader de la plantilla (70 = 0 dB): posición que corresponde a una ganancia en dB
+// Posición del fader (70 = 0 dB) → dB, y su texto («−∞ dB» abajo del todo)
+function faderToDb(v) { return v <= 0 ? -100 : 40 * Math.log(v / 70) / Math.LN10 }
+function faderDbText(v) { var d = faderToDb(v); return d <= -99 ? "−∞ dB" : (d > 0.05 ? "+" : "") + d.toFixed(1) + " dB" }
 function dbToFader(db) { return Math.max(0, Math.min(100, 70 * Math.pow(10, Math.max(-24, Math.min(6, db)) / 40))) }

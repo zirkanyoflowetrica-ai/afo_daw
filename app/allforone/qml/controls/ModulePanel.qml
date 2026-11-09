@@ -1,8 +1,9 @@
 import QtQuick
 import "../theme"
 
-// .panel de la plantilla: borde 3 px, sombra dura 7 px, rayado vertical, franja negra para mover,
-// tornillos abajo y 8 cuadritos para cambiar ancho y alto.
+// Módulo del lienzo: marco grueso del color del módulo, cabecera negra para moverlo (con su nombre,
+// modelo, maximizar y quitar), cuerpo claro con desplazamiento propio y cuadritos para cambiar ancho
+// y alto. Los módulos chocan entre sí: `mover`/`sizer` (de Main) recortan el movimiento.
 Item {
     id: root
     property string pid
@@ -10,12 +11,15 @@ Item {
     property string modelName
     property color accent: Theme.pc[pid] || "#ffffff"
     property real viewZ: 1                    // zoom del lienzo (para convertir el arrastre)
-    property bool wood: pid === "inst" || pid === "drums" || pid === "piano"
     property bool autoHeight: false           // alto según el contenido mientras no se redimensione
     property real fixedHeight: 300
     property bool resized: false
+    property bool maximized: false
+    property var mover: null                  // function(panel, x, y) → {x, y} sin chocar
+    property var sizer: null                  // function(panel, {x, y, w, h}) → rect sin chocar
     readonly property real minW: 240
     readonly property real minH: 190
+    readonly property int frame: 9            // grosor del marco de color
     default property alias body: bodyContent.data
     property alias bodyWidth: bodyContent.width
     readonly property real headerHeight: head.height
@@ -24,57 +28,33 @@ Item {
     signal focusRequested()
     signal closeRequested()
     signal raiseRequested()
+    signal maximizeRequested()
+    signal renamed(string name)
 
-    height: autoHeight && !resized ? Math.max(minH, head.height + 12 + bodyContent.childrenRect.height + 30 + 6) : fixedHeight
+    height: autoHeight && !resized ? Math.max(minH, frame + head.height + 12 + bodyContent.childrenRect.height + 16 + frame + 3)
+                                   : fixedHeight
 
     Rectangle {                                // sombra dura
         x: 7; y: 7; width: parent.width; height: parent.height
         color: Theme.panelShadow(root.accent)
     }
-    Rectangle {
+    Rectangle {                                // marco de color
         id: face
         anchors.fill: parent
-        color: Theme.panelColor(root.pid, root.accent)
+        color: root.accent
         border.width: 3; border.color: Theme.line
-        clip: true
         MouseArea { anchors.fill: parent }    // un clic en el módulo no arrastra el lienzo
 
-        // rayado vertical 1 px cada 4 px + degradado de luz (repeating-linear-gradient + linear-gradient)
-        Canvas {
-            id: stripes
-            anchors.fill: parent; anchors.margins: 3
-            property bool dark: Theme.dark
-            property bool darkBody: root.pid === "piano"
-            onDarkChanged: requestPaint()
-            onWidthChanged: requestPaint()
-            onHeightChanged: requestPaint()
-            onPaint: {
-                var ctx = getContext("2d")
-                ctx.reset()
-                var a = (dark || darkBody) ? (darkBody && !dark ? 0.05 : 0.035) : 0.22
-                ctx.fillStyle = Qt.rgba(1, 1, 1, a)
-                for (var x = -3; x < width; x += 4) ctx.fillRect(x, 0, 1, height)
-                if (darkBody) return
-                var g = ctx.createLinearGradient(0, -3, 0, height + 3)
-                if (dark) { g.addColorStop(0, Qt.rgba(1, 1, 1, 0.05)); g.addColorStop(1, Qt.rgba(0, 0, 0, 0.2)) }
-                else { g.addColorStop(0, Qt.rgba(1, 1, 1, 0.3)); g.addColorStop(1, Qt.rgba(0, 0, 0, 0.1)) }
-                ctx.fillStyle = g
-                ctx.fillRect(0, 0, width, height)
-            }
-        }
-        // laterales de madera de Piano roll, Instrumentos y Batería
-        Rectangle { visible: root.wood; x: 3; y: 3; width: 16; height: parent.height - 6; color: Theme.dark ? "#3b2616" : "#8a5a2b" }
-        Rectangle { visible: root.wood; x: parent.width - 19; y: 3; width: 16; height: parent.height - 6; color: Theme.dark ? "#3b2616" : "#8a5a2b" }
-
-        // .ph: franja negra para mover
+        // cabecera negra: arrastrar mueve el módulo, doble clic en el nombre lo renombra
         Rectangle {
             id: head
-            x: 3; y: 3; width: parent.width - 6
-            height: Math.round(Math.max(titleText.implicitHeight, focusBtn.height) + 16)
+            x: root.frame; y: root.frame; width: parent.width - 2 * root.frame
+            height: 44
             color: "#000"
             MouseArea {
                 anchors.fill: parent
-                cursorShape: Qt.SizeAllCursor
+                enabled: !root.maximized
+                cursorShape: root.maximized ? Qt.ArrowCursor : Qt.SizeAllCursor
                 property point start
                 property point orig
                 onPressed: function (m) {
@@ -83,97 +63,131 @@ Item {
                 }
                 onPositionChanged: function (m) {
                     var p = mapToGlobal(m.x, m.y)
-                    root.x = orig.x + (p.x - start.x) / root.viewZ
-                    root.y = orig.y + (p.y - start.y) / root.viewZ
+                    var x = orig.x + (p.x - start.x) / root.viewZ, y = orig.y + (p.y - start.y) / root.viewZ
+                    var q = root.mover ? root.mover(root, x, y) : { x: x, y: y }
+                    root.x = q.x; root.y = q.y
                     root.geometryEdited()
                 }
                 onReleased: root.editFinished()
+                onDoubleClicked: root.maximizeRequested()
             }
             Row {
-                x: 12; spacing: 8
-                width: parent.width - 24
+                x: 14; spacing: 10
+                width: parent.width - 22
                 anchors.verticalCenter: parent.verticalCenter
-                Item {                          // punto de color con brillo
-                    width: 12; height: 12; anchors.verticalCenter: parent.verticalCenter
-                    Rectangle { anchors.centerIn: parent; width: 22; height: 22; radius: 11; color: root.accent; opacity: 0.25 }
-                    Rectangle { anchors.fill: parent; radius: 6; color: root.accent; border.width: 2; border.color: "#fff" }
-                }
-                Text {
-                    id: titleText
-                    text: root.title
-                    color: root.accent
-                    font.family: Theme.font; font.pixelSize: 17; font.weight: 700
-                    width: parent.width - 12 - mdl.width - focusBtn.width - closeBtn.width - 4 * 8
-                    elide: Text.ElideRight
+                Rectangle { width: 14; height: 14; radius: 7; color: root.accent; anchors.verticalCenter: parent.verticalCenter }
+                Item {
+                    id: titleBox
+                    width: parent.width - 14 - mdl.width - maxBtn.width - closeBtn.width - 4 * 10
+                    height: titleText.implicitHeight
                     anchors.verticalCenter: parent.verticalCenter
+                    Text {
+                        id: titleText
+                        visible: !nameEdit.visible
+                        width: parent.width
+                        text: root.title.toUpperCase()
+                        color: root.accent
+                        font.family: Theme.font; font.pixelSize: 19; font.weight: 700; font.letterSpacing: 0.6
+                        elide: Text.ElideRight
+                        MouseArea {
+                            anchors.fill: parent
+                            cursorShape: root.maximized ? Qt.ArrowCursor : Qt.SizeAllCursor
+                            propagateComposedEvents: true
+                            onPressed: function (m) { m.accepted = false }
+                            onDoubleClicked: { nameEdit.text = root.title; nameEdit.visible = true; nameEdit.forceActiveFocus(); nameEdit.selectAll() }
+                        }
+                    }
+                    TextInput {
+                        id: nameEdit
+                        visible: false
+                        width: parent.width
+                        color: "#fff"; selectByMouse: true; clip: true
+                        font.family: Theme.font; font.pixelSize: 17; font.weight: 700
+                        onAccepted: { visible = false; if (text.trim().length) root.renamed(text.trim()) }
+                        onActiveFocusChanged: if (!activeFocus && visible) accepted()
+                        Keys.onEscapePressed: visible = false
+                        Rectangle { anchors.fill: parent; anchors.margins: -3; z: -1; color: "#222"; border.width: 1; border.color: root.accent }
+                    }
                 }
                 Rectangle {
                     id: mdl
-                    width: mdlText.implicitWidth + 16; height: mdlText.implicitHeight + 4
-                    color: Theme.mdl; border.width: 2; border.color: "#000"
+                    width: mdlText.implicitWidth + 18; height: 28
+                    color: "#fff"; border.width: 2; border.color: "#000"
                     anchors.verticalCenter: parent.verticalCenter
-                    Text { id: mdlText; anchors.centerIn: parent; text: root.modelName; color: Theme.ink
-                           font.family: Theme.font; font.pixelSize: 11; font.weight: 700 }
+                    Text { id: mdlText; anchors.centerIn: parent; text: root.modelName.toUpperCase(); color: "#000"
+                           font.family: Theme.font; font.pixelSize: 12; font.weight: 700 }
                 }
-                NeoButton { id: focusBtn; text: "Enfocar"; fontSize: 12; padX: 8; padY: 2; anchors.verticalCenter: parent.verticalCenter
-                            onClicked: root.focusRequested() }
-                NeoButton { id: closeBtn; text: "✕"; fontSize: 12; padX: 8; padY: 2; anchors.verticalCenter: parent.verticalCenter
-                            tip: "Quitar " + root.title; onClicked: root.closeRequested() }
+                HeadButton { id: maxBtn; glyph: root.maximized ? "❐" : "□"
+                             tip: root.maximized ? "Volver al lienzo" : "Maximizar: este módulo ocupa toda la ventana"
+                             onClicked: root.maximizeRequested() }
+                HeadButton { id: closeBtn; glyph: "✕"; tip: "Quitar " + root.title + " del lienzo (vuelve desde el menú)"
+                             onClicked: root.closeRequested() }
             }
         }
 
-        // .pb: cuerpo con desplazamiento propio
-        Flickable {
-            id: flick
-            x: 3 + (root.wood ? 30 : 12)            // padding de .pb dentro del borde de 3 px
-            y: head.y + head.height + 12
-            width: parent.width - 2 * x
-            height: parent.height - y - 30 - 3
-            contentWidth: width
-            contentHeight: bodyContent.childrenRect.height
-            clip: true
-            boundsBehavior: Flickable.StopAtBounds
-            interactive: contentHeight > height
-            Item { id: bodyContent; width: flick.width; height: childrenRect.height }
-        }
-
-        // tornillos
-        Repeater {
-            model: 2
-            Rectangle {
-                width: 14; height: 14; radius: 7
-                x: index === 0 ? 3 + 8 : parent.width - 3 - 8 - 14
-                y: parent.height - 3 - 7 - 14
-                border.width: 2; border.color: "#000"
-                gradient: Gradient {
-                    GradientStop { position: 0.0; color: "#ffffff" }
-                    GradientStop { position: 0.55; color: "#a8a8a8" }
-                    GradientStop { position: 1.0; color: "#555555" }
-                }
-                Rectangle { anchors.centerIn: parent; width: 10; height: 1.6; rotation: -55; color: "#000" }
+        // cuerpo claro con desplazamiento propio
+        Rectangle {
+            id: inner
+            x: root.frame; y: head.y + head.height
+            width: parent.width - 2 * root.frame
+            height: parent.height - y - root.frame
+            color: Theme.panelColor(root.pid, root.accent)
+            border.width: 3; border.color: Theme.line
+            Flickable {
+                id: flick
+                x: 14; y: 12
+                width: parent.width - 28
+                height: parent.height - y - 14
+                contentWidth: width
+                contentHeight: bodyContent.childrenRect.height
+                clip: true
+                boundsBehavior: Flickable.StopAtBounds
+                interactive: contentHeight > height
+                Item { id: bodyContent; width: flick.width; height: childrenRect.height }
+            }
+            Rectangle {                        // barra de desplazamiento cuando el contenido no cabe
+                visible: flick.contentHeight > flick.height + 1
+                x: parent.width - 8; width: 4; radius: 2
+                y: flick.y + flick.visibleArea.yPosition * flick.height
+                height: Math.max(24, flick.visibleArea.heightRatio * flick.height)
+                color: Theme.ink; opacity: 0.35
             }
         }
     }
 
-    // cuadritos para redimensionar
+    component HeadButton: Rectangle {
+        id: hb
+        property string glyph
+        property string tip
+        signal clicked()
+        width: 28; height: 28
+        color: hbm.containsMouse ? Theme.accent : "#fff"
+        border.width: 2; border.color: "#000"
+        anchors.verticalCenter: parent ? parent.verticalCenter : undefined
+        Text { anchors.centerIn: parent; text: hb.glyph; color: "#000"
+               font.family: "Segoe UI Symbol"; font.pixelSize: 15; font.weight: 700 }
+        MouseArea { id: hbm; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: hb.clicked() }
+        ToolTipLite { text: hb.tip; show: hbm.containsMouse }
+    }
+
+    // cuadritos para redimensionar (al pasar el ratón; no con la vista muy alejada ni maximizado)
     HoverHandler { id: hover }
     Repeater {
         model: ["nw", "n", "ne", "e", "se", "s", "sw", "w"]
         Rectangle {
             id: grip
             readonly property string side: modelData
-            visible: root.viewZ >= 0.45          // con la vista muy alejada se arrastraban sin querer al mover
-            width: 16; height: 16
-            x: side.indexOf("w") >= 0 ? -9 : side.indexOf("e") >= 0 ? root.width - 7 : root.width / 2 - 8
-            y: side.indexOf("n") >= 0 ? -9 : side.indexOf("s") >= 0 ? root.height - 7 : root.height / 2 - 8
+            visible: root.viewZ >= 0.45 && !root.maximized && (hover.hovered || gm.pressed)
+            width: 14; height: 14
+            x: side.indexOf("w") >= 0 ? -7 : side.indexOf("e") >= 0 ? root.width - 7 : root.width / 2 - 7
+            y: side.indexOf("n") >= 0 ? -7 : side.indexOf("s") >= 0 ? root.height - 7 : root.height / 2 - 7
             z: 9
-            color: hover.hovered || gm.containsMouse ? Theme.accent : Theme.grip
-            opacity: hover.hovered || gm.containsMouse ? 1 : 0.8
-            border.width: 3; border.color: "#000"
-            Rectangle { x: 2; y: 2; z: -1; width: 16; height: 16; color: "#000" }
+            color: gm.containsMouse || gm.pressed ? Theme.accent : "#fff"
+            border.width: 2; border.color: "#000"
             MouseArea {
                 id: gm
                 anchors.fill: parent
+                anchors.margins: -4
                 hoverEnabled: true
                 cursorShape: grip.side === "n" || grip.side === "s" ? Qt.SizeVerCursor
                            : grip.side === "e" || grip.side === "w" ? Qt.SizeHorCursor
@@ -194,7 +208,8 @@ Item {
                     else if (s.indexOf("e") >= 0) w = Math.max(root.minW, orig.width + dx)
                     if (s.indexOf("n") >= 0) { h = Math.max(root.minH, orig.height - dy); y = orig.y + orig.height - h }
                     else if (s.indexOf("s") >= 0) h = Math.max(root.minH, orig.height + dy)
-                    root.x = x; root.y = y; root.width = w; root.fixedHeight = h
+                    var r = root.sizer ? root.sizer(root, { x: x, y: y, w: w, h: h }) : { x: x, y: y, w: w, h: h }
+                    root.x = r.x; root.y = r.y; root.width = r.w; root.fixedHeight = r.h
                     root.geometryEdited()
                 }
                 onReleased: root.editFinished()

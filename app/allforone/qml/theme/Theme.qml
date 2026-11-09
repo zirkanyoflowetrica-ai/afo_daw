@@ -30,12 +30,16 @@ QtObject {
         audios: "#ff9f45", afina: "#7ae7ff", mastia: "#ff6b9a", antes: "#e6d3a3", fx: "#ffcf9e", fxm: "#ffb07a"
     })
 
-    // Superficie de un módulo: su color en claro; en oscuro, 17 % de su color sobre #1b1822
+    // Cuerpo de un módulo (dentro del marco de su color): crema con un 14 % de su color en claro;
+    // en oscuro, 17 % de su color sobre #1b1822. El Piano roll es oscuro en los dos temas.
     function panelColor(id, c) {
         if (id === "piano") return dark ? "#141419" : "#1b1c22"
-        if (id === "cinta") return dark ? "#24262c" : "#c9ccd2"
-        return dark ? Qt.tint("#1b1822", Qt.rgba(Qt.color(c).r, Qt.color(c).g, Qt.color(c).b, 0.17)) : c
+        var k = Qt.color(c)
+        return dark ? Qt.tint("#1b1822", Qt.rgba(k.r, k.g, k.b, 0.17)) : Qt.tint("#fffaf0", Qt.rgba(k.r, k.g, k.b, 0.14))
     }
+    // Color del módulo a partir de su id (las instancias extra «fx~2» usan el de su tipo)
+    function tint(c) { var k = Qt.color(c); return Qt.tint(dark ? "#2a2533" : "#ffffff", Qt.rgba(k.r, k.g, k.b, dark ? 0.35 : 0.45)) }
+    function pcOf(id) { return pc[String(id).split("~")[0]] || "#ffffff" }
     function panelShadow(c) {
         return dark ? Qt.tint("#000000", Qt.rgba(Qt.color(c).r, Qt.color(c).g, Qt.color(c).b, 0.55)) : "#000000"
     }

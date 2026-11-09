@@ -181,7 +181,7 @@ QtObject {
         for (var i = 0; i < studio.tracks.length; i++) if (studio.tracks[i].id === info.id) t = studio.tracks[i]
         if (!t || discard) return
         if (!info.source_path) { studio.toast("La toma quedó vacía"); return }
-        replace(t.uid, { len: info.length_seconds, peaks: info.peaks, start: info.start_seconds || 0 })
+        replace(t.uid, { len: info.length_seconds, peaks: info.peaks, start: info.start_seconds || 0, aclips: studio.clipsOf(t.id) })
         studio.mixer.unlinkTrack(info.id)
         studio.mixer.linkTrack(info)
         studio.toast("Toma guardada en " + t.name + " (" + L.fmt(info.length_seconds) + ")")

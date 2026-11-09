@@ -24,6 +24,10 @@ def chain_of(engine, catalog: list[dict], track_id: int, labels: dict | None = N
     labels = labels or {}
     out = []
     for e in engine.effects(track_id):
+        if e["key"] == "vst3":               # plugin externo: su id y su estado completo (base64)
+            out.append({"key": "vst3", "plugin": e["plugin_id"], "name": e["name"], "enabled": bool(e["enabled"]),
+                        "state": engine.effect_state(e["id"])})
+            continue
         desc = next((d for d in catalog if d["key"] == e["key"]), None)
         if desc is None:
             continue
@@ -46,6 +50,16 @@ def restore_chain(engine, catalog: list[dict], track_id: int, chain: list[dict],
     for e in engine.effects(track_id):
         engine.remove_effect(e["id"])
     for fx in chain or []:
+        if fx.get("key") == "vst3":
+            try:
+                eid = engine.add_plugin_effect(track_id, fx.get("plugin", ""), -1, fx.get("state", ""))["id"]
+            except Exception as exc:          # plugin desinstalado o que no carga: se avisa y se sigue
+                warnings.append(f"Plugin «{fx.get('name', '?')}» no disponible: {exc}")
+                continue
+            engine.set_effect_enabled(eid, bool(fx.get("enabled", True)))
+            if on_added:
+                on_added(eid, {**fx, "label": fx.get("label") or fx.get("name", "")})
+            continue
         desc = next((d for d in catalog if d["key"] == fx.get("key")), None)
         if desc is None:
             warnings.append(f"Efecto desconocido «{fx.get('key')}»: se omite")
@@ -79,8 +93,18 @@ def collect(doc: dict, engine, catalog: list[dict], sources: dict[int, str], lab
         tid = int(t.get("id", -1))
         if tid >= 0:
             t["fx"] = chain_of(engine, catalog, tid, labels, auto.get(tid, ()))
+            if t.get("type") == "inst" and (t.get("cfg") or {}).get("plugin"):
+                try:                         # estado del instrumento VST3 (sonido elegido en su ventana)
+                    t["cfg"] = {**t["cfg"], "pluginState": engine.track_instrument_state(tid)}
+                except Exception:
+                    pass
             if t.get("type") in AUDIO_TYPES:
                 t["path"] = sources.get(tid, "")
+                try:                         # cortes, posiciones, volumen y fundidos de cada clip
+                    t["aclips"] = [{k: c[k] for k in ("start", "length", "offset", "gain_db", "fade_in", "fade_out")}
+                                  for c in engine.clips(tid)]
+                except Exception:            # motor sin edición de clips
+                    pass
         tracks.append(t)
     out["tracks"] = tracks
     out["master_fx"] = chain_of(engine, catalog, MASTER, labels, auto.get(MASTER, ()))

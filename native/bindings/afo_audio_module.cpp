@@ -22,6 +22,36 @@ py::dict toDict (const afo::TrackInfo& t)
     return d;
 }
 
+py::dict toDict (const afo::ClipInfo& c)
+{
+    py::dict d;
+    d["id"] = c.id; d["track_id"] = c.trackId; d["start"] = c.start; d["length"] = c.length; d["offset"] = c.offset;
+    d["gain_db"] = c.gainDb; d["fade_in"] = c.fadeIn; d["fade_out"] = c.fadeOut; d["source_length"] = c.sourceLength;
+    return d;
+}
+
+py::list toList (const std::vector<afo::ClipInfo>& v)
+{
+    py::list l;
+    for (auto& c : v) l.append (toDict (c));
+    return l;
+}
+
+py::dict toDict (const afo::PluginDesc& p)
+{
+    py::dict d;
+    d["id"] = p.id; d["name"] = p.name; d["vendor"] = p.vendor; d["category"] = p.category;
+    d["path"] = p.path; d["format"] = p.format; d["instrument"] = p.instrument;
+    return d;
+}
+
+py::list toList (const std::vector<afo::PluginDesc>& v)
+{
+    py::list l;
+    for (auto& p : v) l.append (toDict (p));
+    return l;
+}
+
 py::dict toDict (const afo::Loudness& l)
 {
     py::dict d;
@@ -35,6 +65,7 @@ py::dict toDict (const afo::EffectInfo& e)
     py::dict d;
     d["id"] = e.id; d["track_id"] = e.trackId; d["key"] = e.key; d["enabled"] = e.enabled;
     d["values"] = e.values; d["latency_seconds"] = e.latencySeconds; d["automated"] = e.automated;
+    d["name"] = e.name; d["plugin_id"] = e.pluginId;
     return d;
 }
 
@@ -49,7 +80,7 @@ afo::SynthSettings settings (int mode, int wave, float vel, float bri, bool sus,
 PYBIND11_MODULE (afo_audio, m)
 {
     m.doc() = "AllForOne: motor de audio nativo (JUCE + Tracktion Engine)";
-    m.attr("API_VERSION") = 8;
+    m.attr("API_VERSION") = 10;
 
     m.def ("version", &afo::version);
     m.def ("juce_version", &afo::juceVersion);
@@ -175,6 +206,54 @@ PYBIND11_MODULE (afo_audio, m)
         .def ("set_track_pan", &afo::Engine::setTrackPan)
         .def ("set_track_mute", &afo::Engine::setTrackMute)
         .def ("set_track_solo", &afo::Engine::setTrackSolo)
+        // clips de audio (editar en Pistas)
+        .def ("clips", [] (afo::Engine& e, int t) { return toList (e.clips (t)); }, py::arg ("track_id"))
+        .def ("set_clip_range", [] (afo::Engine& e, long long id, double start, double length, double offset)
+              { return toDict (e.setClipRange (id, start, length, offset)); },
+              py::arg ("clip_id"), py::arg ("start"), py::arg ("length"), py::arg ("offset"))
+        .def ("split_clip", [] (afo::Engine& e, long long id, double at) { return toList (e.splitClip (id, at)); },
+              py::arg ("clip_id"), py::arg ("at_seconds"))
+        .def ("duplicate_clip", [] (afo::Engine& e, long long id) { return toDict (e.duplicateClip (id)); }, py::arg ("clip_id"))
+        .def ("remove_clip", &afo::Engine::removeClip, py::arg ("clip_id"))
+        .def ("set_clip_gain", [] (afo::Engine& e, long long id, float db) { return toDict (e.setClipGain (id, db)); },
+              py::arg ("clip_id"), py::arg ("db"))
+        .def ("set_clip_fades", [] (afo::Engine& e, long long id, double fi, double fo) { return toDict (e.setClipFades (id, fi, fo)); },
+              py::arg ("clip_id"), py::arg ("fade_in"), py::arg ("fade_out"))
+        .def ("clip_peak_db", &afo::Engine::clipPeakDb, py::arg ("clip_id"))
+        // plugins VST3 externos
+        .def ("scan_plugins", [] (afo::Engine& e, const std::vector<std::string>& extra)
+              {
+                  auto r = e.scanPlugins (extra);
+                  py::dict d;
+                  d["plugins"] = toList (r.plugins); d["failed"] = r.failed; d["folders"] = r.folders;
+                  return d;
+              }, py::arg ("extra_folders") = std::vector<std::string>())
+        .def ("known_plugins", [] (afo::Engine& e) { return toList (e.knownPlugins()); })
+        .def ("add_plugin_effect", [] (afo::Engine& e, int t, const std::string& id, int index, const std::string& state)
+              { return toDict (e.addPluginEffect (t, id, index, state)); },
+              py::arg ("track_id"), py::arg ("plugin_id"), py::arg ("index") = -1, py::arg ("state") = "")
+        .def ("effect_state", &afo::Engine::effectState, py::arg ("effect_id"))
+        .def ("show_effect_editor", &afo::Engine::showEffectEditor, py::arg ("effect_id"))
+        .def ("set_track_instrument", &afo::Engine::setTrackInstrument, py::arg ("track_id"), py::arg ("plugin_id"), py::arg ("state") = "")
+        .def ("track_instrument", &afo::Engine::trackInstrument, py::arg ("track_id"))
+        .def ("track_instrument_state", &afo::Engine::trackInstrumentState, py::arg ("track_id"))
+        .def ("show_instrument_editor", &afo::Engine::showInstrumentEditor, py::arg ("track_id"))
+        .def ("set_clips", [] (afo::Engine& e, int t, const py::list& items)
+              {
+                  std::vector<afo::ClipInfo> v;
+                  for (auto h : items)
+                  {
+                      auto d = h.cast<py::dict>();
+                      afo::ClipInfo c;
+                      c.start = d["start"].cast<double>(); c.length = d["length"].cast<double>();
+                      c.offset = d.contains ("offset") ? d["offset"].cast<double>() : 0.0;
+                      c.gainDb = d.contains ("gain_db") ? d["gain_db"].cast<float>() : 0.0f;
+                      c.fadeIn = d.contains ("fade_in") ? d["fade_in"].cast<double>() : 0.0;
+                      c.fadeOut = d.contains ("fade_out") ? d["fade_out"].cast<double>() : 0.0;
+                      v.push_back (c);
+                  }
+                  return toList (e.setClips (t, v));
+              }, py::arg ("track_id"), py::arg ("clips"))
         .def ("set_master_gain_db", &afo::Engine::setMasterGainDb)
         .def ("master_gain_db", &afo::Engine::masterGainDb)
         .def ("play", &afo::Engine::play)

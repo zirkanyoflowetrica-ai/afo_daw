@@ -134,6 +134,65 @@ def _native_fx_checks(rep, app, host, window, bridge, track_id: int) -> None:
     rep.check("quitar los efectos vacía la cadena", not st["chain"] and not host.engine.effects(track_id))
 
 
+def _native_daw_checks(rep, app, host, window, bridge, track_id) -> None:
+    """Menú lateral, módulos que chocan, maximizar, racks extra con nombre y edición de clips en Pistas."""
+    from PySide6.QtCore import QMetaObject, Q_ARG, Q_RETURN_ARG
+
+    from .selftest import _wait
+
+    def call(fn, *args):
+        v = QMetaObject.invokeMethod(window, fn, Q_RETURN_ARG("QVariant"), *[Q_ARG("QVariant", a) for a in args])
+        return v.toVariant() if hasattr(v, "toVariant") else v
+
+    def lay(what, a=None, b=None):
+        return call("layoutCommand", what, a, b)
+
+    rep.check("ningún módulo se monta sobre otro al abrir", lay("overlaps") == [], lay("overlaps"))
+    d = lay("drag", "inst", [0, 3000])
+    rep.check("arrastrar un módulo contra otro: se detiene antes de chocar", lay("overlaps") == [] and d["to"][1] < d["from"][1] + 3000, d)
+    m = lay("max", "pistas")
+    rep.check("maximizar: el módulo ocupa el visor a zoom 1",
+              m["maxId"] == "pistas" and m["zoom"] == 1 and abs(m["w"] - (m["vw"] - 24)) < 1 and abs(m["h"] - (m["vh"] - 24)) < 1, m)
+    m = lay("max", "pistas")
+    rep.check("restaurar tras maximizar", m["maxId"] == "" and m["w"] < m["vw"], m)
+    pid = lay("extra", "fx")
+    _wait(app, lambda: False, 0.3, host)
+    r = lay("rename", pid, "Rack voces")
+    rep.check("«+» del menú crea otro rack de Efectos y se puede renombrar",
+              pid == "fx~2" and r["title"] == "Rack voces" and r["panel"] == "Rack voces" and lay("overlaps") == [], {"pid": pid, **r})
+    rep.check("quitar el rack extra", pid not in lay("remove", pid))
+    g = lay("goto", "afina")
+    rep.check("el menú lleva al módulo", g["currentId"] == "afina" and not g["hidden"], g)
+
+    # Edición de clips de audio (la pista del tono de 8 s)
+    def edit(op):
+        return json.loads(bridge.clipEdit(track_id, json.dumps(op)))
+    clips = json.loads(bridge.clipList(track_id))["clips"]
+    r = edit({"op": "split", "clip": clips[0]["id"], "at": 2.0})
+    rep.check("Pistas: dividir un clip en dos", r["ok"] and [round(c["length"], 2) for c in r["clips"]] == [2.0, 6.0], r.get("clips"))
+    second = r["clips"][1]
+    r = edit({"op": "range", "clip": second["id"], "start": 3.0, "length": 1.5, "offset": second["offset"] + 0.5})
+    c2 = next(c for c in r["clips"] if c["id"] == second["id"])
+    rep.check("Pistas: mover y recortar un clip", r["ok"] and abs(c2["start"] - 3) < 1e-6 and abs(c2["length"] - 1.5) < 1e-6
+              and abs(c2["offset"] - 2.5) < 1e-6, c2)
+    r = edit({"op": "fades", "clip": c2["id"], "in": 0.2, "out": 0.4})
+    r = edit({"op": "normalize", "clip": c2["id"], "target": -1})
+    c2 = next(c for c in r["clips"] if c["id"] == second["id"])
+    rep.check("Pistas: fundidos y normalizar (el tono de −12 dBFS sube 11 dB)",
+              abs(c2["fade_in"] - 0.2) < 1e-6 and abs(c2["fade_out"] - 0.4) < 1e-6 and abs(c2["gain_db"] - 11) < 0.2, c2)
+    before = json.loads(bridge.clipList(track_id))["clips"]
+    edit({"op": "remove", "clip": c2["id"]})
+    r = edit({"op": "set", "clips": before})
+    rep.check("Pistas: deshacer devuelve los clips como estaban",
+              [(round(c["start"], 3), round(c["length"], 3), round(c["gain_db"], 1)) for c in r["clips"]]
+              == [(round(c["start"], 3), round(c["length"], 3), round(c["gain_db"], 1)) for c in before], r["clips"])
+    out = paths.user_data_dir() / "autoprueba_clips.wav"
+    host.engine.render_to_wav(str(out))
+    rep.check("los cortes suenan en el render (silencio entre los clips)", out.exists(), str(out))
+    edit({"op": "set", "clips": [{"start": 0, "length": 8, "offset": 0}]})
+    call("refreshClips", "a" + str(track_id))
+
+
 def _native_project_checks(rep, app, host, window) -> None:
     """Guardar y abrir proyecto desde la interfaz: la sesión vuelve con sus pistas, efectos y automatización."""
     from PySide6.QtCore import QMetaObject, Q_ARG, Q_RETURN_ARG
@@ -213,6 +272,7 @@ def run_native_selftest(app, host, report_path: str | None, screenshot_path: str
               bool(tracks) and tracks[-1]["type"] == "audio" and len(tracks[-1]["peaks"]) == 600, [t["name"] for t in tracks])
 
     _native_fx_checks(rep, app, host, window, bridge, tone["track"]["id"])
+    _native_daw_checks(rep, app, host, window, bridge, tone["track"]["id"])
 
     dev = host.engine.device_info()
     if dev.get("open"):

@@ -2,7 +2,8 @@ import QtQuick
 import "../theme"
 import "../controls"
 
-// Módulo Batería (Ritmos R-16): una sola caja de ritmos; cada pista guarda su patrón de 16 pasos.
+// Módulo Batería (Ritmos R-16): drum pad de 8 golpes tocables (y grabables en el patrón) y secuenciador
+// de 16 pasos; una sola caja de ritmos, cada pista guarda su patrón.
 Column {
     id: root
     property var seq
@@ -34,6 +35,72 @@ Column {
             Knob { label: "Afinación"; value: root.t ? root.t.cfg.tun : 50; onMoved: function (v) { root.seq.setCfg("drum", "tun", v) } }
             Knob { label: "Swing"; value: root.t ? root.t.cfg.sw : 20; tip: "Retrasa las semicorcheas pares (100 % = media semicorchea)"
                    onMoved: function (v) { root.seq.setCfg("drum", "sw", v) } }
+        }
+    }
+
+    // ---------------- drum pad: 8 pads tocables (teclas 1–8) ----------------
+    property bool padRec: false                 // grabar los golpes en el patrón mientras suena
+    property int flash: -1
+    function hit(i) {
+        if (!root.t) return
+        root.seq.previewDrum(root.t.cfg, i)
+        flash = i; flashTimer.restart()
+        if (padRec && curStep >= 0 && !root.t.pat[i + "-" + curStep]) root.seq.toggleStep(i, curStep)
+    }
+    Timer { id: flashTimer; interval: 140; onTriggered: root.flash = -1 }
+    Repeater {
+        model: 8
+        Item {
+            required property int index
+            Shortcut { sequence: String(index + 1); enabled: root.visible && !!root.t; onActivated: root.hit(index) }
+        }
+    }
+    Item {
+        visible: !!root.t
+        width: root.width; height: visible ? padHead.height + pads.height + 14 : 0
+        Row {
+            id: padHead
+            spacing: 8
+            Text { text: "DRUM PAD"; color: Theme.ink; anchors.verticalCenter: parent.verticalCenter
+                   font.family: Theme.font; font.pixelSize: 13; font.weight: 700; font.letterSpacing: 0.6 }
+            NeoButton {
+                text: (root.padRec ? "● " : "○ ") + "Grabar en el patrón"; fontSize: 11; padX: 6; padY: 2; shadow: 2
+                color: root.padRec ? "#ff4d3d" : Theme.button; textColor: root.padRec ? "#fff" : Theme.ink
+                tip: "Con la canción sonando, cada golpe se escribe en el paso que suena"
+                onClicked: root.padRec = !root.padRec
+            }
+            Text { text: "Teclas 1–8 o clic"; color: Theme.ink; opacity: 0.7; anchors.verticalCenter: parent.verticalCenter
+                   font.family: Theme.font; font.pixelSize: 11; font.weight: 600 }
+        }
+        Grid {
+            id: pads
+            y: padHead.height + 8
+            columns: 4; columnSpacing: 8; rowSpacing: 8
+            readonly property real pw: (root.width - 3 * 8) / 4 - 3
+            Repeater {
+                model: root.seq.dn
+                Item {
+                    id: pad
+                    required property string modelData
+                    required property int index
+                    readonly property bool lit: root.flash === index || pm.pressed
+                    width: pads.pw; height: 54
+                    Rectangle { x: 3; y: 3; width: parent.width; height: parent.height; color: "#000"; visible: !pad.lit }
+                    Rectangle {
+                        x: pad.lit ? 3 : 0; y: pad.lit ? 3 : 0
+                        width: parent.width; height: parent.height
+                        color: pad.lit ? root.groupColor[pad.index % 4] : "#2b2720"
+                        border.width: 2; border.color: "#000"
+                        Rectangle { x: 4; y: 4; width: 8; height: 8; radius: 4; color: root.groupColor[pad.index % 4] }
+                        Text { x: 18; y: 6; text: pad.modelData; color: pad.lit ? "#000" : "#f3e7c4"
+                               font.family: Theme.font; font.pixelSize: 12; font.weight: 700 }
+                        Text { anchors.right: parent.right; anchors.rightMargin: 6; anchors.bottom: parent.bottom; anchors.bottomMargin: 4
+                               text: String(pad.index + 1); color: pad.lit ? "#000" : "#bdb398"
+                               font.family: Theme.font; font.pixelSize: 16; font.weight: 700 }
+                    }
+                    MouseArea { id: pm; anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onPressed: root.hit(pad.index) }
+                }
+            }
         }
     }
 
