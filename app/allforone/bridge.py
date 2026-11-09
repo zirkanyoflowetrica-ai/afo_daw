@@ -10,13 +10,11 @@ import json
 import logging
 import math
 import queue
-import shutil
 import threading
 from datetime import datetime
 from pathlib import Path
 
-from PySide6.QtCore import QObject, QTimer, QUrl, Signal, Slot
-from PySide6.QtGui import QDesktopServices
+from PySide6.QtCore import QObject, QTimer, Signal, Slot
 from PySide6.QtWidgets import QFileDialog, QWidget
 
 from . import audio_import, fx_presets, paths, project
@@ -91,6 +89,9 @@ class Bridge(QObject):
         self._mixer_timer.setInterval(50)
         self._mixer_timer.timeout.connect(self._drain_mixer_events)
         self._mixer_timer.start()
+        self._auto: dict[int, list[int]] = {}   # pista (0 = master) -> efectos que puso la mezcla automática
+        self._fx_labels: dict[int, str] = {}     # efecto -> nombre que le dio la mezcla automática
+        self._live_plan: dict | None = None      # última decisión de la mezcla en vivo (bandas para el master)
         self._to_convert: list[str] = []    # audios que el motor no lee y hay que convertir
         self._converting: str | None = None
 
@@ -102,6 +103,9 @@ class Bridge(QObject):
                 return
             if ev.get("type") == "_converted":      # interno: la conversión terminó en su hilo
                 self._finish_import(ev)
+                continue
+            if ev.get("type") == "_plan":           # interno: la mezcla decidida se aplica en el motor aquí
+                self._apply_plan(ev["plan"])
                 continue
             self.mixerEvent.emit(_json(ev))
 
@@ -302,16 +306,26 @@ class Bridge(QObject):
         if (g := self._guard()):
             return g
         try:
-            return _ok(effect=self.host.engine.add_effect(track_id, key, index), chain=self.host.engine.effects(track_id))
+            return _ok(effect=self.host.engine.add_effect(track_id, key, index), chain=self._chain(track_id))
         except Exception as exc:
             return _err(f"No se pudo insertar el efecto: {exc}")
+
+    def _chain(self, track_id: int) -> list[dict]:
+        auto = set(self._auto.get(track_id, []))
+        out = []
+        for e in self.host.engine.effects(track_id):
+            e = dict(e)
+            e["label"] = self._fx_labels.get(e["id"], "")
+            e["auto"] = e["id"] in auto
+            out.append(e)
+        return out
 
     @Slot(int, result=str)
     def fxList(self, track_id: int) -> str:
         if (g := self._guard()):
             return g
         try:
-            return _ok(chain=self.host.engine.effects(track_id))
+            return _ok(chain=self._chain(track_id))
         except Exception as exc:
             return _err(str(exc))
 
@@ -320,14 +334,15 @@ class Bridge(QObject):
         if (g := self._guard()):
             return g
         self.host.engine.remove_effect(effect_id)
-        return _ok(chain=self.host.engine.effects(track_id))
+        self._fx_labels.pop(effect_id, None)
+        return _ok(chain=self._chain(track_id))
 
     @Slot(int, int, int, result=str)
     def fxMove(self, effect_id: int, index: int, track_id: int) -> str:
         if (g := self._guard()):
             return g
         self.host.engine.move_effect(effect_id, index)
-        return _ok(chain=self.host.engine.effects(track_id))
+        return _ok(chain=self._chain(track_id))
 
     @Slot(int, str, float, result=str)
     def fxParam(self, effect_id: int, param: str, value: float) -> str:
@@ -351,6 +366,28 @@ class Bridge(QObject):
             return g
         try:
             return _ok(m=[round(v, 1) for v in self.host.engine.effect_meters(effect_id)])
+        except Exception as exc:
+            return _err(str(exc))
+
+    @Slot(float, result=str)
+    def setMasterCeiling(self, db: float) -> str:
+        """Techo del limitador del master (−6..0 dBFS); Master IA lo fija según el preset."""
+        if (g := self._guard()):
+            return g
+        self.host.engine.set_master_ceiling(db)
+        return _ok(ceiling=self.host.engine.master_ceiling())
+
+    @Slot(int, int, result=str)
+    def chainScope(self, track_id: int, bands: int) -> str:
+        """Antes / después de la cadena de una pista (0 = master): espectro y nivel a la entrada del
+        primer efecto activo y a la salida del último. Sin archivos: tomas del audio en curso."""
+        if (g := self._guard()):
+            return g
+        try:
+            d = dict(self.host.engine.chain_scope(track_id, max(8, min(256, bands))))
+            d["pre"] = [round(v, 1) for v in d["pre"]]
+            d["post"] = [round(v, 1) for v in d["post"]]
+            return _ok(**d)
         except Exception as exc:
             return _err(str(exc))
 
@@ -450,8 +487,16 @@ class Bridge(QObject):
         if (g := self._guard()):
             return g
         try:
-            warn = project.restore_chain(self.host.engine, self.host.effect_catalog(), track_id, json.loads(chain_json or "[]"))
-            return _ok(chain=self.host.engine.effects(track_id), warnings=warn)
+            for old in self._auto.pop(track_id, []):
+                self._fx_labels.pop(old, None)
+
+            def added(eid, fx):
+                if fx.get("label"):
+                    self._fx_labels[eid] = fx["label"]
+                if fx.get("auto"):
+                    self._auto.setdefault(track_id, []).append(eid)
+            warn = project.restore_chain(self.host.engine, self.host.effect_catalog(), track_id, json.loads(chain_json or "[]"), added)
+            return _ok(chain=self._chain(track_id), warnings=warn)
         except Exception as exc:
             return _err(f"No se pudo recuperar la cadena de efectos: {exc}")
 
@@ -476,7 +521,7 @@ class Bridge(QObject):
             eng = self.host.engine
             sources = {t["id"]: t.get("source_path", "") for t in eng.tracks()}
             sources.update({tid: info.get("originalPath") or sources.get(tid, "") for tid, info in self.host.tracks.items()})
-            doc = project.collect(json.loads(doc_json), eng, self.host.effect_catalog(), sources)
+            doc = project.collect(json.loads(doc_json), eng, self.host.effect_catalog(), sources, self._fx_labels, self._auto)
             out = project.save(path, doc)
             return _ok(path=str(out), name=out.stem)
         except Exception as exc:
@@ -704,79 +749,100 @@ class Bridge(QObject):
     def _mx_mix(self, d):
         return self.mixsvc.mix_async(d)
 
-    def _mx_remix(self, d):
-        d["label"] = f"Remezcla · {d.get('profile_name') or ''}".strip(" ·")
-        return self.mixsvc.mix_async(d)
-
-    def _run(self, d):
-        runs = self.mixsvc.runs
-        i = d.get("run")
-        if i is None or not (0 <= int(i) < len(runs)):
-            raise ValueError("Todavía no hay una mezcla terminada.")
-        return runs[int(i)]
-
-    def _master_file(self, run, sel):
-        names = list(self.mixsvc.info()["masters"]) + [REF_LABEL]
-        name = names[int(sel)]
-        if name not in run["masters"]:
-            raise ValueError(f"No hay «{name}» en esta mezcla.")
-        return name, run["masters"][name]["file"]
-
-    def _mx_listen(self, d):
-        if not self.host.ok:
-            return {"ok": False, "error": self.host.error}
+    def _apply_plan(self, plan: dict) -> None:
+        """Hilo principal: las decisiones del V4.2 pasan a la consola y a las cadenas del motor."""
+        from . import live_mix
         eng = self.host.engine
-        if d.get("ab") == "stop":
-            eng.preview_stop()
-            return {"ok": True, "playing": False}
-        run = self._run(d)
-        if d.get("what") == "master":
-            path = run["mix"] if d.get("ab") == "A" else self._master_file(run, d.get("sel", 3))[1]
-        else:
-            item = run["review"][int(d.get("sel", 0))]
-            path = item["a"] if d.get("ab") == "A" else item["b"]
-        if not eng.device_info().get("open"):
-            return {"ok": False, "error": "No hay dispositivo de salida de audio abierto."}
-        if eng.is_playing():
-            eng.pause()
-        pos = eng.preview_position() if eng.preview_playing() else 0.0   # A/B: misma posición
-        if not eng.preview_play(path, pos):
-            return {"ok": False, "error": f"No se pudo reproducir {Path(path).name}"}
-        return {"ok": True, "playing": True, "file": Path(path).name}
+        applied = 0
+        for i, t in enumerate(plan["tracks"]):
+            tid = t.get("trackId", -1)
+            if tid not in self.host.tracks:
+                continue
+            if t.get("skip"):
+                self._mixer_events.put({"type": "strip", "i": i, "phase": "done", "trackId": tid, "skip": t["skip"]})
+                continue
+            try:
+                if t.get("tuned_path"):
+                    start = float(self.host.tracks[tid].get("start_seconds", 0.0))
+                    info = dict(eng.set_track_audio(tid, t["tuned_path"], start))
+                    self.host.tracks[tid] = {**self.host.tracks[tid], **info}
+                ids = live_mix.apply_chain(eng, tid, t["chain"], self._auto.get(tid, []))
+                for old in self._auto.get(tid, []):
+                    self._fx_labels.pop(old, None)
+                for eid, fx in zip(ids, t["chain"]):
+                    self._fx_labels[eid] = fx["label"]
+                self._auto[tid] = ids
+                eng.set_track_gain_db(tid, t["gain_db"])
+                eng.set_track_pan(tid, t["pan"])
+                applied += 1
+            except Exception as exc:
+                log.exception("Mezcla en vivo: %s", t.get("name"))
+                t["notes"].append(f"no se aplicó: {exc}")
+            self._mixer_events.put({"type": "strip", "i": i, "phase": "done", "trackId": tid, "name": t["name"],
+                                    "kind": t["kind"], "position": t["position"], "pan": t["pan"], "gain_db": t["gain_db"],
+                                    "tuned": bool(t.get("tuned_path")),
+                                    "chain": [fx["label"] for fx in t["chain"]], "note": "; ".join(t["notes"])})
+        self._live_plan = plan
+        self._mixer_events.put({"type": "done", "live": True, "applied": applied, "seconds": plan["seconds"],
+                                "profile": plan.get("profile_name", ""), "skipped": plan["skipped"],
+                                "reference_lufs": plan.get("reference_lufs"), "master": plan.get("master")})
 
-    def _mx_tracks(self, d):
+    def _master_target(self, preset: str):
+        """El preset elegido; «Según referencia» = Comercial con el objetivo de la referencia (como el V4.2)."""
+        if preset != REF_LABEL:
+            return preset, None
+        ref = (self._live_plan or {}).get("reference_lufs")
+        if ref is None:
+            raise ValueError("Elige una canción de referencia en Mezcla IA y vuelve a mezclar.")
+        return "Comercial (-11 LUFS)", max(-16.0, min(-9.0, float(ref)))
+
+    def _mx_master(self, d):
+        """Mastering automático en vivo: la cadena del master se decide midiendo la sesión en el motor."""
         if not self.host.ok:
             return {"ok": False, "error": self.host.error}
-        run = self._run(d)
-        name, path = self._master_file(run, d.get("sel", 3))
-        info = self.host.add_audio(path, f"Master IA · {name.split(' (')[0]} #{run['id'] + 1}")
-        return {"ok": True, "tracks": [info]}
+        from . import live_mix
+        from .mixer_service import load
+        if self.mixsvc.busy:
+            return {"ok": False, "error": "El mezclador está trabajando; espera a que termine."}
+        preset, target = self._master_target(d.get("preset") or "")
+        bands = (self._live_plan or {}).get("mix_bands") or {}
+        eng = self.host.engine
+        if eng.is_playing():
+            eng.pause()                              # medir es procesar la sesión entera en memoria
+        old = self._auto.get(0, [])
+        ids, stats, chain = live_mix.apply_master(eng, load(), preset, bands, old, target_lufs=target)
+        for e in old:
+            self._fx_labels.pop(e, None)
+        for eid, fx in zip(ids, chain):
+            self._fx_labels[eid] = fx["label"]
+        self._auto[0] = ids
+        stats["preset"] = d.get("preset")
+        return {"ok": True, "stats": stats, "chain": self._chain(0)}
 
-    def _mx_zip(self, d):
-        """El ZIP se arma aquí, no al mezclar: para una canción entera son GB y casi un minuto."""
-        run = self._run(d)
-        target, _ = QFileDialog.getSaveFileName(self.parent_widget, "Guardar sesión de mezcla", str(Path.home() / Path(run["zip"]).name), "ZIP (*.zip)")
-        if not target:
-            return {"ok": False, "cancelled": True}
-        self._mixer_events.put({"type": "progress", "panel": "mezcla", "p": 5, "desc": "Comprimiendo la sesión…"})
+    def _mx_unmaster(self, d):
+        """Quita la cadena del master automático (el limitador del master vuelve a su techo)."""
+        from . import live_mix
+        old = self._auto.pop(0, [])
+        live_mix.apply_chain(self.host.engine, 0, [], old)
+        for e in old:
+            self._fx_labels.pop(e, None)
+        self.host.engine.set_master_ceiling(-1.0)
+        return {"ok": True, "chain": self._chain(0)}
 
-        def work():
-            try:
-                src = self.mixsvc.make_zip(run, lambda i, n: self._mixer_events.put(
-                    {"type": "progress", "panel": "mezcla", "p": round(100 * i / max(1, n), 1),
-                     "desc": f"Comprimiendo la sesión… {i}/{n} archivos"}))
-                shutil.copy2(src, target)
-                self._mixer_events.put({"type": "progress", "panel": "mezcla", "p": 100, "desc": f"Sesión guardada: {target}"})
-            except Exception as exc:
-                self._mixer_events.put({"type": "error", "panel": "mezcla", "error": f"No se pudo crear el ZIP: {exc}"})
+    def _mx_measure(self, d):
+        """Sonoridad de toda la sesión (master y pistas) procesada en memoria, sin archivos."""
+        if not self.host.ok:
+            return {"ok": False, "error": self.host.error}
+        r = dict(self.host.engine.measure_mix())
+        r["tracks"] = {str(k): v for k, v in r["tracks"].items()}
+        return r
 
-        threading.Thread(target=work, name="afo-zip", daemon=True).start()
-        return {"ok": True, "pendiente": True, "path": target}
-
-    def _mx_folder(self, d):
-        run = self._run(d)
-        QDesktopServices.openUrl(QUrl.fromLocalFile(run["folder"]))
-        return {"ok": True, "path": run["folder"]}
-
-    def _mx_report(self, d):
-        return {"ok": True, "report": self._run(d)["report"]}
+    def _mx_bypass(self, d):
+        """A/B de escucha: activa o puentea los efectos de la mezcla automática (pista o master)."""
+        on = not bool(d.get("bypass"))
+        tid = d.get("track")
+        targets = [int(tid)] if tid is not None else list(self._auto)
+        for t in targets:
+            for e in self._auto.get(t, []):
+                self.host.engine.set_effect_enabled(e, on)
+        return {"ok": True, "bypass": not on}

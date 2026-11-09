@@ -166,6 +166,8 @@ PYBIND11_MODULE (afo_audio, m)
               py::arg ("note"), py::arg ("seconds") = 0.4, py::arg ("mode") = 0, py::arg ("wave") = 0, py::arg ("vel") = 70.0f,
               py::arg ("bri") = 50.0f, py::arg ("sus") = false, py::arg ("vol") = 80.0f, py::arg ("tun") = 50.0f, py::arg ("rev") = 0.0f)
         .def ("set_master_processing", &afo::Engine::setMasterProcessing, py::arg ("drive"), py::arg ("tone"), py::arg ("limiter"))
+        .def ("set_master_ceiling", &afo::Engine::setMasterCeiling, py::arg ("db"))
+        .def ("master_ceiling", &afo::Engine::masterCeiling)
         .def ("tracks", [] (const afo::Engine& e)
               { py::list l; for (auto& t : e.tracks()) l.append (toDict (t)); return l; })
         .def ("track_peaks", &afo::Engine::trackPeaks, py::arg ("track_id"), py::arg ("buckets") = 600)

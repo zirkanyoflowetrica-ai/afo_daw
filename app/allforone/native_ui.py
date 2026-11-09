@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 from pathlib import Path
 
 from PySide6.QtCore import QObject, Slot
@@ -196,10 +197,10 @@ def run_native_selftest(app, host, report_path: str | None, screenshot_path: str
     rep.check("fuente Space Grotesk 500/600/700 cargada", len(load_fonts()) >= 3)
 
     panels = prop("panelItems")
-    rep.check("13 módulos en el lienzo", len(panels or {}) == 13, sorted(panels or {}))
+    rep.check("14 módulos en el lienzo", len(panels or {}) == 14, sorted(panels or {}))
     links = prop("cableLinks")
     n_seq = len([t for t in (prop("tracks") or []) if t["type"] in ("inst", "drum", "ia", "voz")])
-    rep.check("cables entre módulos (+ uno por pista de Instrumento/Batería/Voz/IA)", len(links or []) == 7 + n_seq, len(links or []))
+    rep.check("cables entre módulos (+ uno por pista de Instrumento/Batería/Voz/IA)", len(links or []) == 9 + n_seq, len(links or []))
     rep.check("motor conectado desde QML", bool(prop("engineOk")))
     rep.check("encuadre inicial aplicado", abs(float(prop("zoom")) - 1.0) > 1e-6, prop("zoom"))
 
@@ -233,7 +234,7 @@ def run_native_selftest(app, host, report_path: str | None, screenshot_path: str
     QMetaObject.invokeMethod(window, "saveLayout")
     saved = json.loads((paths.user_data_dir() / LAYOUT_FILE).read_text(encoding="utf-8"))
     rep.check("diseño y tema guardados en la carpeta de datos",
-              saved.get("theme") == "dark" and len(saved.get("pos", {})) == 13)
+              saved.get("theme") == "dark" and len(saved.get("pos", {})) == 14)
     QMetaObject.invokeMethod(window, "setDark", Q_ARG("QVariant", False))
 
     shot = Path(screenshot_path) if screenshot_path else paths.logs_dir() / "selftest_nativo.png"
@@ -272,17 +273,32 @@ def _native_mixer_checks(rep, app, host, window, bridge, prop) -> None:
     rep.check("clasificación por nombre (tipo y rol)", voz.get("kind") == "Voz principal" and voz.get("role") == "P",
               [f"{i['name']}:{i['kind']}:{i['role']}" for i in items])
 
-    call("mixNow", False)
-    done = _wait(app, lambda: snap()["runs"] >= 1 or "Error" in snap()["status"], 240, host)
+    t0 = time.time()
+    call("mixNow", False)                         # al terminar masteriza en vivo (Plataformas)
+    done = _wait(app, lambda: (snap()["runs"] >= 1 and snap()["master"] is not None) or "Error" in snap()["status"], 240, host)
     st = snap()
-    if not rep.check("MEZCLAR AUTOMÁTICAMENTE desde la interfaz nativa", done and st["runs"] >= 1, st["status"]):
+    if not rep.check("MEZCLAR AUTOMÁTICAMENTE en vivo desde la interfaz nativa", done and st["runs"] >= 1, st["status"]):
         return
-    check_mix_run(rep, bridge)
+    check_mix_run(rep, bridge, st, t0)
     stems_ids = {i["trackId"] for i in st["items"]}
     faders = [t for t in st["tracks"] if t["id"] in stems_ids]
     moved = [t for t in faders if abs(t["vol"] - 70) > 0.5]
     rep.check("la consola refleja la mezcla: faders en la ganancia real medida",
               len(faders) >= 3 and len(moved) >= 1 and len(st["live"]) >= 3, faders)
+    voz_id = next(i["trackId"] for i in st["items"] if i["name"] == "Voz_Principal")
+    call("mixerCommand", "rack", voz_id)
+    fx = QMetaObject.invokeMethod(window, "fxCommand", Q_RETURN_ARG("QVariant"), Q_ARG("QVariant", "list"),
+                                  Q_ARG("QVariant", None), Q_ARG("QVariant", None))
+    fx = fx.toVariant() if hasattr(fx, "toVariant") else fx
+    rep.check("elegir la tira de la voz muestra su rack en Efectos", "deesser" in [e["key"] for e in fx["chain"]], fx["chain"])
+    call("mixerCommand", "ab", "A")
+    off = [e["enabled"] for tid in bridge._auto for e in host.engine.effects(tid) if e["id"] in bridge._auto[tid]]
+    call("mixerCommand", "ab", "B")
+    on = [e["enabled"] for tid in bridge._auto for e in host.engine.effects(tid) if e["id"] in bridge._auto[tid]]
+    rep.check("A/B: puentear y restablecer los efectos de la mezcla automática", off and not any(off) and all(on), f"{len(off)} efectos")
+    lv = host.snapshot()
+    rep.check("medidores dB, LUFS y RMS por pista y del master", len(lv.get("loud", {})) >= 3 and len(lv.get("mloud") or []) == 5,
+              lv.get("mloud"))
 
     # Fase 2: Afinador (cable a la tira de la voz), confirmar tonalidad, Master IA y Antes / Después
     call("setTuneStrength", 60)
@@ -294,24 +310,12 @@ def _native_mixer_checks(rep, app, host, window, bridge, prop) -> None:
     tune = snap()["tune"]
     rep.check("confirmar tonalidad y BPM (modo manual)", bool(tune.get("confirmed")), tune.get("status"))
     call("mixNow", True)                          # REMEZCLAR con afinación al 60 %
-    done = _wait(app, lambda: snap()["runs"] >= 2 or "Error" in snap()["status"], 240, host)
+    done = _wait(app, lambda: (snap()["runs"] >= 2 and not snap()["mastering"]) or "Error" in snap()["status"], 240, host)
     st = snap()
-    rep.check("REMEZCLAR con afinación: la mezcla sale afinada", done and st["runs"] >= 2 and bool(st.get("lastTuned")), st["status"])
+    rep.check("REMEZCLAR con afinación: la voz afinada sustituye al audio de su pista", done and st["runs"] >= 2 and bool(st.get("lastTuned")), st["status"])
     call("setTuneStrength", 0)
-
-    before = len(host.engine.tracks())
-    call("mixerCommand", "tracks")
-    rep.check("Master IA → Pistas (pista nueva en el motor)", _wait(app, lambda: len(host.engine.tracks()) > before, 10, host),
-              f"pistas en el motor: {len(host.engine.tracks())}")
-    if host.engine.device_info().get("open"):
-        call("mixerCommand", "listenMaster")
-        rep.check("escucha B del master en el motor", _wait(app, lambda: host.engine.preview_playing(), 3, host))
-        call("mixerCommand", "listenReview")
-        rep.check("escucha A/B de una pista en el motor", _wait(app, lambda: host.engine.preview_playing(), 3, host))
-        call("mixerCommand", "stop")
-        rep.check("parar la escucha", _wait(app, lambda: not host.engine.preview_playing(), 3, host))
-    else:
-        rep.add("escucha A/B en el motor", "omitido", "sin dispositivo de salida abierto")
+    call("mixerCommand", "unmaster", None)
+    rep.check("quitar el master IA", _wait(app, lambda: not snap()["masterChain"], 5, host), snap()["masterChain"])
 
 
 def _native_sequencer_checks(rep, app, host, window, prop) -> None:

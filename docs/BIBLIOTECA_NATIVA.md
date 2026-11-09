@@ -19,14 +19,23 @@ existe de verdad y cómo está hecho; el mapa completo del navegador está en
 | Pieza | Archivo |
 |---|---|
 | DSP compartida (biquad RBJ, líneas de retardo con Lagrange, compresor con rodilla, puerta, FDN de 8 líneas, FIFO de osciloscopio) | `native/src/fx/FxDsp.h` |
-| Los 9 módulos, sus parámetros y `registerFx` | `native/src/fx/FxPlugins.h` |
+| Los 10 módulos, sus parámetros y `registerFx` | `native/src/fx/FxPlugins.h` |
+| Sonoridad BS.1770 (LUFS M/S/I, RMS, pico) por pista y en el master | `native/src/AfoLoudness.h` |
 | Cadena por pista y en el master (insertar, mover, puentear, quitar, medidores, espectro) | `native/src/AfoEngine.cpp` (`addEffect` … `effectSpectrum`) |
-| API Python | `afo_audio.effect_catalog()`, `Engine.add_effect`, `move_effect`, `set_effect_param`, `set_effect_enabled`, `effects`, `effect_info`, `effect_meters`, `effect_spectrum`, `set_effect_automation`, `effect_automation` |
+| API Python | `afo_audio.effect_catalog()`, `Engine.add_effect`, `move_effect`, `set_effect_param`, `set_effect_enabled`, `effects`, `effect_info`, `effect_meters`, `effect_spectrum`, `set_effect_automation`, `effect_automation`, `chain_scope` (antes/después de una cadena), `read_levels` (incluye `loud` y `master_loud`), `reset_loudness`, `measure_mix` (sesión procesada en memoria), `set_master_ceiling` |
+| Mezcla y master en vivo | `app/allforone/live_mix.py` (decisiones del V4.2 como cadenas) |
 | Presets (de fábrica y del usuario) | `app/allforone/fx_presets.py`; los del usuario en `datos/presets/fx/<efecto>.json` |
 | Proyecto `.afo` | `app/allforone/project.py` (efectos, automatización y rutas) y `qml/state/Project.qml` (pistas, tempo, master) |
 | Slots de la interfaz | `bridge.py`: `fxCatalog`, `fxAdd`, `fxList`, `fxMove`, `fxRemove`, `fxParam`, `fxEnable`, `fxMeters`, `fxSpectrum`, `fxInfo`, `fxPresets`, `fxApplyPreset`, `fxSavePreset`, `fxDeletePreset`, `fxAutomation`, `fxSetAutomation`, `fxRestore`, `projectSave`, `projectOpen` |
-| Módulo «Efectos» (Rack FX-96) | `app/allforone/qml/modules/FxBody.qml` |
-| Pruebas de señal | `tests/test_engine_fx.py`, `tests/test_project.py`; en la interfaz, `--selftest` |
+| Módulos «Efectos» (Rack FX-96) y «Efectos master» (Rack FX-M) | `app/allforone/qml/modules/FxBody.qml`, gráficas en `qml/state/fxgraph.js` |
+| Pruebas de señal | `tests/test_engine_fx.py`, `tests/test_project.py`, `tests/test_live_mix.py`; en la interfaz, `--selftest` |
+
+El master también admite cadenas largas: `AfoEngineBehaviour` sube los límites de Tracktion
+(16 efectos por pista y 4 en el master por defecto) a 512, y `addEffect` falla en voz alta si
+Tracktion no acepta un efecto. **Medidas sin archivos:** `chain_scope` toma la entrada del primer
+efecto activo y la salida del último (espectro y RMS); cada pista y el master llevan un medidor
+BS.1770 (ponderación K con los coeficientes exactos de la norma para cualquier frecuencia de
+muestreo; coincide con pyloudnorm ±0,3 LU); `measure_mix` procesa toda la sesión en memoria.
 
 Todos derivan de `FxBase`: parámetros `ParameterWithStateValue` (automatizables y guardados en el
 Edit de Tracktion), suavizado en bloques de 32 muestras, `ScopedNoDenormals`, sin reservar memoria
@@ -42,6 +51,7 @@ fader** de la pista (o del master) y Tracktion compensa la latencia que informan
 | AF-07 | Parametric EQ | 6 bandas (paso alto 12/24 dB/oct, grave, 2 medios, agudo, paso bajo) | Campana +12 dB medida en el tono; curva real; HPF 24 dB/oct |
 | AF-13 | Compressor | Rodilla suave, detector Peak/RMS, compensación, mezcla paralela | Reducción ≈ −9 dB en el caso de prueba; mezcla 0 = señal intacta |
 | AF-18 | Gate | Umbral, rango, ataque, mantenimiento, liberación, histéresis | Cierra 60 dB por debajo del umbral; por encima deja la señal intacta (±0,1 dB) |
+| AF-20 | De-Esser | Detector de banda (frecuencia, Q), umbral, rango, modo Banda/Ancha, escucha de la sibilancia | Baja la sibilancia y deja la voz grave intacta |
 | AF-26 | Saturator | Tubo / Cinta / Recorte con sobremuestreo ×4, tono, bias, mezcla | 3.er armónico presente; aliasing < −70 dB; mezcla 0 = referencia |
 | AF-35 | Space | Sala / Hall / Placa / Cámara: predelay, reflexiones, FDN de 8 líneas, amortiguación, anchura | RT60 ≈ 2 s medido por integración de Schroeder |
 | AF-41 | Digital Delay | Libre o sincronizado al tempo, realimentación con saturación, ping-pong, filtros, ducking | Eco a 250 ms; negra a 120 BPM = 500 ms |
@@ -78,7 +88,7 @@ cada efecto. `--selftest` repite el ciclo desde la interfaz con todas las pistas
 |---|---|
 | 2 · Instrumentales y MIDI | Sampler Pro, Drum Rack, Drum Synth, 808 Lab, Wavetable/Analog Synth, Step Sequencer, Arpeggiator, Transient Designer, Glue |
 | 3 · Diseño sonoro | Texture Verb, Shimmer, Infinity, MultiTap, Trance Gate, Granular FX, Spectral FX, FX Lab |
-| 4 · Voz profesional | Tune, Pitch Editor, Vocal Align, Harmonizer, Doubler, De-Esser, Dynamic EQ, Noise Reducer |
+| 4 · Voz profesional | Tune, Pitch Editor, Vocal Align, Harmonizer, Doubler, Dynamic EQ, Noise Reducer (De-Esser ya está, AF-20) |
 | 5 · Mastering | True Peak Limiter validado, Loudness, Master Dynamics, Match EQ, Linear EQ, Master Imager, Dither y el resto |
 
 ## Añadir un módulo

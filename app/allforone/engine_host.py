@@ -76,6 +76,10 @@ def synth_settings(track: dict) -> dict:
             "bri": float(cfg.get("bri", 50)), "sus": bool(track.get("sus")), "rev": float(cfg.get("rev", 0))}
 
 
+def _loud(d: dict) -> list[float]:
+    return [round(d[k], 1) for k in ("peak_db", "rms_db", "lufs_m", "lufs_s", "lufs_i")]
+
+
 @dataclass
 class EngineHost:
     engine: object | None = None
@@ -236,6 +240,9 @@ class EngineHost:
             "master": [round(lv["master_l_db"], 1), round(lv["master_r_db"], 1)],
             "vu": round(lv["master_vu_db"], 1),
             "tracks": {str(k): round(v, 1) for k, v in lv["tracks"].items()},
+            # Sonoridad tras el fader de cada pista y tras el master: [pico, RMS, LUFS M, LUFS S, LUFS I]
+            "loud": {str(k): _loud(v) for k, v in lv.get("loud", {}).items()},
+            "mloud": _loud(lv["master_loud"]) if "master_loud" in lv else None,
             "rec": self._rec_state(),
             "preview": self.engine.preview_playing(),
         }

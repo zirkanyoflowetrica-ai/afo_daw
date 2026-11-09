@@ -80,7 +80,7 @@ Column {
             }
             NeoButton {
                 text: "Limitador: " + (root.studio.limiter ? "activo" : "apagado")
-                tip: "Limitador de seguridad del master: techo −1 dBFS (también al exportar)"
+                tip: "Limitador de seguridad del master: techo −1 dBFS, o el del preset de Master IA (también al exportar)"
                 onClicked: root.studio.setMasterProcessing(root.studio.masterDrive, root.studio.masterTone, !root.studio.limiter)
             }
             NeoButton { text: "Exportar mezcla"; onClicked: root.studio.exportMix() }

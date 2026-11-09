@@ -17,12 +17,13 @@ var PANELS = [
     ["afina", "Afinador", "PSOLA AT-1", [3000, 1040, 520], 701],
     ["mastia", "Master IA", "Master M-4", [3620, 1040, 440], 563],
     ["antes", "Antes / Después", "A/B Comp", [4160, 1040, 420], 316],
-    ["fx", "Efectos", "Rack FX-96", [4640, 60, 780], 760]
+    ["fx", "Efectos", "Rack FX-96", [4640, 60, 780], 760],
+    ["fxm", "Efectos master", "Rack FX-M", [5520, 60, 780], 640]
 ]
 
 // Cables fijos entre módulos (orden de la interfaz web: plantilla + afo_panels.js)
 var LINKS = [["piano", "inst"], ["pistas", "mezcla"], ["mezcla", "master"], ["audios", "pistas"],
-             ["mezcla", "mastia"], ["mezcla", "antes"], ["mastia", "master"]]
+             ["mezcla", "mastia"], ["mezcla", "antes"], ["mastia", "master"], ["mezcla", "fx"], ["master", "fxm"]]
 
 function links(hidden) {
     var out = []

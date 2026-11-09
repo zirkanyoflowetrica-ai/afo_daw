@@ -129,21 +129,25 @@ def _write_demo_stems(folder: Path) -> list[str]:
     return out
 
 
-def check_mix_run(rep, bridge) -> None:
-    """Lo que produce MEZCLAR AUTOMÁTICAMENTE (Mezclador V4.2): masters, mezcla y ZIP bajo demanda."""
-    run = bridge.mixsvc.runs[-1]
-    masters = run["masters"]
-    rep.check("4 masters del V4.2 generados", len([k for k in masters if "LUFS" in k]) == 4,
-              {k: round(v["lufs"], 1) for k, v in masters.items()})
-    plat = masters.get("Plataformas (-14 LUFS, -2 dBTP)", {})
-    rep.check("master plataformas cerca de -14 LUFS y bajo -1.5 dBTP", abs(plat.get("lufs", 0) + 14) < 1.5 and plat.get("true_peak", 0) < -1.5,
-              f"{plat.get('lufs', 0):.1f} LUFS / {plat.get('true_peak', 0):.2f} dBTP")
-    import soundfile as sf
-    info_mix = sf.info(run["mix"])
-    rep.check("mezcla sin master es audio real", info_mix.frames > info_mix.samplerate * 5,
-              f"{info_mix.frames / info_mix.samplerate:.1f} s, {info_mix.channels} canales")
-    rep.check("comparaciones A/B por pista", len(run["review"]) >= 3, f"{len(run['review'])} pistas")
-    # El ZIP no se crea en cada mezcla (para una canción entera son GB): se arma al pedirlo.
-    rep.check("la mezcla NO deja un ZIP sin pedirlo", not Path(run["zip"]).exists(), run["zip"])
-    zipped = bridge.mixsvc.make_zip(run)
-    rep.check("ZIP de sesión bajo demanda", Path(zipped).stat().st_size > 10000, zipped)
+def check_mix_run(rep, bridge, st, since: float) -> None:
+    """Lo que deja MEZCLAR AUTOMÁTICAMENTE en vivo: cadenas reales en el motor, master medido y ningún WAV."""
+    eng = bridge.host.engine
+    chains = {tid: [e["key"] for e in eng.effects(tid)] for tid in bridge._auto if tid > 0}
+    rep.check("cada pista recibe su cadena de efectos real en el motor", len(chains) >= 3 and all(chains.values()), chains)
+    voz = next((i for i in st["items"] if i["name"] == "Voz_Principal"), {})
+    vchain = chains.get(voz.get("trackId"), [])
+    rep.check("la voz principal lleva EQ, de-esser, saturación, espacio y eco",
+              all(k in vchain for k in ("eq", "deesser", "saturator", "space", "delay")), vchain)
+    m = st.get("master") or {}
+    # Como master() del V4.2: llega al objetivo, o se queda corto si la mezcla es tan dinámica que
+    # haría falta limitar más de lo permitido (la ganancia final queda en el presupuesto)
+    reached = abs(m.get("lufs_i", 0) - m.get("target_lufs", -14)) < 1.5
+    capped = abs(m.get("final_gain_db", 0) - m.get("limit_budget_db", 99)) < 0.05
+    rep.check("master en vivo (Plataformas): objetivo o tope de limitación, y pico bajo el techo",
+              (reached or capped) and m.get("max_peak_db", 0) <= m.get("ceiling_db", -2) + 0.1,
+              m)
+    rep.check("la cadena del master se ve en Efectos master", len(st.get("masterChain", [])) >= 4, st.get("masterChain"))
+    from . import paths
+    folder = paths.user_data_dir() / "mezclas"
+    wavs = [w for w in folder.rglob("*.wav") if w.stat().st_mtime >= since] if folder.exists() else []
+    rep.check("la mezcla en vivo no escribe WAVs", not wavs, [w.name for w in wavs[:5]])

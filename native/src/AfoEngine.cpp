@@ -67,6 +67,18 @@ struct AfoUIBehaviour : public te::UIBehaviour
     }
 };
 
+// Cadenas de efectos sin el tope de Tracktion (16 por pista, 4 en el master): el límite real es la CPU
+struct AfoEngineBehaviour : public te::EngineBehaviour
+{
+    te::EditLimits getEditLimits() override
+    {
+        te::EditLimits l;
+        l.maxPluginsOnTrack = 512;
+        l.maxNumMasterPlugins = 512;
+        return l;
+    }
+};
+
 struct PreviewPlayer
 {
     juce::AudioFormatManager formats;
@@ -113,7 +125,7 @@ struct Engine::Impl
         juce::File base = dataDir.empty() ? juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile (appName)
                                           : toFile (dataDir);
         engine = std::make_unique<te::Engine> (std::make_unique<LocalPropertyStorage> (juce::String (appName), base.getChildFile ("tracktion")),
-                                               std::make_unique<AfoUIBehaviour>(), nullptr);
+                                               std::make_unique<AfoUIBehaviour>(), std::make_unique<AfoEngineBehaviour>());
         engine->getPluginManager().createBuiltInType<AfoSynthPlugin>();
         engine->getPluginManager().createBuiltInType<AfoMasterPlugin>();
         engine->getPluginManager().createBuiltInType<AfoMeterPlugin>();
@@ -553,6 +565,9 @@ void Engine::setMasterGainDb (float db)
 }
 
 float Engine::masterGainDb() const { return impl->master->gainDb.load(); }
+
+void Engine::setMasterCeiling (float db) { requireMessageThread(); impl->master->ceilingDb = juce::jlimit (-6.0f, 0.0f, db); }
+float Engine::masterCeiling() const      { return impl->master->ceilingDb.load(); }
 
 void Engine::setMasterProcessing (float drive, float tone, bool limiter)
 {
@@ -1045,6 +1060,8 @@ EffectInfo Engine::addEffect (int trackId, const std::string& key, int index)
     if (index >= 0 && index < (int) c.size())
         at = list.indexOf (c[(size_t) index]->plugin.get());
     list.insertPlugin (plugin, juce::jmax (0, at), nullptr);
+    if (list.indexOf (plugin.get()) < 0)
+        throw std::runtime_error ("afo_audio: Tracktion no aceptó el efecto " + key);
     Impl::FxSlot s { impl->nextFxId++, trackId, plugin, f };
     impl->fxSlots[s.id] = s;
     impl->edit->getTransport().ensureContextAllocated();

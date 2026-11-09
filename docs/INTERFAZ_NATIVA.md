@@ -85,11 +85,8 @@ no muestra (fase 3).
   Intensidad, voces a afinar (P, L, R, _B) y la lista de tiras conectadas. Con intensidad > 0 % sale
   **un cable a la tira exacta** de cada voz con ese rol; los cables siguen a las tiras al desplazar
   la consola. La curva de tono antes/después sigue pendiente y el módulo lo dice.
-- `MasteringBody.qml` (Master IA): los 4 masters del V4.2 + «Según referencia» con LUFS, true peak
-  y limitación medidos; escucha A (sin master) / B (master) en el motor a la misma posición;
-  → Enviar a Pistas, Exportar sesión ZIP (en segundo plano) y Abrir carpeta.
-- `ReviewBody.qml` (Antes / Después): selector de pista, ▶ A original / ▶ B procesada / ■ en el
-  motor, y las decisiones del mezclador para esa pista.
+- `MasteringBody.qml` (Master IA) y `ReviewBody.qml` (Antes / Después) se rehicieron para la
+  mezcla en vivo: ver «Mezcla y master en vivo» más abajo (ya no hay WAVs, ZIP ni escucha de archivos).
 - `Mixer.qml` añade el estado del afinador (la confirmación se anula si cambian los audios, los
   roles o la tonalidad) y las acciones de escucha. `Note.qml` es el recuadro de notas.
 - Un botón con RichText informa `lineCount = 1` aunque tenga dos líneas: `NeoButton` cuenta las
@@ -155,11 +152,53 @@ la entrada. Nunca pasa audio por el puente.
   cualquier driver ASIO instalado: ASIO4ALL 2.x, los de cada interfaz, FL Studio ASIO… Si un driver
   no abre, el motor vuelve al dispositivo anterior: nunca te deja sin audio. El ajuste se guarda.
 
-**Efectos.** Módulo «Efectos» (Rack FX-96, `FxBody.qml`): elegir la pista o el master, cadena en el
-orden de la señal con bypass, mover y quitar; editor con perillas y listas mapeadas al rango real
-de cada parámetro, medidores de entrada/salida, reducción de ganancia, la curva real del EQ y el
-espectro del Analizador; navegador con las 6 secciones y 20 carpetas de la Biblioteca. Detalle en
-`docs/BIBLIOTECA_NATIVA.md`.
+**Efectos.** Módulos «Efectos» (Rack FX-96) y «Efectos master» (Rack FX-M), ambos `FxBody.qml`
+(`master: true` fija la pista 0). Cabecera «VOZ P / CADENA DE EFECTOS · RACK VOZ P». A la izquierda
+la cadena en orden de señal: casilla de activo/puenteado, nombre (el que le dio la mezcla
+automática, si fue ella), menú ⋮ (subir, bajar, quitar) y «+ Agregar efecto», que abre la
+Biblioteca (6 secciones, 20 carpetas) e inserta al final, sin límite. A la derecha una tarjeta por
+efecto: ⏻, nombre, ≡ (detalle) y ⋮, preset, una mini gráfica y sus perillas. Las gráficas se
+calculan en `state/fxgraph.js` con las mismas fórmulas que el motor (biquads RBJ de `FxDsp.h`, ley
+del compresor y de la puerta, curvas del Saturator, decaimiento del Space, repeticiones del Delay
+con el tiempo real que informa el motor) y el Analizador dibuja el espectro medido. Debajo, el
+detalle del efecto elegido: medidores de entrada/salida y de reducción, curva real del EQ,
+presets propios y automatización. El rack del canal sigue a la tira elegida en Mezcla (clic en su
+nombre; `studio.rackTrack`). Detalle de los efectos en `docs/BIBLIOTECA_NATIVA.md`.
+
+## Mezcla y master en vivo (sin WAVs)
+
+- **Mezcla:** `mixer_service._live` (hilo del mezclador) llama a `live_mix.plan`: las mismas
+  medidas y criterios del V4.2 (`analyze`, `TYPES`, `_adaptive_chain`, `pitch_profile`, escalón de
+  `_blend_backing`, `vocal_space.PROFILES`, aire de `enhance_vocal`) dan por pista ganancia, paneo y
+  una cadena de la Biblioteca con sus valores. El puente (`Bridge._apply_plan`, hilo principal)
+  la pone en el motor, sustituyendo solo los efectos que puso la mezcla anterior, y la consola
+  coloca faders y paneos. Lo que el V4.2 hace sobre el audio y una cadena no reproduce (nivelado
+  de frases, ducking bombo→bajo, enmascaramiento dinámico, balance por secciones, EQ dinámica de
+  la voz, compresión paralela por bus) se informa en el estado, no se finge. Solo se escribe audio
+  si se pide afinación (PSOLA no es un efecto en tiempo real): una copia afinada por voz elegida,
+  que sustituye al audio de su pista.
+- **Master IA:** `live_mix.apply_master` reproduce `master()` del V4.2 con medidas del motor:
+  `Engine::measureMix()` procesa la sesión entera en memoria (un `RenderTask` propio con los
+  plugins del master, sin archivo) y devuelve LUFS integrada, RMS y pico del master y de cada
+  pista. Primero mide con la cadena a −24 dB (el limitador no actúa y el pico se lee a la entrada),
+  lleva la mezcla a 0,88 de pico y a −18 LUFS, añade EQ, compresión si el crest pasa de 13 dB,
+  color y nivel final, fija el techo del limitador del preset y ajusta la ganancia final hasta el
+  objetivo sin pasar del presupuesto de limitación (si la mezcla es muy dinámica se queda corto y
+  lo dice, como el original). «Según referencia» usa la sonoridad medida de la canción elegida.
+- **Antes / Después:** dos pantallas juntas con el espectro y el nivel a la entrada del primer
+  efecto activo y a la salida del último (`chainScope`, ~10 tomas/s mientras suena). Se conecta al
+  rack del canal o al master. A / B puentea toda la cadena y la deja como estaba.
+- **Medidores:** cada pista y el master llevan un `AfoMeterPlugin` (BS.1770: momentánea, corto
+  plazo, integrada; RMS de 300 ms; pico). Las tiras de Mezcla eligen dB, LUFS o RMS; Master IA
+  muestra las tres del master.
+- **A/B de la mezcla automática** (Mezcla) puentea o activa todos los efectos que puso.
+- El proyecto `.afo` guarda el nombre y la marca «mezcla automática» de cada efecto y el techo del
+  limitador del master.
+
+Comprobado: `tests/test_live_mix.py` (cadenas y faders reales; master −14 LUFS y pico ≤ −2 dB sin
+escribir audio; A/B y quitar el master; el proyecto conserva la mezcla) y `--selftest` (mezcla y
+master en vivo desde la interfaz, rack de la voz al elegir su tira, A/B, medidores dB/LUFS/RMS,
+remezcla afinada, ningún WAV nuevo).
 
 Comprobado: `tests/test_engine_fx.py` (13 pruebas de señal + dispositivo + grabación real) y
 `--selftest`: «+ Voz», armar en una entrada real (si el dispositivo no tiene entradas, la
@@ -176,8 +215,8 @@ tiene; el chip de Efectos va en la primera fila para no añadir otra fila de chi
   `tools/visual_compare.py` y `docs/CAMBIOS_PLANTILLA.md`. El paquete ya no lleva Chromium
   (`package.ps1` falla si aparece `QtWebEngineProcess.exe`).
 - Una sola autoprueba, `--selftest`: extensión nativa, motor, render del tono a 440 Hz y después
-  toda la interfaz QML con el motor real (las comprobaciones del Mezclador V4.2 que hacía la web,
-  como los 4 masters, −14 LUFS y el ZIP bajo demanda, pasaron aquí).
+  toda la interfaz QML con el motor real (las comprobaciones del Mezclador V4.2 que hacía la web
+  pasaron aquí; desde la mezcla en vivo comprueban cadenas, master y que no se escriban WAVs).
 - QML ordenado: `Main.qml` y `theme/` (Theme, singleton), `controls/` (NeoButton, Knob, Fader,
   Meter, Lcd, Select, ModulePanel…), `modules/` (un cuerpo por módulo y el diálogo de audio),
   `state/` (Mixer, Sequencer y las librerías JS), `assets/` (fuentes Space Grotesk e icono).

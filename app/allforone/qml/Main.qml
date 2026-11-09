@@ -38,6 +38,10 @@ Window {
     property real masterPos: 70                // fader master (70 = 0 dB)
     property var masterDb: [-100, -100]
     property var trackDb: ({})
+    property var trackLoud: ({})               // id → [pico, RMS, LUFS M, LUFS S, LUFS I] tras el fader (motor)
+    property var masterLoud: [-100, -100, -100, -100, -100]   // lo mismo tras la sección master
+    property string meterMode: "dB"            // qué miden las tiras de Mezcla: dB (pico), LUFS (corto plazo) o RMS
+    property int rackTrack: -1                 // canal cuyo rack muestra Efectos (la tira elegida en Mezcla)
     property real vu: 0
     property bool limiter: true                // sección master del motor (Mezcla final)
     property real masterDrive: 30
@@ -47,6 +51,14 @@ Window {
     property int fxRev: 0                      // sube cada vez que cambia una cadena de efectos
     function fxCountChanged() { fxRev++ }
     property var fxBody: null
+    property var fxMasterBody: null
+    function refreshRacks() { if (fxBody) fxBody.reload(); if (fxMasterBody) fxMasterBody.reload() }
+    // Valor que muestra una tira según el modo elegido (dB de pico, LUFS a corto plazo o RMS)
+    function stripValue(id) {
+        var l = trackLoud[String(id)]
+        if (meterMode === "dB" || !l) return trackLevel(id)
+        return meterMode === "RMS" ? l[1] : l[3] > -100 ? l[3] : l[2]
+    }
     // Para la autoprueba: acciones del módulo Efectos y lo que muestra
     function fxCommand(what, a, b) {
         if (!fxBody) return null
@@ -147,9 +159,11 @@ Window {
     function setDark(b) { Theme.dark = b }
     // Para la autoprueba y las comparaciones: estado del mezclador, mezclar y encuadrar un módulo a zoom 1
     function mixerSnapshot() {
-        return { items: mx.items, runs: mx.runs.length, busy: mx.busy, status: mx.status, live: mx.live,
+        return { items: mx.items, runs: mx.runs, busy: mx.busy, status: mx.status, live: mx.live,
                  tune: mx.tune, links: cableLinks.map(function (l) { return l.key }),
-                 lastTuned: mx.runs.length ? !!mx.runs[mx.runs.length - 1].tuned : false,
+                 lastTuned: mx.lastTuned, master: mx.masterStats, mastering: mx.mastering, rackTrack: rackTrack,
+                 masterChain: fxMasterBody ? fxMasterBody.chain.map(function (e) { return e.label || e.key }) : [],
+                 masterLoud: masterLoud,
                  tracks: tracks.map(function (t) { return { uid: t.uid, id: t.id, type: t.type, name: t.name, vol: t.vol, pan: t.pan,
                                                              len: t.len || 0, peaks: (t.peaks || []).length,
                                                              notes: Object.keys(t.roll || {}).length + Object.keys(t.pat || {}).length } }),
@@ -169,11 +183,13 @@ Window {
     function mixNow(remix) { mx.mix(!!remix) }
     function setTuneStrength(v) { mx.tuneStrength = v }
     function tuneCommand(what, v) { if (what === "confirm") mx.confirmTune(); else mx.setTuneParam(what, v) }
-    function mixerCommand(what) {
-        if (what === "tracks") mx.sendMasterToTracks()
-        else if (what === "listenMaster") mx.listen("master", "B")
-        else if (what === "listenReview") mx.listen("review", "A")
-        else if (what === "stop") mx.listen("review", "stop")
+    function mixerCommand(what, a) {
+        if (what === "master") mx.masterAuto(a === undefined ? mx.masterSel : a)
+        else if (what === "unmaster") mx.unmaster()
+        else if (what === "ab") mx.bypass(a)
+        else if (what === "rack") rackTrack = a
+        else if (what === "meter") meterMode = a
+        return mixerSnapshot()
     }
     function setView(z, x, y) { zoom = z; tx = x; ty = y }
     function showPanelAt(id, x, y) { var p = panelItems[id]; zoom = 1; tx = x - p.x; ty = y - p.y }
@@ -275,6 +291,8 @@ Window {
             if (st.playing || st.position > 0) win.step = Math.floor(st.position * win.bpm / 15) % 256
             win.masterDb = st.master
             win.trackDb = st.tracks
+            if (st.loud) win.trackLoud = st.loud
+            if (st.mloud) win.masterLoud = st.mloud
             win.vu = MD.dbToPct(st.vu)            // RMS con balística VU calculado en el motor
             win.rec = st.rec
             win.previewing = !!st.preview
@@ -567,20 +585,21 @@ Window {
                         sourceComponent: ({ pistas: tracksComp, audios: audiosComp, mezcla: mixComp, master: masterComp,
                                             afina: tuneComp, mastia: masteringComp, antes: reviewComp,
                                             inst: instComp, drums: drumsComp, piano: pianoComp, ia: iaComp,
-                                            cinta: cintaComp, fx: fxComp })[panel.pid]
+                                            cinta: cintaComp, fx: fxComp, fxm: fxmComp })[panel.pid]
                     }
                     Component { id: audiosComp; AudiosBody { mixer: mx; studio: win } }
                     Component { id: mixComp; MixBody { mixer: mx; studio: win } }
                     Component { id: masterComp; MasterBody { studio: win } }
                     Component { id: tuneComp; TuneBody { mixer: mx } }
-                    Component { id: masteringComp; MasteringBody { mixer: mx } }
-                    Component { id: reviewComp; ReviewBody { mixer: mx } }
+                    Component { id: masteringComp; MasteringBody { mixer: mx; studio: win } }
+                    Component { id: reviewComp; ReviewBody { mixer: mx; studio: win; shown: panel.visible } }
                     Component { id: instComp; InstBody { seq: sq } }
                     Component { id: drumsComp; DrumsBody { seq: sq; curStep: win.playing && win.step >= 0 ? win.step % 16 : -1 } }
                     Component { id: pianoComp; PianoBody { seq: sq } }
                     Component { id: iaComp; IaBody { seq: sq } }
                     Component { id: cintaComp; CintaBody { seq: sq; studio: win } }
                     Component { id: fxComp; FxBody { studio: win; shown: panel.visible } }
+                    Component { id: fxmComp; FxBody { studio: win; shown: panel.visible; master: true } }
                     Component {
                         id: tracksComp
                         TracksBody {

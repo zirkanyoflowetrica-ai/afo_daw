@@ -4,13 +4,33 @@ import "../controls"
 import "../state/mixdata.js" as MD
 
 // Módulo Mezcla (Consola 6C): una tira por pista con rol de voz, la decisión real del mezclador,
-// paneo, fader y medidor del motor; debajo, la mezcla automática del V4.2.
+// paneo, fader y medidor del motor (dB de pico, LUFS o RMS, a elegir); clic en una tira = su rack en
+// Efectos. Debajo, la mezcla automática del V4.2, aplicada en vivo en faders y cadenas.
 Column {
     id: root
     property var studio
     property var mixer
     width: parent ? parent.width : 700
     spacing: 0
+
+    Row {                                        // qué miden las tiras
+        spacing: 6; bottomPadding: 8
+        Text { text: "Medidores"; height: 24; verticalAlignment: Text.AlignVCenter; color: Theme.ink
+               font.family: Theme.font; font.pixelSize: 12; font.weight: 700 }
+        Repeater {
+            model: [["dB", "Pico de muestra (dBFS)"], ["LUFS", "Sonoridad BS.1770 a corto plazo (3 s)"], ["RMS", "RMS de 300 ms (dBFS)"]]
+            NeoButton {
+                required property var modelData
+                readonly property bool on: root.studio.meterMode === modelData[0]
+                text: modelData[0]; fontSize: 11; padX: 8; padY: 1; shadow: 2; tip: modelData[1]
+                color: on ? Theme.pressedBg : Theme.button; textColor: on ? Theme.pressedInk : Theme.ink; pressedState: on
+                onClicked: root.studio.meterMode = modelData[0]
+            }
+        }
+        Text { height: 24; verticalAlignment: Text.AlignVCenter; color: Theme.ink; opacity: 0.75
+               text: "· clic en el nombre de una tira: su rack en Efectos"
+               font.family: Theme.font; font.pixelSize: 11; font.weight: 600 }
+    }
 
     Flickable {                                  // .strips (desplazamiento horizontal)
         width: root.width
@@ -34,6 +54,7 @@ Column {
                     readonly property var item: { root.mixer.items; return root.mixer.itemOfTrack(tid) }
                     readonly property var live: root.mixer.live[tid]
                     readonly property bool working: root.mixer.workingTrack === tid
+                    readonly property bool racked: root.studio.rackTrack === tid
                     width: 84; height: col.height + 8 + 8 + 10
                     Rectangle {                  // contorno y brillo de «trabajando»
                         visible: strip.working
@@ -41,6 +62,11 @@ Column {
                         color: "transparent"; border.width: 3; border.color: "#ff9f45"
                         SequentialAnimation on opacity { running: strip.working; loops: Animation.Infinite
                             NumberAnimation { from: 1; to: 0.45; duration: 700 } NumberAnimation { from: 0.45; to: 1; duration: 700 } }
+                    }
+                    Rectangle {                  // tira cuyo rack se ve en Efectos
+                        visible: strip.racked && !strip.working
+                        anchors.fill: parent; anchors.margins: -5
+                        color: "transparent"; border.width: 3; border.color: "#ffb000"
                     }
                     Rectangle { x: 3; y: 3; width: 84; height: parent.height; color: "#000" }
                     Rectangle {
@@ -54,7 +80,9 @@ Column {
                             spacing: 6
                             Text { width: parent.width; horizontalAlignment: Text.AlignHCenter; elide: Text.ElideRight
                                    text: strip.modelData.name; color: Theme.ink
-                                   font.family: Theme.font; font.pixelSize: 11; font.weight: 500 }
+                                   font.family: Theme.font; font.pixelSize: 11; font.weight: strip.racked ? 700 : 500
+                                   MouseArea { anchors.fill: parent; enabled: strip.tid > 0; cursorShape: Qt.PointingHandCursor
+                                               onClicked: root.studio.rackTrack = strip.tid } }
                             Rectangle {                 // pista de IA: demostración sin audio
                                 visible: strip.modelData.type === "ia"
                                 width: parent.width; height: visible ? 14 : 0
@@ -91,9 +119,14 @@ Column {
                                         Text { x: 2; width: parent.width - 4; horizontalAlignment: Text.AlignHCenter; elide: Text.ElideRight
                                                text: strip.live ? strip.live.position || "" : ""
                                                color: "#c98f00"; font.family: Theme.font; font.pixelSize: 8; font.weight: 700 }
+                                        Text { x: 2; width: parent.width - 4; horizontalAlignment: Text.AlignHCenter
+                                               text: strip.live ? (strip.live.chain || []).length + " efectos" : ""
+                                               color: "#c98f00"; font.family: Theme.font; font.pixelSize: 8; font.weight: 700 }
                                     }
                                     HoverHandler { id: lh }
-                                    ToolTipLite { text: strip.live ? strip.live.note || "" : ""; show: lh.hovered && text.length > 0 }
+                                    ToolTipLite { text: strip.live ? ((strip.live.chain || []).join(" → ") + "\n" + (strip.live.note || "")).trim() : ""
+                                                  show: lh.hovered && text.length > 0 }
+                                    MouseArea { anchors.fill: parent; enabled: strip.tid > 0; onClicked: root.studio.rackTrack = strip.tid }
                                 }
                             }
                             Knob {
@@ -105,8 +138,12 @@ Column {
                                 spacing: 6; anchors.horizontalCenter: parent.horizontalCenter
                                 Fader { value: strip.modelData.vol; tip: "Volumen " + strip.modelData.name
                                         onMoved: function (v) { root.studio.setTrackMixUid(strip.modelData.uid, v, strip.modelData.pan) } }
-                                Meter { level: root.studio.playing ? MD.dbToPct(root.studio.trackLevel(strip.tid)) : 0 }
+                                Meter { level: root.studio.playing ? MD.dbToPct(root.studio.stripValue(strip.tid)) : 0 }
                             }
+                            Text { width: parent.width; horizontalAlignment: Text.AlignHCenter
+                                   readonly property real val: root.studio.stripValue(strip.tid)
+                                   text: (root.studio.playing && val > -99 ? val.toFixed(1) : "—") + " " + root.studio.meterMode
+                                   color: "#c98f00"; font.family: Theme.font; font.pixelSize: 10; font.weight: 700 }
                             Text { width: parent.width; horizontalAlignment: Text.AlignHCenter
                                    text: Math.round(strip.modelData.vol); color: Theme.ink
                                    font.family: Theme.font; font.pixelSize: 14; font.weight: 500 }
@@ -159,8 +196,8 @@ Column {
         NeoButton {
             width: (root.width - 8) / 2; text: "↻ REMEZCLAR"
             fontSize: 15; fontWeight: 700; padY: 10; shadow: 4
-            opacity: root.mixer.busy || !root.mixer.runs.length ? 0.5 : 1
-            onClicked: if (!root.mixer.busy && root.mixer.runs.length) root.mixer.mix(true)
+            opacity: root.mixer.busy || !root.mixer.runs ? 0.5 : 1
+            onClicked: if (!root.mixer.busy && root.mixer.runs) root.mixer.mix(true)
         }
     }
     Rectangle {                                   // .afo-prog
@@ -183,26 +220,24 @@ Column {
         text: root.mixer.status; color: Theme.ink
         font.family: Theme.font; font.pixelSize: 12; font.weight: 600
     }
-    Column {                                      // .afo-hist
-        width: root.width; spacing: 4; topPadding: 6
-        Repeater {
-            model: root.mixer.runs
-            NeoButton {
-                required property var modelData
-                required property int index
-                width: root.width - 2
-                text: "#" + (index + 1) + " · " + modelData.label
-                fontSize: 12; padX: 8; padY: 3; shadow: 2
-                color: root.mixer.run === index ? "#ffb000" : "#2b2720"
-                textColor: root.mixer.run === index ? "#000" : "#f3e7c4"
-                hoverColor: color
-                onClicked: root.mixer.run = index
-            }
-        }
+    Row {                                         // A/B y master automático
+        spacing: 6; topPadding: 8
+        NeoButton { text: "A · sin mezcla auto"; fontSize: 11; padX: 6; padY: 2; shadow: 2
+                    readonly property bool on: root.mixer.abState === "A"
+                    color: on ? Theme.pressedBg : Theme.button; textColor: on ? Theme.pressedInk : Theme.ink; pressedState: on
+                    tip: "Puentea los efectos que puso la mezcla automática (faders y paneo se quedan)"
+                    onClicked: root.mixer.bypass("A") }
+        NeoButton { text: "B · con mezcla auto"; fontSize: 11; padX: 6; padY: 2; shadow: 2
+                    readonly property bool on: root.mixer.abState === "B"
+                    color: on ? Theme.pressedBg : Theme.button; textColor: on ? Theme.pressedInk : Theme.ink; pressedState: on
+                    onClicked: root.mixer.bypass("B") }
+        NeoButton { text: (root.mixer.autoMaster ? "☑" : "☐") + " masterizar al terminar"; fontSize: 11; padX: 6; padY: 2; shadow: 2
+                    tip: "Al terminar la mezcla, Master IA aplica en vivo el preset elegido"
+                    onClicked: root.mixer.autoMaster = !root.mixer.autoMaster }
     }
     Text {
         width: root.width; topPadding: 8; wrapMode: Text.Wrap; textFormat: Text.StyledText
-        text: "Al mezclar, cada tira se enciende cuando le toca y acaba con el <b>nivel y el paneo reales</b> que decidió el mezclador. La EQ, la compresión y los efectos solo están en el audio renderizado (Master IA · Antes/Después)."
+        text: "La mezcla es <b>en vivo</b>: el V4.2 analiza cada pista y deja su <b>fader, paneo y cadena de efectos reales</b> (EQ, de-esser, compresión, saturación, espacio, eco) en el motor. Ábrelos en Efectos y ajústalos; no se generan WAVs."
         color: Theme.ink; font.family: Theme.font; font.pixelSize: 12; font.weight: 500
     }
 }

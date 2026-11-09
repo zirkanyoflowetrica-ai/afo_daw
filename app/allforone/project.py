@@ -18,22 +18,30 @@ MASTER = 0                       # id del master en las cadenas de efectos del m
 AUDIO_TYPES = ("audio", "voz")
 
 
-def chain_of(engine, catalog: list[dict], track_id: int) -> list[dict]:
-    """Cadena de efectos de una pista tal como se guarda (valores por id de parámetro)."""
+def chain_of(engine, catalog: list[dict], track_id: int, labels: dict | None = None, auto=()) -> list[dict]:
+    """Cadena de efectos de una pista tal como se guarda (valores por id de parámetro).
+    `labels`/`auto`: nombre y marca de los efectos que puso la mezcla automática."""
+    labels = labels or {}
     out = []
     for e in engine.effects(track_id):
         desc = next((d for d in catalog if d["key"] == e["key"]), None)
         if desc is None:
             continue
         ids = [p["id"] for p in desc["params"]]
-        auto = {pid: [[round(t, 6), v] for t, v in engine.effect_automation(e["id"], pid)] for pid in e.get("automated", [])}
-        out.append({"key": e["key"], "enabled": bool(e["enabled"]), "values": dict(zip(ids, e["values"])),
-                    "automation": {k: v for k, v in auto.items() if v}})
+        auto_pts = {pid: [[round(t, 6), v] for t, v in engine.effect_automation(e["id"], pid)] for pid in e.get("automated", [])}
+        item = {"key": e["key"], "enabled": bool(e["enabled"]), "values": dict(zip(ids, e["values"])),
+                "automation": {k: v for k, v in auto_pts.items() if v}}
+        if labels.get(e["id"]):
+            item["label"] = labels[e["id"]]
+        if e["id"] in auto:
+            item["auto"] = True
+        out.append(item)
     return out
 
 
-def restore_chain(engine, catalog: list[dict], track_id: int, chain: list[dict]) -> list[str]:
-    """Sustituye la cadena de la pista por la guardada. Devuelve avisos (efectos que ya no existen…)."""
+def restore_chain(engine, catalog: list[dict], track_id: int, chain: list[dict], on_added=None) -> list[str]:
+    """Sustituye la cadena de la pista por la guardada. Devuelve avisos (efectos que ya no existen…).
+    `on_added(id, efecto guardado)` se llama por cada efecto recreado."""
     warnings = []
     for e in engine.effects(track_id):
         engine.remove_effect(e["id"])
@@ -51,11 +59,16 @@ def restore_chain(engine, catalog: list[dict], track_id: int, chain: list[dict])
             if pid in params and pts:
                 engine.set_effect_automation(eid, pid, sorted((float(t), float(v)) for t, v in pts))
         engine.set_effect_enabled(eid, bool(fx.get("enabled", True)))
+        if on_added:
+            on_added(eid, fx)
     return warnings
 
 
-def collect(doc: dict, engine, catalog: list[dict], sources: dict[int, str]) -> dict:
-    """Completa el documento de la interfaz con lo que guarda el motor. `sources`: id → audio original."""
+def collect(doc: dict, engine, catalog: list[dict], sources: dict[int, str], labels: dict | None = None,
+            auto: dict | None = None) -> dict:
+    """Completa el documento de la interfaz con lo que guarda el motor. `sources`: id → audio original.
+    `labels` (efecto → nombre) y `auto` (pista → efectos) vienen de la mezcla automática."""
+    auto = auto or {}
     out = dict(doc)
     out["format"] = FORMAT
     out["version"] = VERSION
@@ -65,12 +78,13 @@ def collect(doc: dict, engine, catalog: list[dict], sources: dict[int, str]) -> 
         t = dict(t)
         tid = int(t.get("id", -1))
         if tid >= 0:
-            t["fx"] = chain_of(engine, catalog, tid)
+            t["fx"] = chain_of(engine, catalog, tid, labels, auto.get(tid, ()))
             if t.get("type") in AUDIO_TYPES:
                 t["path"] = sources.get(tid, "")
         tracks.append(t)
     out["tracks"] = tracks
-    out["master_fx"] = chain_of(engine, catalog, MASTER)
+    out["master_fx"] = chain_of(engine, catalog, MASTER, labels, auto.get(MASTER, ()))
+    out["master_ceiling"] = round(engine.master_ceiling(), 2)
     return out
 
 

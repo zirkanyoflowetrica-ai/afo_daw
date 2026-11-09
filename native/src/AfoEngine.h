@@ -204,6 +204,8 @@ public:
     float masterGainDb() const;
     // Sección master: Saturación 0..100, Tono 0..100 (50 = plano), Limitador (techo −1 dBFS)
     void setMasterProcessing (float drive, float tone, bool limiter);
+    void setMasterCeiling (float db);        // techo del limitador del master (−6..0 dBFS)
+    float masterCeiling() const;
 
     // Transporte
     void play();

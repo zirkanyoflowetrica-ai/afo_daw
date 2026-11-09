@@ -172,7 +172,8 @@ public:
     std::atomic<float> gainDb { 0.0f };      // fader master
     std::atomic<float> drive { 0.0f };       // Saturación 0..100
     std::atomic<float> tone { 50.0f };       // Tono 0..100 (50 = plano)
-    std::atomic<bool> limiterOn { true };    // Limitador (techo −1 dBFS)
+    std::atomic<bool> limiterOn { true };    // Limitador
+    std::atomic<float> ceilingDb { -1.0f };  // techo del limitador (dBFS)
     // Medida (audio → hilo de mensajes)
     std::atomic<float> vuDb { -100.0f };     // RMS de L+R con constante de 300 ms
 
@@ -245,6 +246,7 @@ public:
         }
 
         // 4. limitador (siempre retrasa la señal lo mismo, activo o no: la latencia no cambia)
+        limiter.ceiling = juce::Decibels::decibelsToGain (ceilingDb.load());
         limiter.process (buf.getWritePointer (0, start), buf.getWritePointer (chans > 1 ? 1 : 0, start), n,
                          limiterOn.load(), chans > 1);
 

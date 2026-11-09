@@ -2,15 +2,24 @@ import QtQuick
 import "../theme"
 import "../controls"
 import "../state/fxlibrary.js" as FL
+import "../state/fxgraph.js" as FG
 
-// Módulo Efectos (Rack FX-96): la Biblioteca nativa AFO dentro del motor. Cada efecto es un plugin
-// de Tracktion escrito en C++ (native/src/fx): procesa en el hilo de audio, se guarda en la sesión,
-// es automatizable e informa su latencia. Aquí solo se elige dónde va, se ordena la cadena y se
-// mueven los parámetros; los medidores y las curvas son los que mide el motor.
+// Rack de efectos (Rack FX-96 del canal y Rack FX-M del master): la Biblioteca nativa AFO dentro del
+// motor. Cada efecto es un plugin de Tracktion escrito en C++ (native/src/fx): procesa en el hilo de
+// audio, se guarda en la sesión, es automatizable e informa su latencia. A la izquierda la cadena en
+// orden de señal (activar, ordenar, quitar, «+ Agregar efecto», sin límite); a la derecha una tarjeta
+// por efecto con su gráfica (calculada con las fórmulas del motor) y sus perillas. Debajo, el detalle
+// del efecto elegido: medidores del motor, presets propios y automatización.
+// El rack del canal sigue a la tira elegida en Mezcla; el del master siempre muestra el master.
 Column {
     id: root
     property var studio
     property bool shown: true                   // el módulo está en el lienzo (si no, no se consulta el motor)
+    property bool master: false                 // Rack FX-M: siempre la pista 0
+    property bool libOpen: false                // biblioteca abierta con «+ Agregar efecto»
+    property int menuFor: -1                    // efecto con el menú ⋮ abierto
+    property var presetCache: ({})              // key → [{name, factory}]
+    property var cardLive: ({})                 // id → medidores (delay: tiempo real; analizador: espectro)
     property var catalog: []
     property int target: 0                      // pista del motor (0 = master)
     property var chain: []
@@ -30,13 +39,16 @@ Column {
         for (var i = 0; i < catalog.length; i++) m[catalog[i].af] = catalog[i]
         return m
     }
+    readonly property int follow: master ? 0 : studio.rackTrack
+    onFollowChanged: if (follow >= 0 && follow !== target) pickTarget(follow)
+    readonly property string targetName: (targets.filter(function (o) { return o[0] === String(target) })[0] || ["", "Master"])[1]
     readonly property var targets: {
         var out = [["0", "Master"]]
         var t = studio.tracks
         for (var i = 0; i < t.length; i++) if (t[i].id >= 0) out.push([String(t[i].id), t[i].name])
         return out
     }
-    onTargetsChanged: if (targets.map(function (o) { return o[0] }).indexOf(String(target)) < 0) pickTarget(0)
+    onTargetsChanged: if (!master && targets.map(function (o) { return o[0] }).indexOf(String(target)) < 0) pickTarget(0)
     readonly property var cur: { for (var i = 0; i < chain.length; i++) if (chain[i].id === sel) return chain[i]; return null }
     readonly property var type: cur ? typeOf(cur.key) : null
     readonly property string curKey: cur ? cur.key : ""
@@ -51,19 +63,29 @@ Column {
     function setChain(c) {
         chain = c || []
         if (!cur) sel = chain.length ? chain[chain.length - 1].id : -1
+        var c = Object.assign({}, presetCache), fresh = false
+        for (var i = 0; i < chain.length; i++) if (c[chain[i].key] === undefined) {
+            var r = studio.call("fxPresets", chain[i].key); c[chain[i].key] = r.ok ? r.presets : []; fresh = true
+        }
+        if (fresh) presetCache = c
         studio.fxCountChanged()
     }
+    function nameOf(e) { return e.label || (typeOf(e.key) || { name: e.key }).name.replace("AFO ", "") }
     function reload() {
         if (!studio.engineOk) return
         var r = studio.call("fxList", target)
         if (r.ok) setChain(r.chain)
     }
-    function pickTarget(id) { target = id; sel = -1; reload() }
+    function pickTarget(id) {
+        target = id; sel = -1; menuFor = -1; reload()
+        if (!master && id > 0 && studio.rackTrack !== id) studio.rackTrack = id
+    }
     function add(key) {
         var r = studio.call("fxAdd", target, key, -1)
         if (!r.ok) { studio.toast(r.error); return }
         sel = r.effect.id
         setChain(r.chain)
+        libOpen = false
     }
     function remove(id) { var r = studio.call("fxRemove", id, target); if (r.ok) setChain(r.chain) }
     function move(id, idx) { var r = studio.call("fxMove", id, idx, target); if (r.ok) setChain(r.chain) }
@@ -95,12 +117,14 @@ Column {
         var r = studio.call("fxSavePreset", cur.id, name)
         if (!r.ok) { studio.toast(r.error); return }
         presets = r.presets; presetName = name.trim()
+        var c = Object.assign({}, presetCache); c[curKey] = r.presets; presetCache = c
         studio.toast("Preset «" + presetName + "» guardado")
     }
     function deletePreset() {
         var r = studio.call("fxDeletePreset", curKey, presetName)
         if (!r.ok) { studio.toast(r.error); return }
         presets = r.presets; presetName = ""
+        var c = Object.assign({}, presetCache); c[curKey] = r.presets; presetCache = c
     }
 
     // ---------------- automatización ----------------
@@ -116,12 +140,19 @@ Column {
         autoPts = pts
         patch(r.effect)
     }
-    function setParam(i, v) {
-        var p = type.params[i]
-        studio.call("fxParam", cur.id, p.id, v)
-        var vals = cur.values.slice(); vals[i] = v
-        var id = cur.id
-        chain = chain.map(function (e) { return e.id === id ? Object.assign({}, e, { values: vals }) : e })
+    function setParam(i, v) { setParamOf(cur, i, v) }
+    function setParamOf(e, i, v) {
+        var p = typeOf(e.key).params[i]
+        studio.call("fxParam", e.id, p.id, v)
+        var vals = e.values.slice(); vals[i] = v
+        var id = e.id
+        chain = chain.map(function (x) { return x.id === id ? Object.assign({}, x, { values: vals }) : x })
+    }
+    function applyPresetTo(e, name) {
+        var r = studio.call("fxApplyPreset", e.id, name)
+        if (!r.ok) { studio.toast(r.error); return }
+        patch(r.effect)
+        if (e.id === sel) presetName = name
     }
 
     // Rango con centro (como juce::NormalisableRange::setSkewForCentre): 0..100 ↔ valor del parámetro
@@ -142,6 +173,13 @@ Column {
             var r = root.studio.call("fxMeters", root.cur.id)
             if (r.ok) root.meters = r.m
             if (root.cur.key === "analyzer") { var s = root.studio.call("fxSpectrum", root.cur.id, 96); if (s.ok) root.spectrum = s.bands }
+            var live = {}
+            for (var i = 0; i < root.chain.length; i++) {
+                var e = root.chain[i]
+                if (e.key === "analyzer" && root.studio.playing) { var sp = root.studio.call("fxSpectrum", e.id, 48); if (sp.ok) live[e.id] = sp.bands }
+                else if (e.key === "delay") live[e.id] = e.id === root.cur.id ? root.meters : (root.studio.call("fxMeters", e.id).m || [])
+            }
+            root.cardLive = live
             if (root.studio.playing && (root.cur.automated || []).length) {   // las perillas siguen la curva
                 var f = root.studio.call("fxInfo", root.cur.id)
                 if (f.ok) root.patch({ id: f.effect.id, values: f.effect.values })
@@ -149,58 +187,184 @@ Column {
         }
     }
 
-    // ---------------- destino y cadena ----------------
+    // ---------------- cabecera: «VOZ P / CADENA DE EFECTOS» · «RACK VOZ P» ----------------
     Row {
-        width: root.width; spacing: 8; bottomPadding: 10
-        Text { text: "Insertar en"; height: 30; verticalAlignment: Text.AlignVCenter; color: Theme.ink
-               font.family: Theme.font; font.pixelSize: 13; font.weight: 700 }
-        Select { width: Math.min(260, root.width - 220); options: root.targets; current: String(root.target)
-                 onPicked: function (v) { root.pickTarget(Number(v)) } }
-        Text { height: 30; verticalAlignment: Text.AlignVCenter; color: Theme.ink
-               text: root.chain.length + (root.chain.length === 1 ? " efecto" : " efectos") + " · antes del fader"
-               font.family: Theme.font; font.pixelSize: 12; font.weight: 500 }
+        width: root.width; spacing: 10; bottomPadding: 10
+        Column {
+            width: root.width - (pickBox.visible ? pickBox.width + 10 : 0)
+            Text { width: parent.width; elide: Text.ElideRight
+                   text: root.targetName.toUpperCase() + " / CADENA DE EFECTOS"
+                   color: Theme.ink; font.family: Theme.font; font.pixelSize: 17; font.weight: 700; font.letterSpacing: 0.6 }
+            Text { width: parent.width; elide: Text.ElideRight
+                   text: "RACK " + root.targetName.toUpperCase() + " · " + root.chain.length + (root.chain.length === 1 ? " efecto" : " efectos")
+                         + " · " + (root.master ? "después de la mezcla, antes del limitador" : "antes del fader")
+                   color: Theme.ink; opacity: 0.75; font.family: Theme.font; font.pixelSize: 11; font.weight: 700; font.letterSpacing: 0.4 }
+        }
+        Column {
+            id: pickBox
+            visible: !root.master
+            width: 190; spacing: 2
+            Text { text: "Canal (o elige una tira en Mezcla)"; color: Theme.ink; font.family: Theme.font; font.pixelSize: 10; font.weight: 600 }
+            Select { width: parent.width; fontSize: 12; padY: 4; options: root.targets; current: String(root.target)
+                     onPicked: function (v) { root.pickTarget(Number(v)) } }
+        }
     }
-    Flow {                                      // la cadena en el orden de la señal
-        width: root.width; spacing: 6; bottomPadding: 10
-        Repeater {
-            model: root.chain
-            Rectangle {
-                id: slot
-                required property var modelData
-                required property int index
-                readonly property bool on: modelData.enabled
-                readonly property bool picked: modelData.id === root.sel
-                width: slotRow.width + 12; height: 34
-                color: picked ? Theme.pressedBg : Theme.button
-                border.width: 2; border.color: "#000"
-                opacity: on ? 1 : 0.55
-                Rectangle { x: 3; y: 3; z: -1; width: parent.width; height: parent.height; color: "#000" }
-                MouseArea { anchors.fill: parent; onClicked: root.sel = slot.modelData.id }
-                Row {
-                    id: slotRow
-                    x: 6; anchors.verticalCenter: parent.verticalCenter; spacing: 4
-                    NeoButton { text: slot.on ? "●" : "○"; fontSize: 11; padX: 5; padY: 0; shadow: 0
-                                color: slot.on ? "#5ee0b0" : Theme.button; textColor: "#000"
-                                tip: slot.on ? "Activo: pulsa para puentearlo (bypass)" : "Puenteado: pulsa para activarlo"
-                                onClicked: root.enable(slot.modelData.id, !slot.on) }
-                    Text { anchors.verticalCenter: parent.verticalCenter
-                           text: (slot.index + 1) + ". " + (root.typeOf(slot.modelData.key) || { name: slot.modelData.key }).name.replace("AFO ", "")
-                                 + ((slot.modelData.automated || []).length ? " ∿" : "")
-                           color: slot.picked ? Theme.pressedInk : Theme.ink; font.family: Theme.font; font.pixelSize: 12; font.weight: 700 }
-                    NeoButton { text: "◀"; fontSize: 10; padX: 4; padY: 0; shadow: 0; visible: slot.index > 0; tip: "Antes en la cadena"
-                                onClicked: root.move(slot.modelData.id, slot.index - 1) }
-                    NeoButton { text: "▶"; fontSize: 10; padX: 4; padY: 0; shadow: 0; visible: slot.index < root.chain.length - 1
-                                tip: "Después en la cadena"; onClicked: root.move(slot.modelData.id, slot.index + 1) }
-                    NeoButton { text: "✕"; fontSize: 10; padX: 4; padY: 0; shadow: 0; tip: "Quitar de la cadena"
-                                onClicked: root.remove(slot.modelData.id) }
+
+    // ---------------- rack: lista a la izquierda, tarjetas a la derecha ----------------
+    Row {
+        width: root.width; spacing: 12; bottomPadding: 10
+        Column {                                   // lista de la cadena (orden de señal)
+            id: listCol
+            width: Math.min(210, root.width * 0.3); spacing: 4
+            Repeater {
+                model: root.chain
+                Rectangle {
+                    id: li
+                    required property var modelData
+                    required property int index
+                    readonly property bool picked: modelData.id === root.sel
+                    width: listCol.width; height: liCol.height + 8
+                    color: picked ? Theme.pressedBg : Theme.button
+                    border.width: 2; border.color: "#000"
+                    Rectangle { x: 3; y: 3; z: -1; width: parent.width; height: parent.height; color: "#000" }
+                    MouseArea { anchors.fill: parent; onClicked: { root.sel = li.modelData.id; root.menuFor = -1 } }
+                    Column {
+                        id: liCol
+                        x: 6; y: 4; width: parent.width - 12; spacing: 4
+                        Row {
+                            width: parent.width; spacing: 6
+                            Rectangle {                 // casilla: activo / puenteado
+                                width: 16; height: 16; anchors.verticalCenter: parent.verticalCenter
+                                color: li.modelData.enabled ? "#5ee0b0" : "#fff"; border.width: 2; border.color: "#000"
+                                Text { anchors.centerIn: parent; text: li.modelData.enabled ? "✓" : ""; color: "#000"
+                                       font.family: Theme.font; font.pixelSize: 11; font.weight: 700 }
+                                MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor
+                                            onClicked: root.enable(li.modelData.id, !li.modelData.enabled) }
+                            }
+                            Text { width: parent.width - 16 - 26 - 12; anchors.verticalCenter: parent.verticalCenter; elide: Text.ElideRight
+                                   text: (li.index + 1) + ". " + root.nameOf(li.modelData) + ((li.modelData.automated || []).length ? " ∿" : "")
+                                   color: li.picked ? Theme.pressedInk : Theme.ink; opacity: li.modelData.enabled ? 1 : 0.55
+                                   font.family: Theme.font; font.pixelSize: 12; font.weight: 700 }
+                            NeoButton { text: "⋮"; width: 26; fontSize: 12; padX: 4; padY: 0; shadow: 0; tip: "Ordenar o quitar"
+                                        onClicked: root.menuFor = root.menuFor === li.modelData.id ? -1 : li.modelData.id }
+                        }
+                        Flow {                          // menú ⋮
+                            visible: root.menuFor === li.modelData.id
+                            width: parent.width; spacing: 4; height: visible ? implicitHeight : 0
+                            NeoButton { text: "▲ Subir"; fontSize: 10; padX: 5; padY: 1; shadow: 0; visible: li.index > 0
+                                        onClicked: root.move(li.modelData.id, li.index - 1) }
+                            NeoButton { text: "▼ Bajar"; fontSize: 10; padX: 5; padY: 1; shadow: 0; visible: li.index < root.chain.length - 1
+                                        onClicked: root.move(li.modelData.id, li.index + 1) }
+                            NeoButton { text: "✕ Quitar"; fontSize: 10; padX: 5; padY: 1; shadow: 0
+                                        onClicked: { root.menuFor = -1; root.remove(li.modelData.id) } }
+                        }
+                        Text { visible: !!li.modelData.auto; text: "mezcla automática"; color: li.picked ? Theme.pressedInk : Theme.ink
+                               opacity: 0.7; font.family: Theme.font; font.pixelSize: 9; font.weight: 700 }
+                    }
+                }
+            }
+            NeoButton {
+                width: listCol.width; text: root.libOpen ? "× CERRAR BIBLIOTECA" : "+ AGREGAR EFECTO"
+                fontSize: 12; fontWeight: 700; padY: 6; color: "#ffcf9e"; textColor: "#000"
+                tip: "Inserta cualquier efecto de la Biblioteca nativa al final de la cadena (sin límite)"
+                onClicked: root.libOpen = !root.libOpen
+            }
+        }
+        Flow {                                      // tarjetas
+            id: cards
+            width: root.width - listCol.width - 12; spacing: 10
+            readonly property real cw: width >= 520 ? (width - 10) / 2 : width
+            DashedBox {
+                visible: !root.chain.length; width: cards.width; height: visible ? implicitHeight + 10 : 0
+                text: "Sin efectos en " + root.targetName + ". Pulsa «+ Agregar efecto»" + (root.master ? " o usa Master IA." : " o mezcla automáticamente.")
+            }
+            Repeater {
+                model: root.chain
+                Rectangle {
+                    id: card
+                    required property var modelData
+                    required property int index
+                    readonly property var desc: root.typeOf(modelData.key)
+                    readonly property bool picked: modelData.id === root.sel
+                    width: cards.cw; height: cardCol.height + 16
+                    color: "#16130e"; border.width: 3; border.color: picked ? "#ffb000" : "#000"
+                    opacity: modelData.enabled ? 1 : 0.6
+                    Rectangle { anchors.fill: parent; anchors.margins: 3; color: "transparent"; border.width: 2; border.color: "#4a4030" }
+                    Column {
+                        id: cardCol
+                        x: 8; y: 8; width: parent.width - 16; spacing: 6
+                        Row {                            // power · nombre · ≡ ⋮
+                            width: parent.width; spacing: 5
+                            NeoButton { text: "⏻"; width: 26; fontSize: 12; padX: 3; padY: 1; shadow: 2
+                                        color: card.modelData.enabled ? "#5ee0b0" : "#3a352a"; textColor: "#000"
+                                        tip: card.modelData.enabled ? "Puentear (bypass)" : "Activar"
+                                        onClicked: root.enable(card.modelData.id, !card.modelData.enabled) }
+                            Text { width: parent.width - 26 - 26 - 26 - 15; anchors.verticalCenter: parent.verticalCenter; elide: Text.ElideRight
+                                   text: root.nameOf(card.modelData); color: "#f3e7c4"
+                                   font.family: Theme.font; font.pixelSize: 12; font.weight: 700 }
+                            NeoButton { text: "≡"; width: 26; fontSize: 12; padX: 3; padY: 1; shadow: 2; tip: "Detalle: medidores, presets propios y automatización"
+                                        onClicked: root.sel = card.modelData.id }
+                            NeoButton { text: "⋮"; width: 26; fontSize: 12; padX: 3; padY: 1; shadow: 2; tip: "Ordenar o quitar (en la lista)"
+                                        onClicked: root.menuFor = root.menuFor === card.modelData.id ? -1 : card.modelData.id }
+                        }
+                        Select {
+                            width: parent.width; fontSize: 10; padX: 4; padY: 2
+                            options: [["", (root.typeOf(card.modelData.key) || { af: "" }).af + " · preset…"]].concat((root.presetCache[card.modelData.key] || []).map(function (p) { return [p.name, p.name + (p.factory ? "" : " ★")] }))
+                            current: ""
+                            tip: "Presets de fábrica y los tuyos (★)"
+                            onPicked: function (v) { if (v) root.applyPresetTo(card.modelData, v) }
+                        }
+                        Canvas {
+                            id: mini
+                            width: parent.width; height: 62
+                            property var fx: card.modelData
+                            property var live: root.cardLive[card.modelData.id]
+                            onFxChanged: requestPaint()
+                            onLiveChanged: requestPaint()
+                            onWidthChanged: requestPaint()
+                            onPaint: { if (card.desc) FG.draw(getContext("2d"), width, height, fx, card.desc, live) }
+                        }
+                        Flow {
+                            width: parent.width; spacing: 6
+                            Repeater {
+                                model: card.desc ? card.desc.params : []
+                                Column {
+                                    id: kc
+                                    required property var modelData
+                                    required property int index
+                                    readonly property real v: card.modelData.values[index] !== undefined ? card.modelData.values[index] : modelData.def
+                                    readonly property bool auto: (card.modelData.automated || []).indexOf(modelData.id) >= 0
+                                    spacing: 2
+                                    width: modelData.choices.length ? 96 : 56
+                                    Knob {
+                                        visible: !kc.modelData.choices.length
+                                        anchors.horizontalCenter: parent.horizontalCenter
+                                        value: root.toPos(kc.modelData, kc.v)
+                                        label: kc.modelData.name + (kc.auto ? " ∿" : "")
+                                        labelColor: kc.auto ? "#ffcf9e" : "#f3e7c4"
+                                        tip: kc.modelData.help
+                                        onMoved: function (pos) { root.setParamOf(card.modelData, kc.index, root.fromPos(kc.modelData, pos)) }
+                                    }
+                                    Text { visible: kc.modelData.choices.length > 0; text: kc.modelData.name; color: "#f3e7c4"
+                                           font.family: Theme.font; font.pixelSize: 10; font.weight: 600 }
+                                    Select {
+                                        visible: kc.modelData.choices.length > 0
+                                        width: 96; fontSize: 10; padY: 3; padX: 4
+                                        options: kc.modelData.choices.map(function (c, i) { return [String(i), c] })
+                                        current: String(Math.round(kc.v))
+                                        tip: kc.modelData.help
+                                        onPicked: function (val) { root.setParamOf(card.modelData, kc.index, Number(val)) }
+                                    }
+                                    Text { visible: !kc.modelData.choices.length; anchors.horizontalCenter: parent.horizontalCenter
+                                           text: root.fmtVal(kc.modelData, kc.v); color: "#ffb000"
+                                           font.family: Theme.font; font.pixelSize: 9; font.weight: 700 }
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
-    }
-    DashedBox {
-        visible: !root.chain.length; width: root.width; height: visible ? implicitHeight + 10 : 0
-        text: "Sin efectos en " + (root.targets.filter(function (o) { return o[0] === String(root.target) })[0] || ["", "Master"])[1]
-              + ". Elige uno en la biblioteca de abajo."
     }
 
     // ---------------- editor del efecto abierto ----------------
@@ -381,48 +545,13 @@ Column {
                     ctx.fillText(eq ? "respuesta real del EQ (±24 dB)" : "espectro (dBFS, 20 Hz – 20 kHz)", 6, 12)
                 }
             }
-            Flow {                              // parámetros
-                width: ed.width; spacing: 14
-                Repeater {
-                    model: root.type ? root.type.params : []
-                    Column {
-                        id: pc
-                        required property var modelData
-                        required property int index
-                        readonly property real v: root.cur && root.cur.values[index] !== undefined ? root.cur.values[index] : modelData.def
-                        spacing: 3
-                        width: modelData.choices.length ? 130 : 64
-                        Knob {
-                            visible: !pc.modelData.choices.length
-                            anchors.horizontalCenter: parent.horizontalCenter
-                            value: root.toPos(pc.modelData, pc.v)
-                            label: pc.modelData.name + (root.isAuto(pc.modelData.id) ? " ∿" : "")
-                            labelColor: root.isAuto(pc.modelData.id) ? "#ffcf9e" : "#f3e7c4"
-                            tip: pc.modelData.help
-                            onMoved: function (pos) { root.setParam(pc.index, root.fromPos(pc.modelData, pos)) }
-                        }
-                        Text { visible: pc.modelData.choices.length > 0; text: pc.modelData.name; color: "#f3e7c4"
-                               font.family: Theme.font; font.pixelSize: 11; font.weight: 600 }
-                        Select {
-                            visible: pc.modelData.choices.length > 0
-                            width: 130; fontSize: 11; padY: 4
-                            options: pc.modelData.choices.map(function (c, i) { return [String(i), c] })
-                            current: String(Math.round(pc.v))
-                            tip: pc.modelData.help
-                            onPicked: function (val) { root.setParam(pc.index, Number(val)) }
-                        }
-                        Text { visible: !pc.modelData.choices.length; anchors.horizontalCenter: parent.horizontalCenter
-                               text: root.fmtVal(pc.modelData, pc.v); color: "#ffb000"
-                               font.family: Theme.font; font.pixelSize: 10; font.weight: 700 }
-                    }
-                }
-            }
         }
     }
     Item { width: 1; height: 10 }
 
     // ---------------- biblioteca (6 secciones, 20 carpetas, 96 módulos) ----------------
     Flow {
+        visible: root.libOpen; height: visible ? implicitHeight : 0
         width: root.width; spacing: 6; bottomPadding: 8
         Repeater {
             model: FL.FAMILIES
@@ -437,6 +566,7 @@ Column {
         }
     }
     Column {
+        visible: root.libOpen; height: visible ? implicitHeight : 0
         width: root.width; spacing: 6
         Repeater {
             model: FL.FAMILIES[root.family].folders
@@ -477,6 +607,7 @@ Column {
         }
     }
     Text {
+        visible: root.libOpen; height: visible ? implicitHeight : 0
         width: root.width; topPadding: 8; wrapMode: Text.Wrap
         text: "Disponibles: " + root.catalog.length + " de 96 (Hito 1). Los efectos suenan en el motor C++, tienen presets y automatización, se guardan en el proyecto (Guardar / Abrir) y su latencia se compensa. Los marcados «por construir» aún no existen."
         color: Theme.ink; font.family: Theme.font; font.pixelSize: 12; font.weight: 500
@@ -485,7 +616,8 @@ Column {
     Component.onCompleted: {
         var r = studio.call("fxCatalog")
         catalog = r.ok ? r.catalog : []
+        if (master) studio.fxMasterBody = root
+        else { studio.fxBody = root; if (studio.rackTrack > 0) target = studio.rackTrack }
         reload()
-        studio.fxBody = root
     }
 }

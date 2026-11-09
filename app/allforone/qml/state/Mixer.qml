@@ -2,8 +2,10 @@ import QtQuick
 import "../theme"
 import "mixdata.js" as MD
 
-// Estado del Mezclador Automático V4.2 en la interfaz nativa (equivale a AFO_MX de afo_panels.js).
+// Estado del Mezclador Automático V4.2 en la interfaz nativa.
 // Un audio = una ficha (`items`) = una pista del motor = una tira de la consola.
+// La mezcla y el master son EN VIVO: el V4.2 decide y sus decisiones quedan como fader, paneo y
+// cadenas de efectos reales del motor (racks de Efectos y Efectos master). No se generan WAVs.
 QtObject {
     id: mx
     property var studio                        // la ventana (pistas, avisos, motor)
@@ -19,8 +21,9 @@ QtObject {
     property bool busy: false
     property real progress: 0
     property string status: "Carga audios en el módulo «Audios»: cada uno crea su pista y su tira."
-    property var runs: []
-    property int run: -1
+    property int runs: 0                        // mezclas en vivo aplicadas
+    property bool lastTuned: false
+    property bool autoMaster: true              // al terminar la mezcla, masterizar con el preset elegido
     property var live: ({})                     // por id de pista del motor: decisiones reales del mezclador
     property int workingTrack: -1
     // Afinador (PSOLA): tonalidad y BPM confirmados antes de afinar
@@ -30,12 +33,12 @@ QtObject {
     property real tuneStrength: 0               // intensidad 0..100 (0 = sin afinación)
     property var keys: ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
     property var scales: ["Cromatica", "Mayor", "Menor natural", "Menor armonica", "Pentatonica mayor", "Pentatonica menor"]
-    // Master IA y Antes / Después
+    // Master IA en vivo
     property int masterSel: 3
-    property string masterAb: "B"
-    property int reviewSel: 0
-    property string reviewAb: "A"
-    readonly property var currentRun: run >= 0 && run < runs.length ? runs[run] : null
+    property var masterStats: null              // lo que midió el motor al masterizar
+    property bool mastering: false
+    property string abState: "B"                // B = con efectos automáticos, A = puenteados
+    readonly property var masterNames: data.masters.concat(["Según referencia"])
 
     function stepDb() { return 5 + stepKnob / 20 }
     function call(cmd, data) {
@@ -131,7 +134,8 @@ QtObject {
     function request() {
         var p = data.profiles.filter(function (x) { return x[0] === profile })[0]
         return {
-            stems: items.map(function (s) { return { path: s.path, name: s.name, kind: s.kind, role: s.role, auto_kind: s.auto_kind, auto_role: s.auto_role } }),
+            stems: items.map(function (s) { return { path: s.path, name: s.name, kind: s.kind, role: s.role, auto_kind: s.auto_kind,
+                                                     auto_role: s.auto_role, trackId: s.trackId } }),
             reference: reference, profile: profile, mode: mode, profile_name: p ? p[1] : "",
             step_db: stepDb(), space: spaceKnob,
             tune: { mode: tune.mode, key: tune.key, scale: tune.scale, bpm: tune.bpm, prefer: tune.prefer,
@@ -140,21 +144,44 @@ QtObject {
     }
     function mix(remix) {
         if (!items.length) { studio.toast("Carga audios en el módulo «Audios»"); return }
-        live = {}
-        var r = fail(call(remix ? "remix" : "mix", request()))
-        if (r.ok) { busy = true; progress = 1; status = remix ? "Remezclando (la mezcla anterior se conserva)…" : "Mezclando…" }
+        if (abState === "A") bypass("B")
+        var r = fail(call("mix", request()))
+        if (r.ok) { live = {}; busy = true; progress = 1; status = remix ? "Remezclando en vivo…" : "Mezclando en vivo…" }
+    }
+    // Master IA: el V4.2 decide la cadena del master midiendo la sesión en el motor (sin archivos)
+    function masterAuto(sel) {
+        masterSel = sel
+        mastering = true
+        status = "Masterizando en vivo: " + masterNames[sel] + " (midiendo la sesión en el motor)…"
+        Qt.callLater(function () {
+            var r = fail(call("master", { preset: masterNames[sel] }))
+            mastering = false
+            if (!r.ok) { status = "Master: " + (r.error || "sin cambios"); return }
+            masterStats = r.stats
+            studio.refreshRacks()
+            status = "Master en vivo · " + masterNames[sel] + ": " + r.stats.lufs_i.toFixed(1) + " LUFS · pico " + r.stats.max_peak_db.toFixed(1) + " dB · " + r.stats.note
+        })
+    }
+    function unmaster() {
+        var r = fail(call("unmaster"))
+        if (r.ok) { masterStats = null; studio.refreshRacks(); status = "Master IA quitado: el master vuelve a su cadena manual." }
+    }
+    // A/B de escucha: puentea (A) o activa (B) todos los efectos que puso la mezcla automática
+    function bypass(ab) {
+        var r = fail(call("bypass", { bypass: ab === "A" }))
+        if (r.ok) { abState = ab; studio.refreshRacks() }
     }
 
     function onEvent(ev) {
         if (ev.type === "strip") {
-            var it = items[ev.i], id = it ? it.trackId : -1
-            if (ev.phase === "work") { workingTrack = id; return }
+            var id = ev.trackId !== undefined ? ev.trackId : -1, it = itemOfTrack(id)
+            if (ev.phase === "work") { var w = items.filter(function (x) { return x.trackId >= 0 })[ev.i]; workingTrack = w ? w.trackId : -1; return }
             workingTrack = -1
-            if (id < 0) return
+            if (id < 0 || ev.skip) return
             var l = Object.assign({}, live)
-            l[id] = { gain_db: ev.gain_db, pan: ev.pan, peak_db: ev.peak_db, rms_db: ev.rms_db, position: ev.position, note: ev.note, kind: ev.kind }
+            l[id] = { gain_db: ev.gain_db, pan: ev.pan, position: ev.position, note: ev.note, kind: ev.kind, chain: ev.chain || [], tuned: !!ev.tuned }
             live = l
-            if (ev.kind) { it.kind = ev.kind; touch() }
+            if (ev.kind && it) { it.kind = ev.kind; touch() }
             // Las decisiones reales se llevan a la consola: fader (nivel) y perilla (paneo)
             studio.setTrackMix(id, MD.dbToFader(ev.gain_db), 50 + 50 * (+ev.pan || 0))
         } else if (ev.type === "progress") {
@@ -166,11 +193,14 @@ QtObject {
             if (ev.bpm && tune.mode !== "Manual") t.bpm = Math.round(ev.bpm * 10) / 10
             setTune(t)
         } else if (ev.type === "done") {
-            var rs = runs.slice(); rs.push(ev.run); runs = rs; run = rs.length - 1
-            busy = false; workingTrack = -1; progress = 100; reviewSel = 0
-            status = "Mezcla #" + rs.length + " lista en " + ev.run.seconds + " s · " + Object.keys(ev.run.masters).length +
-                     " masters · " + ev.run.review.length + " pistas A/B" + (ev.run.tuned ? " · afinada" : "")
-            studio.toast("Mezcla automática terminada · la consola refleja los niveles y el paneo")
+            runs++
+            busy = false; workingTrack = -1; progress = 100
+            lastTuned = Object.keys(live).some(function (k) { return live[k].tuned })
+            studio.refreshRacks()
+            status = "Mezcla en vivo #" + runs + " (" + ev.profile + ") aplicada a " + ev.applied + " pistas en " + ev.seconds + " s" +
+                     (lastTuned ? " · voces afinadas" : "") + ". No se reproduce en vivo: " + ev.skipped.join(", ") + "."
+            studio.toast("Mezcla automática aplicada: faders, paneo y cadenas de efectos reales")
+            if (autoMaster) masterAuto(masterSel)
         } else if (ev.type === "error") {
             busy = false; workingTrack = -1; status = "Error: " + ev.error
             if (ev.panel === "analysis") setTune({ status: "Error: " + ev.error })
@@ -208,21 +238,4 @@ QtObject {
         }
         return out
     }
-
-    // ---------------- Master IA y Antes / Después ----------------
-    function listen(what, ab) {
-        var d = { what: what, ab: ab, run: run, sel: what === "master" ? masterSel : reviewSel }
-        if (ab !== "stop") { if (what === "master") masterAb = ab; else reviewAb = ab }
-        var r = fail(call("listen", d))
-        if (r.ok && r.file) studio.toast("Escuchando " + r.file)
-    }
-    function sendMasterToTracks() {
-        var r = fail(call("tracks", { run: run, sel: masterSel }))
-        if (r.ok) { r.tracks.forEach(function (t) { studio.addTrack(t, false) }); studio.toast("Master añadido a Pistas") }
-    }
-    function exportZip() {
-        var r = fail(call("zip", { run: run, sel: masterSel }))
-        if (r.ok) studio.toast("Comprimiendo la sesión en segundo plano → " + r.path)
-    }
-    function openFolder() { fail(call("folder", { run: run, sel: masterSel })) }
 }

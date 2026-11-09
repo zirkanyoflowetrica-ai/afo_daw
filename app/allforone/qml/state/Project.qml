@@ -99,8 +99,10 @@ QtObject {
         })
         var mf = s.call("fxRestore", 0, JSON.stringify(doc.master_fx || []))
         if (!mf.ok) s.toast(mf.error)
+        s.call("setMasterCeiling", doc.master_ceiling === undefined ? -1 : doc.master_ceiling)
+        mx.masterStats = null
         s.syncTrackStates()
-        if (s.fxBody) s.fxBody.reload()
+        s.refreshRacks()
         s.fxCountChanged()
         loading = false
     }

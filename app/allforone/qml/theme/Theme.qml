@@ -27,7 +27,7 @@ QtObject {
     readonly property var pc: ({
         piano: "#b79bff", inst: "#ff7a70", drums: "#d4f26a", cinta: "#c9ccd2", ia: "#6ab8ff",
         pistas: "#ffc233", mezcla: "#5ee0b0", master: "#ff9ee0",
-        audios: "#ff9f45", afina: "#7ae7ff", mastia: "#ff6b9a", antes: "#e6d3a3", fx: "#ffcf9e"
+        audios: "#ff9f45", afina: "#7ae7ff", mastia: "#ff6b9a", antes: "#e6d3a3", fx: "#ffcf9e", fxm: "#ffb07a"
     })
 
     // Superficie de un módulo: su color en claro; en oscuro, 17 % de su color sobre #1b1822
