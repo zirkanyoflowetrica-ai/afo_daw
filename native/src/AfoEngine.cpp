@@ -4,6 +4,7 @@
 #include <tracktion_engine/tracktion_engine.h>
 
 #include "AfoPlugins.h"
+#include "AfoLoudness.h"
 #include "fx/FxPlugins.h"
 
 #include <array>
@@ -45,6 +46,7 @@ struct TrackSlot
     te::LevelMeasurer::Client meter;
     TrackInfo info;
     AfoSynthPlugin* synth = nullptr;         // solo en pistas de Instrumento/Batería
+    AfoMeterPlugin* loud = nullptr;          // medidor de sonoridad tras el fader
 };
 
 // Configuración de Tracktion dentro de la carpeta de datos de AllForOne (nada fuera de ella)
@@ -53,6 +55,16 @@ struct LocalPropertyStorage : public te::PropertyStorage
     LocalPropertyStorage (juce::String appName, juce::File dir) : te::PropertyStorage (appName), folder (dir) {}
     juce::File getAppPrefsFolder() override { folder.createDirectory(); return folder; }
     juce::File folder;
+};
+
+// Las tareas de Tracktion «con barra de progreso» (medir la mezcla) se ejecutan aquí mismo:
+// AllForOne no tiene la interfaz de Tracktion y el motor se usa desde un solo hilo
+struct AfoUIBehaviour : public te::UIBehaviour
+{
+    void runTaskWithProgressBar (te::ThreadPoolJobWithProgress& t) override
+    {
+        while (t.runJob() == juce::ThreadPoolJob::jobNeedsRunningAgain) {}
+    }
 };
 
 struct PreviewPlayer
@@ -80,6 +92,7 @@ struct Engine::Impl
 
     te::LevelMeasurer::Client masterClient;
     AfoMasterPlugin* master = nullptr;          // pertenece al Edit
+    AfoMeterPlugin* masterLoud = nullptr;       // sonoridad tras la sección master
 
     // Efectos nativos insertados (el Edit es el dueño; aquí solo referencias)
     struct FxSlot { int id = 0, trackId = 0; te::Plugin::Ptr plugin; fx::FxBase* fx = nullptr; };
@@ -100,9 +113,10 @@ struct Engine::Impl
         juce::File base = dataDir.empty() ? juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile (appName)
                                           : toFile (dataDir);
         engine = std::make_unique<te::Engine> (std::make_unique<LocalPropertyStorage> (juce::String (appName), base.getChildFile ("tracktion")),
-                                               nullptr, nullptr);
+                                               std::make_unique<AfoUIBehaviour>(), nullptr);
         engine->getPluginManager().createBuiltInType<AfoSynthPlugin>();
         engine->getPluginManager().createBuiltInType<AfoMasterPlugin>();
+        engine->getPluginManager().createBuiltInType<AfoMeterPlugin>();
         fx::registerFx (engine->getPluginManager());
 
         // Edit vacío en memoria. El formato de proyecto .afo (V0.2) guardará su estado.
@@ -118,6 +132,9 @@ struct Engine::Impl
         if (master == nullptr)
             throw std::runtime_error ("afo_audio: no se pudo crear la sección master");
         edit->getMasterPluginList().insertPlugin (mp, -1, nullptr);
+        auto lp = edit->getPluginCache().createNewPlugin (AfoMeterPlugin::xmlTypeName, {});
+        masterLoud = dynamic_cast<AfoMeterPlugin*> (lp.get());
+        edit->getMasterPluginList().insertPlugin (lp, -1, nullptr);
         edit->getTransport().ensureContextAllocated();
         attachMasterMeter();
     }
@@ -146,6 +163,43 @@ struct Engine::Impl
     // Tracktion puede recrear el EditPlaybackContext (y el nuevo puede ocupar la misma dirección
     // que el anterior), así que no basta con comparar punteros: en cada lectura se vuelve a
     // registrar el cliente en el contexto ACTUAL. removeClient/addClient son baratos y seguros.
+    // Medidor de sonoridad al final de la pista (después del volumen/pan)
+    void addLoudness (TrackSlot& s)
+    {
+        auto p = edit->getPluginCache().createNewPlugin (AfoMeterPlugin::xmlTypeName, {});
+        s.loud = dynamic_cast<AfoMeterPlugin*> (p.get());
+        s.track->pluginList.insertPlugin (p, -1, nullptr);
+    }
+
+    static Loudness read (AfoMeterPlugin* p)
+    {
+        Loudness l;
+        if (p == nullptr) return l;
+        auto& m = p->meter;
+        l.peakDb = m.readPeakDb(); l.maxPeakDb = m.maxPeakDb(); l.rmsDb = juce::jmax (-100.0f, m.rmsValue());
+        l.momentary = juce::jmax (-100.0f, m.momentary()); l.shortTerm = juce::jmax (-100.0f, m.shortTerm());
+        l.integrated = m.integrated();
+        return l;
+    }
+
+    // Pistas que suenan (respeta solo y silencio), como índices de te::getAllTracks
+    juce::BigInteger audibleTracks()
+    {
+        auto all = te::getAllTracks (*edit);
+        bool anySolo = false;
+        for (auto& [id, s] : slots)
+            anySolo = anySolo || s->track->isSolo (false);
+        juce::BigInteger audible;
+        for (auto& [id, s] : slots)
+        {
+            const bool hear = anySolo ? s->track->isSolo (false) : ! s->track->isMuted (false);
+            const int index = all.indexOf (s->track.get());
+            if (hear && index >= 0)
+                audible.setBit (index);
+        }
+        return audible;
+    }
+
     void attachMasterMeter()
     {
         auto* ctx = edit->getCurrentPlaybackContext();
@@ -347,6 +401,7 @@ TrackInfo Engine::addAudioTrack (const std::string& filePath, const std::string&
     slot->info.numChannels = audioFile.getNumChannels();
     if (auto* lm = track->getLevelMeterPlugin())
         lm->measurer.addClient (slot->meter);
+    impl->addLoudness (*slot);
 
     auto info = slot->info;
     impl->slots[slot->id] = std::move (slot);
@@ -381,6 +436,7 @@ TrackInfo Engine::addSynthTrack (const std::string& name, int mode)
     slot->info.numChannels = 2;
     if (auto* lm = track->getLevelMeterPlugin())
         lm->measurer.addClient (slot->meter);
+    impl->addLoudness (*slot);
     auto info = slot->info;
     impl->slots[slot->id] = std::move (slot);
     edit.getTransport().ensureContextAllocated();
@@ -558,8 +614,68 @@ Levels Engine::readLevels()
     l.masterR = impl->masterClient.getAndClearAudioLevel (1).dB;
     l.masterVu = juce::jmax (-100.0f, impl->master->vuDb.load());
     for (auto& [id, s] : impl->slots)
+    {
         l.tracks[id] = juce::jmax (s->meter.getAndClearAudioLevel (0).dB, s->meter.getAndClearAudioLevel (1).dB);
+        l.loud[id] = Impl::read (s->loud);
+    }
+    l.master = Impl::read (impl->masterLoud);
     return l;
+}
+
+void Engine::resetLoudness()
+{
+    requireMessageThread();
+    if (impl->masterLoud != nullptr) impl->masterLoud->meter.resetIntegrated();
+    for (auto& [id, s] : impl->slots)
+        if (s->loud != nullptr) s->loud->meter.resetIntegrated();
+}
+
+MixMeasure Engine::measureMix()
+{
+    requireMessageThread();
+    MixMeasure r;
+    auto& edit = *impl->edit;
+    const auto audible = impl->audibleTracks();
+    if (edit.getLength() <= te::TimeDuration() || audible.isZero())
+        return r;
+    if (edit.getTransport().isPlaying())
+        edit.getTransport().stop (false, false);
+    resetLoudness();
+    double sr = 48000.0;
+    if (auto* dev = impl->engine->getDeviceManager().deviceManager.getCurrentAudioDevice())
+        sr = dev->getCurrentSampleRate();
+    // Como Renderer::measureStatistics pero con los plugins del master (su medidor es el que cuenta)
+    // y sin archivo de destino: el audio solo pasa por los medidores
+    auto turnOff = [&edit]
+    {
+        for (auto f : te::getAllPlugins (edit, true))
+            while (! f->baseClassNeedsInitialising())
+                f->baseClassDeinitialise();
+    };
+    {
+        const te::Edit::ScopedRenderStatus srs (edit, true);
+        te::TransportControl::stopAllTransports (*impl->engine, false, true);
+        turnOff();
+        te::Renderer::Parameters p (edit);
+        p.audioFormat = impl->engine->getAudioFileFormatManager().getDefaultFormat();
+        p.blockSizeForAudio = 512;
+        p.sampleRateForAudio = sr;
+        p.time = { te::TimePosition(), edit.getLength() };
+        p.tracksToDo = audible;
+        p.usePlugins = true;
+        p.useMasterPlugins = true;
+        te::Renderer::RenderTask task ("AllForOne", p, nullptr, nullptr);
+        while (task.runJob() == juce::ThreadPoolJob::jobNeedsRunningAgain) {}
+        turnOff();
+    }
+    r.master = Impl::read (impl->masterLoud);
+    r.ok = r.master.maxPeakDb > -100.0f;
+    r.seconds = edit.getLength().inSeconds();
+    for (auto& [id, s] : impl->slots)
+        r.tracks[id] = Impl::read (s->loud);
+    edit.getTransport().ensureContextAllocated();
+    impl->attachMasterMeter();
+    return r;
 }
 
 bool Engine::renderToWav (const std::string& path)
@@ -571,18 +687,7 @@ bool Engine::renderToWav (const std::string& path)
 
     // Tracktion renderiza todas las pistas que recibe, aunque estén silenciadas.
     // Exportamos lo que se escucha: con solo activo, solo esas; si no, las no silenciadas.
-    auto all = te::getAllTracks (edit);
-    bool anySolo = false;
-    for (auto& [id, s] : impl->slots)
-        anySolo = anySolo || s->track->isSolo (false);
-    juce::BigInteger audible;
-    for (auto& [id, s] : impl->slots)
-    {
-        const bool hear = anySolo ? s->track->isSolo (false) : ! s->track->isMuted (false);
-        const int index = all.indexOf (s->track.get());
-        if (hear && index >= 0)
-            audible.setBit (index);
-    }
+    auto audible = impl->audibleTracks();
     if (audible.isZero())
         return false;
 
@@ -731,6 +836,7 @@ TrackInfo Engine::addRecordTrack (const std::string& name)
     slot->info.numChannels = 2;
     if (auto* lm = track->getLevelMeterPlugin())
         lm->measurer.addClient (slot->meter);
+    impl->addLoudness (*slot);
     auto info = slot->info;
     impl->slots[slot->id] = std::move (slot);
     edit.getTransport().ensureContextAllocated();
@@ -1038,6 +1144,22 @@ std::vector<std::pair<double, float>> Engine::effectAutomation (int effectId, co
 
 std::vector<float> Engine::effectMeters (int effectId)              { return impl->fxSlot (effectId).fx->readMeters(); }
 std::vector<float> Engine::effectSpectrum (int effectId, int bands) { return impl->fxSlot (effectId).fx->spectrum (bands); }
+
+Engine::ChainScope Engine::chainScope (int trackId, int bands)
+{
+    ChainScope r;
+    std::vector<fx::FxBase*> on;
+    for (auto* f : impl->chain (trackId))
+        if (f->plugin->isEnabled()) on.push_back (f->fx);
+    r.active = (int) on.size();
+    if (on.empty())
+        return r;
+    r.pre = on.front()->spectrum (bands, 0.0f, 0.6f, true);
+    r.post = on.back()->spectrum (bands, 0.0f, 0.6f, false);
+    r.preDb = on.front()->scopeRmsDb (true);
+    r.postDb = on.back()->scopeRmsDb (false);
+    return r;
+}
 
 void Engine::pumpMessages (int milliseconds)
 {

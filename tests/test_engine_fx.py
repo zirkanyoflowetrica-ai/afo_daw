@@ -74,8 +74,8 @@ def with_fx(eng, path, key, **params):
 def test_catalogo():
     cat = afo_audio.effect_catalog()
     keys = [c["key"] for c in cat]
-    assert keys == ["gain", "strip", "eq", "compressor", "gate", "saturator", "delay", "space", "analyzer"]
-    assert {c["af"] for c in cat} == {"AF-01", "AF-02", "AF-07", "AF-13", "AF-18", "AF-26", "AF-41", "AF-35", "AF-76"}
+    assert keys == ["gain", "strip", "eq", "compressor", "gate", "deesser", "saturator", "delay", "space", "analyzer"]
+    assert {c["af"] for c in cat} == {"AF-01", "AF-02", "AF-07", "AF-13", "AF-18", "AF-20", "AF-26", "AF-41", "AF-35", "AF-76"}
     for c in cat:
         assert c["params"], c["key"]
         for p in c["params"]:
@@ -324,3 +324,58 @@ def test_audio_de_un_proyecto_en_pista_de_voz(host, tmp_path):
     y = render(eng, tmp_path)[:, 0]
     assert db(np.abs(y[: int(1.4 * SR)]).max()) < -80                 # silencio antes de la toma
     assert db(np.abs(y[int(1.6 * SR): int(2.4 * SR)]).max()) == pytest.approx(-18, abs=0.5)
+
+
+def test_deesser_baja_solo_la_sibilancia(host, tmp_path):
+    """AF-20: un tono en la banda vigilada baja hasta el rango; uno grave queda intacto."""
+    eng = host.engine
+    hi = eng.add_audio_track(tone(tmp_path, 6000, -12, 2.0, "hi.wav"), "hi")["id"]
+    fx = eng.add_effect(hi, "deesser")["id"]
+    for k, v in (("freq", 6000), ("threshold", -30), ("range", -6)):
+        eng.set_effect_param(fx, k, v)
+    y = render(eng, tmp_path, "hi_out.wav")[SR:2 * SR, 0]
+    assert db(rms(y)) == pytest.approx(-12 - 3.01 - 6, abs=0.5)
+    assert eng.effect_meters(fx)[2] < -5
+    eng.remove_track(hi)
+    lo = eng.add_audio_track(tone(tmp_path, 500, -12, 2.0, "lo.wav"), "lo")["id"]
+    fx = eng.add_effect(lo, "deesser")["id"]
+    eng.set_effect_param(fx, "threshold", -30)
+    y = render(eng, tmp_path, "lo_out.wav")[SR:2 * SR, 0]
+    assert db(rms(y)) == pytest.approx(-12 - 3.01, abs=0.2)
+
+
+def test_antes_y_despues_de_la_cadena(host, tmp_path):
+    """chain_scope: nivel a la entrada del primer efecto activo y a la salida del último."""
+    eng = host.engine
+    tid = eng.add_audio_track(tone(tmp_path, 440, -12, 2.0), "t")["id"]
+    assert eng.chain_scope(tid, 32)["active"] == 0
+    g = eng.add_effect(tid, "gain")["id"]
+    eng.set_effect_param(g, "output", -6.0)
+    eng.add_effect(tid, "analyzer")
+    render(eng, tmp_path)
+    c = eng.chain_scope(tid, 32)
+    assert c["active"] == 2 and len(c["pre"]) == 32 and len(c["post"]) == 32
+    assert c["pre_db"] > -20 and c["post_db"] - c["pre_db"] == pytest.approx(-6, abs=0.3)
+    assert max(c["pre"]) - max(c["post"]) == pytest.approx(6, abs=1.0)
+
+
+def test_sonoridad_lufs_rms_sin_archivos(host, tmp_path):
+    """measure_mix: LUFS integrada como pyloudnorm (BS.1770), RMS y pico, sin escribir archivos."""
+    import pyloudnorm as pyln
+    eng = host.engine
+    t = np.arange(int(30 * SR)) / SR
+    y = 0.1 * np.sin(2 * np.pi * 1000 * t) * (1 + 0.5 * np.sin(2 * np.pi * 0.5 * t)) / 1.5
+    p = tmp_path / "mod.wav"
+    sf.write(str(p), np.stack([y, y], 1), SR, subtype="FLOAT")
+    tid = eng.add_audio_track(str(p), "m")["id"]
+    before = set(tmp_path.iterdir())
+    m = eng.measure_mix()
+    assert m["ok"] and m["seconds"] > 29
+    assert set(tmp_path.iterdir()) == before                       # nada escrito
+    ref = pyln.Meter(SR).integrated_loudness(np.stack([y, y], 1))
+    for d in (m["master"], m["tracks"][tid]):
+        assert d["lufs_i"] == pytest.approx(ref, abs=0.3), (d, ref)
+        assert d["max_peak_db"] == pytest.approx(db(np.max(np.abs(y))), abs=0.2)
+    lv = eng.read_levels()
+    assert set(lv["master_loud"]) == {"peak_db", "max_peak_db", "rms_db", "lufs_m", "lufs_s", "lufs_i"}
+    assert tid in lv["loud"]

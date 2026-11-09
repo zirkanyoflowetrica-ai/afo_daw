@@ -98,6 +98,7 @@ public:
         float* r = chans > 1 ? buf.getWritePointer (1, start) : nullptr;
 
         inPeak.store (juce::jmax (inPeak.load(), peakOf (l, r, n)));
+        inScope.push (l, r, n);                     // lo que entra: el «antes» de la cadena
         for (int off = 0; off < n; off += chunk)
         {
             const int m = juce::jmin (chunk, n - off);
@@ -130,17 +131,20 @@ public:
     }
 
     // Espectro de la salida en `bands` bandas logarítmicas de 20 Hz a 20 kHz (dBFS de una senoidal)
-    std::vector<float> spectrum (int bands, float slopeDbPerOct = 0.0f, float averaging = 0.0f)
+    // input = true: espectro de lo que entra al efecto (para comparar antes / después)
+    std::vector<float> spectrum (int bands, float slopeDbPerOct = 0.0f, float averaging = 0.0f, bool input = false)
     {
         constexpr int order = 12, size = 1 << order;
         if (fft == nullptr) { fft = std::make_unique<juce::dsp::FFT> (order); fftData.assign (2 * size, 0.0f); }
-        scope.latest (fftData.data(), size);
+        (input ? inScope : scope).latest (fftData.data(), size);
+        auto& avg = input ? avgIn : avgOut;
         std::fill (fftData.begin() + size, fftData.end(), 0.0f);
         for (int i = 0; i < size; ++i)
             fftData[(size_t) i] *= 0.5f - 0.5f * (float) std::cos (2 * pi * i / (size - 1));
         fft->performFrequencyOnlyForwardTransform (fftData.data());
         bands = juce::jlimit (8, 256, bands);
-        if ((int) avg.size() != bands) avg.assign ((size_t) bands, -120.0f);
+        const bool fresh = (int) avg.size() != bands;       // primera lectura: sin promediar con el vacío
+        if (fresh) avg.assign ((size_t) bands, -120.0f);
         std::vector<float> out ((size_t) bands);
         const double binHz = sampleRate / size;
         for (int b = 0; b < bands; ++b)
@@ -152,10 +156,21 @@ public:
             for (int k = k0; k < k1; ++k) mag = juce::jmax (mag, fftData[(size_t) k]);
             float db = gainToDb (mag * 4.0f / size) + slopeDbPerOct * (float) std::log2 (std::sqrt (f0 * f1) / 1000.0);
             db = juce::jmax (-120.0f, db);
-            avg[(size_t) b] = averaging * avg[(size_t) b] + (1.0f - averaging) * db;
+            avg[(size_t) b] = fresh ? db : averaging * avg[(size_t) b] + (1.0f - averaging) * db;
             out[(size_t) b] = avg[(size_t) b];
         }
         return out;
+    }
+
+    // Nivel RMS (dBFS) de las últimas `n` muestras de la entrada o de la salida; no consume los picos
+    float scopeRmsDb (bool input, int n = 4800) const
+    {
+        n = juce::jlimit (64, ScopeFifo::size, n);
+        std::vector<float> s ((size_t) n);
+        (input ? inScope : scope).latest (s.data(), n);
+        double acc = 0.0;
+        for (auto v : s) acc += (double) v * v;
+        return gainToDb ((float) std::sqrt (acc / n) * 1.41421356f);   // una senoidal: su pico
     }
 
     float value (const juce::String& id) const
@@ -211,7 +226,7 @@ protected:
 
     static constexpr int chunk = 32;
     double sampleRate = 48000.0;
-    ScopeFifo scope;
+    ScopeFifo scope, inScope;
     bool ownsScope = false;
 
 private:
@@ -220,7 +235,7 @@ private:
     float smoothCoef = 0.1f;
     std::atomic<float> inPeak { 0.0f }, outPeak { 0.0f };
     std::unique_ptr<juce::dsp::FFT> fft;
-    std::vector<float> fftData, avg;
+    std::vector<float> fftData, avgIn, avgOut;
 };
 
 #define AFO_FX_TYPE(xml, descFn) \
@@ -371,6 +386,20 @@ inline const FxDesc& stripDesc()
           { "drive", "Color", 0, 100, 0, "%", 0, nullptr, "Saturación suave" },
           { "output", "Salida", -24, 24, 0, "dB", 0, nullptr, "Compensa el nivel" } },
         "reducción dB|puerta abierta" };
+    return d;
+}
+
+inline const FxDesc& deesserDesc()
+{
+    static const FxDesc d { "deesser", "AF-20", "AFO De-Esser", "Dinámica y transitorios",
+        "Controla las eses: detecta la banda de sibilancia y la baja solo cuando se pasa del umbral.",
+        { { "freq", "Frecuencia", 2000, 12000, 6000, "Hz", 6000, nullptr, "Centro de la sibilancia a vigilar" },
+          { "q", "Q", 0.5f, 8, 1.5f, "", 2, nullptr, "Anchura de la banda (alto = estrecha)" },
+          { "threshold", "Umbral", -60, 0, -30, "dB", 0, nullptr, "Nivel de la banda a partir del que actúa" },
+          { "range", "Rango", -24, 0, -6, "dB", 0, nullptr, "Reducción máxima" },
+          { "mode", "Modo", 0, 1, 0, "", 0, "Banda|Ancha", "Baja solo la banda o toda la señal" },
+          { "listen", "Escuchar", 0, 1, 0, "", 0, "Normal|Solo sibilancia", "Oír lo que detecta para ajustar la frecuencia" } },
+        "reducción dB" };
     return d;
 }
 
@@ -801,13 +830,61 @@ private:
 };
 
 //==============================================================================
+// De-esser de banda dividida: un paso banda detecta la sibilancia (envolvente rápida); por encima
+// del umbral se resta de la señal parte de esa misma banda (modo Banda) o se baja todo (Ancha).
+class DeEsserFx : public FxBase
+{
+public:
+    DeEsserFx (te::PluginCreationInfo i) : FxBase (i, deesserDesc()) {}
+    AFO_FX_TYPE ("afoFxDeEsser", deesserDesc)
+    std::vector<float> extraMeters() override { return { grMin.exchange (0.0f) }; }
+protected:
+    void prepareFx (double sr) override { att = rel = {}; lastF = lastQ = -1.0f; band.reset(); env = 0.0f; gr = 0.0f; (void) sr; }
+    void resetFx() override { band.reset(); env = 0.0f; gr = 0.0f; }
+    void processFx (float* l, float* r, int n) override
+    {
+        const float f = p (0), q = p (1), thr = p (2), range = p (3);
+        const bool wide = choice (4) == 1, listen = choice (5) == 1;
+        if (f != lastF || q != lastQ)
+        {
+            Biquad b; b.set (Biquad::Type::bandpass, f, q, 0, sampleRate);
+            band.b0 = b.b0; band.b1 = b.b1; band.b2 = b.b2; band.a1 = b.a1; band.a2 = b.a2;
+            lastF = f; lastQ = q;
+        }
+        const float ca = att.get (0.5f, sampleRate), cr = rel.get (60.0f, sampleRate);
+        float lo = 0.0f;
+        for (int i = 0; i < n; ++i)
+        {
+            const float bl = band.process (l[i], 0), br = band.process (r[i], 1);
+            const float level = std::max (std::abs (bl), std::abs (br));
+            env += (level > env ? ca : cr) * (level - env);
+            const float over = gainToDb (env) - thr;
+            const float target = over > 0.0f ? std::max (range, -0.75f * over) : 0.0f;   // ratio 4:1 con tope
+            gr += (target < gr ? ca : cr) * (target - gr);
+            const float g = dbToGain (gr);
+            if (listen)          { l[i] = bl; r[i] = br; }
+            else if (wide)       { l[i] *= g; r[i] *= g; }
+            else                 { l[i] += (g - 1.0f) * bl; r[i] += (g - 1.0f) * br; }
+            lo = std::min (lo, gr);
+        }
+        grMin.store (std::min (grMin.load(), lo));
+    }
+private:
+    Biquad band;
+    Coef att, rel;
+    float env = 0.0f, gr = 0.0f, lastF = -1.0f, lastQ = -1.0f;
+    std::atomic<float> grMin { 0.0f };
+};
+
+//==============================================================================
 // Registro y creación por clave
 struct FxType { const FxDesc& (*desc)(); const char* xml; };
 inline const std::vector<FxType>& fxTypes()
 {
     static const std::vector<FxType> t {
         { gainDesc, GainFx::xmlTypeName }, { stripDesc, StripFx::xmlTypeName }, { eqDesc, EqFx::xmlTypeName },
-        { compDesc, CompressorFx::xmlTypeName }, { gateDesc, GateFx::xmlTypeName }, { satDesc, SaturatorFx::xmlTypeName },
+        { compDesc, CompressorFx::xmlTypeName }, { gateDesc, GateFx::xmlTypeName }, { deesserDesc, DeEsserFx::xmlTypeName },
+        { satDesc, SaturatorFx::xmlTypeName },
         { delayDesc, DelayFx::xmlTypeName }, { spaceDesc, SpaceFx::xmlTypeName }, { analyzerDesc, AnalyzerFx::xmlTypeName } };
     return t;
 }
@@ -817,6 +894,7 @@ inline void registerFx (te::PluginManager& pm)
     pm.createBuiltInType<GainFx>();      pm.createBuiltInType<StripFx>();   pm.createBuiltInType<EqFx>();
     pm.createBuiltInType<CompressorFx>(); pm.createBuiltInType<GateFx>();   pm.createBuiltInType<SaturatorFx>();
     pm.createBuiltInType<DelayFx>();     pm.createBuiltInType<SpaceFx>();   pm.createBuiltInType<AnalyzerFx>();
+    pm.createBuiltInType<DeEsserFx>();
 }
 
 inline const char* xmlTypeFor (const std::string& key)

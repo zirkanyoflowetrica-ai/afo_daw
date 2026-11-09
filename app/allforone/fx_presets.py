@@ -47,6 +47,12 @@ FACTORY: dict[str, dict[str, dict[str, float]]] = {
         "Batería: cerrar": {"threshold": -30, "range": -60, "attack": 0.1, "hold": 30, "release": 80},
         "Suave": {"threshold": -45, "range": -12, "attack": 2, "hold": 100, "release": 400},
     },
+    "deesser": {
+        "Voz masculina": {"freq": 5500, "q": 1.5, "threshold": -32, "range": -6},
+        "Voz femenina": {"freq": 7500, "q": 1.5, "threshold": -32, "range": -6},
+        "Suave": {"freq": 6500, "q": 1.0, "threshold": -28, "range": -3},
+        "Fuerte (ancha)": {"freq": 6500, "q": 1.2, "threshold": -36, "range": -10, "mode": 1},
+    },
     "saturator": {
         "Tubo cálido": {"drive": 9, "character": 0, "tone": -10, "mix": 100},
         "Cinta": {"drive": 12, "character": 1, "tone": -20, "bias": 10, "mix": 100},

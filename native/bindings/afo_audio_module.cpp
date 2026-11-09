@@ -22,6 +22,14 @@ py::dict toDict (const afo::TrackInfo& t)
     return d;
 }
 
+py::dict toDict (const afo::Loudness& l)
+{
+    py::dict d;
+    d["peak_db"] = l.peakDb; d["max_peak_db"] = l.maxPeakDb; d["rms_db"] = l.rmsDb;
+    d["lufs_m"] = l.momentary; d["lufs_s"] = l.shortTerm; d["lufs_i"] = l.integrated;
+    return d;
+}
+
 py::dict toDict (const afo::EffectInfo& e)
 {
     py::dict d;
@@ -41,7 +49,7 @@ afo::SynthSettings settings (int mode, int wave, float vel, float bri, bool sus,
 PYBIND11_MODULE (afo_audio, m)
 {
     m.doc() = "AllForOne: motor de audio nativo (JUCE + Tracktion Engine)";
-    m.attr("API_VERSION") = 6;
+    m.attr("API_VERSION") = 8;
 
     m.def ("version", &afo::version);
     m.def ("juce_version", &afo::juceVersion);
@@ -135,6 +143,14 @@ PYBIND11_MODULE (afo_audio, m)
               { return toDict (e.setTrackAudio (id, path, start)); }, py::arg ("track_id"), py::arg ("path"), py::arg ("start_seconds") = 0.0)
         .def ("effect_meters", &afo::Engine::effectMeters, py::arg ("effect_id"))
         .def ("effect_spectrum", &afo::Engine::effectSpectrum, py::arg ("effect_id"), py::arg ("bands") = 64)
+        .def ("chain_scope", [] (afo::Engine& e, int track, int bands)
+              {
+                  auto c = e.chainScope (track, bands);
+                  py::dict d;
+                  d["pre"] = c.pre; d["post"] = c.post; d["pre_db"] = c.preDb; d["post_db"] = c.postDb; d["active"] = c.active;
+                  return d;
+              }, py::arg ("track_id"), py::arg ("bands") = 64,
+              "Espectro y nivel antes y después de la cadena de efectos de una pista (0 = master).")
         .def ("add_audio_track", [] (afo::Engine& e, const std::string& path, const std::string& name)
               { return toDict (e.addAudioTrack (path, name)); }, py::arg ("path"), py::arg ("name") = "")
         .def ("remove_track", &afo::Engine::removeTrack)
@@ -175,8 +191,22 @@ PYBIND11_MODULE (afo_audio, m)
                   d["master_l_db"] = l.masterL; d["master_r_db"] = l.masterR; d["master_vu_db"] = l.masterVu;
                   for (auto& [id, db] : l.tracks) tr[py::int_ (id)] = db;
                   d["tracks"] = tr;
+                  py::dict lo;
+                  for (auto& [id, v] : l.loud) lo[py::int_ (id)] = toDict (v);
+                  d["loud"] = lo;
+                  d["master_loud"] = toDict (l.master);
                   return d;
               })
+        .def ("reset_loudness", &afo::Engine::resetLoudness)
+        .def ("measure_mix", [] (afo::Engine& e)
+              {
+                  auto m = e.measureMix();
+                  py::dict d, tr;
+                  d["ok"] = m.ok; d["seconds"] = m.seconds; d["master"] = toDict (m.master);
+                  for (auto& [id, v] : m.tracks) tr[py::int_ (id)] = toDict (v);
+                  d["tracks"] = tr;
+                  return d;
+              }, "Sonoridad (LUFS, RMS, pico) del master y de cada pista procesando la sesión en memoria, sin archivos.")
         .def ("render_to_wav", &afo::Engine::renderToWav, py::arg ("path"), py::call_guard<py::gil_scoped_release>())
         .def ("preview_play", &afo::Engine::previewPlay, py::arg ("path"), py::arg ("start_seconds") = 0.0)
         .def ("preview_stop", &afo::Engine::previewStop)

@@ -102,11 +102,30 @@ struct SynthSettings
     float rev = 0;          // reverb 0..100 (instrumentos)
 };
 
+// Sonoridad de una pista o del master (BS.1770): RMS 300 ms, LUFS momentánea/corto plazo/integrada,
+// pico de muestra desde la última lectura y máximo desde el último reinicio
+struct Loudness
+{
+    float peakDb = -100.0f, maxPeakDb = -100.0f, rmsDb = -100.0f;
+    float momentary = -100.0f, shortTerm = -100.0f, integrated = -100.0f;
+};
+
 struct Levels
 {
     float masterL = -100.0f, masterR = -100.0f;   // dBFS (pico desde la última lectura)
     float masterVu = -100.0f;                     // dBFS RMS con balística VU (300 ms)
     std::map<int, float> tracks;                  // id -> dBFS (máx. de canales)
+    Loudness master;                              // tras la sección master
+    std::map<int, Loudness> loud;                 // id -> sonoridad tras el fader de la pista
+};
+
+// Medida de la mezcla completa procesada en memoria (sin escribir archivos)
+struct MixMeasure
+{
+    bool ok = false;
+    double seconds = 0;
+    Loudness master;
+    std::map<int, Loudness> tracks;
 };
 
 class Engine
@@ -175,6 +194,10 @@ public:
     std::vector<std::pair<double, float>> effectAutomation (int effectId, const std::string& paramId) const;
     std::vector<float> effectMeters (int effectId);                   // [entrada dB, salida dB, propias...]
     std::vector<float> effectSpectrum (int effectId, int bands);      // espectro de la salida (dBFS)
+    // Antes / después de la cadena de una pista (0 = master): entrada del primer efecto activo y
+    // salida del último. active = 0 si no hay efectos activos (entonces no hay nada que comparar).
+    struct ChainScope { std::vector<float> pre, post; float preDb = -100, postDb = -100; int active = 0; };
+    ChainScope chainScope (int trackId, int bands);
 
     // Master
     void setMasterGainDb (float db);
@@ -204,6 +227,10 @@ public:
 
     // Medición (llamar periódicamente desde el hilo de mensajes)
     Levels readLevels();
+    void resetLoudness();                    // vacía las integradas y los máximos
+    // Procesa toda la sesión en memoria (Tracktion Renderer::measureStatistics) y devuelve la
+    // sonoridad del master y de cada pista: sin archivos. Bloqueante, como un render.
+    MixMeasure measureMix();
 
     // Render offline del Edit completo (bloqueante; no usa el dispositivo)
     bool renderToWav (const std::string& path);

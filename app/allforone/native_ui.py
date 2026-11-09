@@ -105,7 +105,7 @@ def _native_fx_checks(rep, app, host, window, bridge, track_id: int) -> None:
         return v.toVariant() if hasattr(v, "toVariant") else v
 
     st = fx("target", track_id)
-    rep.check("Efectos: catálogo del motor (Hito 1, 9 módulos)", st and st["catalog"] == 9, st and st["catalog"])
+    rep.check("Efectos: catálogo del motor (10 módulos)", st and st["catalog"] == 10, st and st["catalog"])
     fx("add", "eq")
     st = fx("add", "analyzer")
     rep.check("Efectos: insertar EQ y Analizador en la pista", [e["key"] for e in st["chain"]] == ["eq", "analyzer"],
