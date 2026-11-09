@@ -1,0 +1,25 @@
+{
+  "name": "Professional",
+  "description": "Como un DAW clásico: grises oscuros planos, bordes finos, perillas de arco y una franja de color por módulo.",
+  "dark": true,
+  "font": "Segoe UI",
+  "colors": {
+    "bg": "#2b2b2b", "pn2": "#4a4a4a", "ink": "#d6d6d6", "line": "#141414", "button": "#3a3a3a",
+    "header": "#2b2b2b", "input": "#232323", "dot": "#262626", "help": "#2f2f2f", "mdl": "#3a3a3a",
+    "grip": "#5a5a5a", "accent": "#ffa53c", "focus": "#4d9fff", "pressedBg": "#ffa53c", "pressedInk": "#111111",
+    "canvas": "#1d1d1d", "panelHead": "#333333", "panelHeadInk": "#e2e2e2", "panelBorder": "#141414",
+    "panelBody": "#272727", "chip": "#222222", "chipInk": "#a8a8a8", "shadow": "#000000", "sidebar": "#252525",
+    "device": "#3b3b3b", "deviceHead": "#474747", "deviceInk": "#dcdcdc", "deviceBorder": "#161616",
+    "knobArc": "#ffa53c", "knobTrack": "#1f1f1f", "knobValue": "#e8e8e8", "chain": "#2e2e2e"
+  },
+  "style": {
+    "frame": 0, "border": 1, "shadow": 0, "buttonShadow": 0, "buttonBorder": 1, "radius": 3,
+    "headHeight": 32, "titleSize": 13, "upperTitles": false, "bodyTint": 0.0,
+    "canvas": "grid", "knob": "arc", "gridStep": 24, "accentStripe": 3
+  },
+  "modules": {
+    "piano": "#9d86e0", "inst": "#e0675e", "drums": "#b5cf55", "cinta": "#a9adb5", "ia": "#5aa0e0",
+    "pistas": "#e0aa2c", "mezcla": "#4fc79c", "master": "#e08cc6",
+    "audios": "#e08a3c", "afina": "#5fcde0", "mastia": "#e05c87", "antes": "#c9b88e", "fx": "#e0b689", "fxm": "#e09a6b"
+  }
+}

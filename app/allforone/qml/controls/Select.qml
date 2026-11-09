@@ -29,7 +29,7 @@ B.ComboBox {
     font.pixelSize: fontSize
     font.weight: fontWeight
 
-    background: Rectangle { color: root.fill; border.width: 2; border.color: "#000" }
+    background: Rectangle { color: root.fill; border.width: Theme.buttonBorder; border.color: Theme.line; radius: Theme.radius }
     contentItem: Text {
         leftPadding: root.padX; rightPadding: root.indicator.width + 2
         text: root.displayText
@@ -58,11 +58,11 @@ B.ComboBox {
         highlighted: root.highlightedIndex === index
         contentItem: Text {
             text: parent.modelData; font: root.font; elide: Text.ElideRight
-            color: parent.highlighted ? "#fff" : "#000"; verticalAlignment: Text.AlignVCenter
+            color: parent.highlighted ? "#fff" : Theme.ink; verticalAlignment: Text.AlignVCenter
         }
-        background: Rectangle { color: parent.highlighted ? "#2a6bff" : "#fff" }
+        background: Rectangle { color: parent.highlighted ? Theme.focus : Theme.input }
     }
-    popup.background: Rectangle { color: "#fff"; border.width: 1; border.color: "#000" }
+    popup.background: Rectangle { color: Theme.input; border.width: 1; border.color: Theme.line }
     HoverHandler { id: hov }
     ToolTipLite { text: root.tip; show: hov.hovered && root.tip.length > 0 && !root.popup.visible }
 }

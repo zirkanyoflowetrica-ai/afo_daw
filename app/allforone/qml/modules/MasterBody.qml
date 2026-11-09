@@ -1,89 +1,121 @@
 import QtQuick
-import QtQuick.Shapes
 import "../theme"
 import "../controls"
-import "../state/mixdata.js" as MD
 
-// Módulo Mezcla final (Master VU): aguja VU, fader master con medidores L/R del motor y exportación.
+// Módulo Rebobinado (Cinta M-2): aquí llegan los masters. Cada master automático (Efectos master →
+// Masterizar automáticamente) o manual (Mastering → Guardar versión) queda como una cinta: clic para
+// ponerla en el master y escucharla, y Exportar saca el WAV con esa versión.
 Column {
     id: root
     property var studio
-    width: parent ? parent.width : 340
-    spacing: 0
+    property var mixer
+    readonly property var vs: mixer.versions
+    readonly property var cur: mixer.versionSel >= 0 ? vs[mixer.versionSel] : null
+    width: parent ? parent.width : 400
+    spacing: 8
 
-    // ---------------- .vu ----------------
-    Item {
-        width: Math.min(root.width, 260); height: vuBox.height + 16
-        Rectangle { x: 5; y: 5; width: vuBox.width; height: vuBox.height; color: "#000" }
-        Rectangle {
-            id: vuBox
-            width: parent.width; height: Math.round((width - 6) * 115 / 200) + 6
-            color: Theme.dark ? "#231e12" : "#f4e3a3"
-            border.width: 3; border.color: "#000"
-            Rectangle { anchors.fill: parent; anchors.margins: 3; color: "transparent"; border.width: 3
-                        border.color: Theme.dark ? "#4a3d1c" : "#d9c47a" }
-            Item {
-                x: 3; y: 3; width: 200; height: 115
-                readonly property color ink: Theme.dark ? "#f4e3a3" : "#000"
-                id: dial
-                transform: Scale { xScale: (vuBox.width - 6) / 200; yScale: (vuBox.width - 6) / 200 }
-                Shape {
-                    preferredRendererType: Shape.CurveRenderer
-                    ShapePath { strokeColor: dial.ink; strokeWidth: 2; fillColor: "transparent"
-                                PathSvg { path: "M38.7 53.6A80 80 0 0 1 161.3 53.6" } }
-                    ShapePath { strokeColor: "#d0221a"; strokeWidth: 6; fillColor: "transparent"
-                                PathSvg { path: "M133.8 32.5A80 80 0 0 1 161.3 53.6" } }
-                }
-                Repeater {
-                    model: [-50, -37.5, -25, -12.5, 0, 12.5, 25, 37.5, 50]
-                    Rectangle {                  // marcas: de y=20 (o 24) a y=30, giradas sobre (100,105)
-                        required property real modelData
-                        x: 99; y: modelData % 25 ? 24 : 20
-                        width: 2; height: 30 - y
-                        color: dial.ink
-                        transform: Rotation { origin.x: 1; origin.y: 105 - (modelData % 25 ? 24 : 20); angle: modelData }
-                    }
-                }
-                Text { x: 100 - width / 2; y: 88 - 15 * 0.8; text: "VU"; color: dial.ink
-                       font.family: Theme.font; font.pixelSize: 15; font.weight: 700 }
-                Rectangle {                      // aguja: VU del motor (RMS con balística de 300 ms)
-                    x: 98.5; y: 28; width: 3; height: 77
-                    color: Theme.dark ? "#ffb000" : "#000"
-                    transform: Rotation { origin.x: 1.5; origin.y: 77; angle: -50 + root.studio.vu * 1.05
-                                          Behavior on angle { NumberAnimation { duration: 100; easing.type: Easing.OutQuad } } }
-                }
-                Rectangle { x: 93; y: 98; width: 14; height: 14; radius: 7; color: dial.ink }
+    function f(v) { return v === null || v === undefined || v <= -99 ? "—" : (+v).toFixed(1) }
+
+    // ---------------- pletina: dos carretes y la versión que suena ----------------
+    Rectangle {
+        width: root.width; height: 118
+        color: "#2b2720"; border.width: 3; border.color: "#000"
+        Row {
+            anchors.centerIn: parent; spacing: 18
+            Reel { spinning: root.studio.playing && !!root.cur }
+            Column {
+                spacing: 6; anchors.verticalCenter: parent.verticalCenter
+                width: root.width - 2 * 76 - 2 * 18 - 30
+                Lcd { width: parent.width; fontSize: 14; padX: 8
+                      text: root.cur ? root.cur.name : "SIN VERSIÓN" }
+                Text { width: parent.width; elide: Text.ElideRight; horizontalAlignment: Text.AlignHCenter
+                       text: root.cur ? root.f(root.cur.lufs) + " LUFS · pico " + root.f(root.cur.peak) + " dB" : "masteriza para llenar la cinta"
+                       color: "#f3e7c4"; font.family: Theme.font; font.pixelSize: 11; font.weight: 600 }
             }
+            Reel { spinning: root.studio.playing && !!root.cur }
         }
     }
 
-    // ---------------- .mrow.big ----------------
-    Row {
-        spacing: 18
-        Row {                                    // .fad (190 px), alineado abajo como en la plantilla
-            spacing: 6
-            anchors.bottom: parent.bottom
-            Fader { height: 190; value: root.studio.masterPos; tip: "Volumen master (70 = 0 dB)"
-                    onMoved: function (v) { root.studio.setMaster(v) } }
-            Meter { width: 16; height: 190; level: root.studio.playing ? MD.dbToPct(root.studio.masterDb[0]) : 0 }
-            Meter { width: 16; height: 190; level: root.studio.playing ? MD.dbToPct(root.studio.masterDb[1]) : 0 }
+    Text { text: "VERSIONES DE MASTER (" + root.vs.length + ")"; color: Theme.ink
+           font.family: Theme.font; font.pixelSize: 12; font.weight: 700; font.letterSpacing: 0.5 }
+
+    DashedBox {
+        visible: root.vs.length === 0; width: root.width; height: visible ? implicitHeight : 0
+        text: "Aún no hay versiones. En «Efectos master» pulsa Masterizar automáticamente, o ajusta el master a mano y pulsa «Guardar versión» en Mastering."
+    }
+
+    Repeater {
+        model: root.vs
+        Rectangle {
+            id: row
+            required property var modelData
+            required property int index
+            readonly property bool on: root.mixer.versionSel === index
+            width: root.width; height: 50
+            color: on ? Theme.accent : Theme.button
+            border.width: 2; border.color: "#000"
+            MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor
+                        onClicked: root.mixer.loadVersion(row.index) }
+            Rectangle {                            // piloto
+                x: 10; anchors.verticalCenter: parent.verticalCenter
+                width: 12; height: 12; radius: 6; border.width: 2; border.color: "#000"
+                color: row.on ? "#ff4d3d" : "#4a1d1a"
+            }
+            Column {
+                x: 32; anchors.verticalCenter: parent.verticalCenter
+                width: parent.width - 32 - tag.width - del.width - 30
+                Text { id: nm; width: parent.width; elide: Text.ElideRight; text: row.modelData.name; visible: !ed.visible
+                       color: Theme.ink; font.family: Theme.font; font.pixelSize: 13; font.weight: 700
+                       MouseArea { anchors.fill: parent; onClicked: root.mixer.loadVersion(row.index)
+                                   onDoubleClicked: { ed.text = row.modelData.name; ed.visible = true; ed.forceActiveFocus(); ed.selectAll() } } }
+                TextInput { id: ed; visible: false; width: parent.width; selectByMouse: true; color: Theme.ink
+                            font.family: Theme.font; font.pixelSize: 13; font.weight: 700
+                            onAccepted: { visible = false; if (text.trim().length) root.mixer.renameVersion(row.index, text.trim()) }
+                            onActiveFocusChanged: if (!activeFocus && visible) accepted() }
+                Text { width: parent.width; elide: Text.ElideRight
+                       text: root.f(row.modelData.lufs) + " LUFS · pico " + root.f(row.modelData.peak) + " dB · " + row.modelData.chain.length + " efecto(s) · " + row.modelData.at
+                       color: Theme.ink; opacity: 0.75; font.family: Theme.font; font.pixelSize: 11; font.weight: 500 }
+            }
+            Rectangle {
+                id: tag
+                anchors.right: del.left; anchors.rightMargin: 8; anchors.verticalCenter: parent.verticalCenter
+                width: tagText.implicitWidth + 12; height: 20
+                color: row.modelData.kind === "auto" ? "#ff9f45" : "#7ad6ff"; border.width: 2; border.color: "#000"
+                Text { id: tagText; anchors.centerIn: parent; text: row.modelData.kind === "auto" ? "AUTO" : "MANUAL"; color: "#000"
+                       font.family: Theme.font; font.pixelSize: 10; font.weight: 700 }
+            }
+            NeoButton { id: del; anchors.right: parent.right; anchors.rightMargin: 8; anchors.verticalCenter: parent.verticalCenter
+                        text: "✕"; fontSize: 11; padX: 6; padY: 1; shadow: 2; tip: "Borrar esta versión"
+                        onClicked: root.mixer.removeVersion(row.index) }
         }
-        Column {                                 // .stack
-            spacing: 10
-            Lcd { text: Math.round(root.studio.masterPos); fontSize: 24; width: Math.max(implicitWidth, 138) }
-            Row {
-                spacing: 16
-                Knob { label: "Saturación"; value: root.studio.masterDrive; tip: "Saturación suave del master (tanh)"
-                       onMoved: function (v) { root.studio.setMasterProcessing(v, root.studio.masterTone, root.studio.limiter) } }
-                Knob { label: "Tono"; value: root.studio.masterTone; tip: "EQ inclinada: 50 = plano; ±6 dB en graves y agudos"
-                       onMoved: function (v) { root.studio.setMasterProcessing(root.studio.masterDrive, v, root.studio.limiter) } }
+    }
+
+    NeoButton {
+        width: root.width; text: root.cur ? "EXPORTAR «" + root.cur.name + "»" : "EXPORTAR (master tal como está)"
+        fontSize: 14; fontWeight: 700; padY: 9; shadow: 4; color: "#ff9f45"; textColor: "#000"
+        tip: "WAV de toda la sesión con la versión elegida en el master"
+        onClicked: root.mixer.versionSel >= 0 ? root.mixer.exportVersion(root.mixer.versionSel) : root.studio.exportMix()
+    }
+    Note {
+        width: root.width
+        text: "Clic en una versión: se carga en el master y suena al reproducir (compáralas). Doble clic en el nombre para renombrarla. Las versiones se guardan con el proyecto."
+    }
+
+    component Reel: Rectangle {
+        property bool spinning: false
+        width: 76; height: 76; radius: 38
+        color: "#f3e7c4"; border.width: 3; border.color: "#000"
+        anchors.verticalCenter: parent ? parent.verticalCenter : undefined
+        Item {
+            anchors.fill: parent
+            RotationAnimator on rotation { from: 0; to: 360; duration: 2400; loops: Animation.Infinite; running: spinning }
+            Repeater {
+                model: 3
+                Rectangle { required property int index
+                            x: 38 - 4; y: 8; width: 8; height: 22; radius: 3; color: "#000"
+                            transform: Rotation { origin.x: 4; origin.y: 30; angle: index * 120 } }
             }
-            NeoButton {
-                text: "Limitador: " + (root.studio.limiter ? "activo" : "apagado")
-                tip: "Limitador de seguridad del master: techo −1 dBFS, o el del preset de Master IA (también al exportar)"
-                onClicked: root.studio.setMasterProcessing(root.studio.masterDrive, root.studio.masterTone, !root.studio.limiter)
-            }
-            NeoButton { text: "Exportar mezcla"; onClicked: root.studio.exportMix() }
+            Rectangle { anchors.centerIn: parent; width: 16; height: 16; radius: 8; color: "#000" }
         }
     }
 }

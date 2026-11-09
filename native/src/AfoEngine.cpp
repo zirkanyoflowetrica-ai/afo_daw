@@ -647,10 +647,15 @@ void Engine::Impl::closeEditor (te::Plugin* p)
     windows.erase (p);
 }
 
-PluginScan Engine::scanPlugins (const std::vector<std::string>& extraFolders)
+PluginScan scanPluginFolders (const std::string& listFile, const std::vector<std::string>& extraFolders,
+                              const std::function<void (const std::string&)>& progress)
 {
-    requireMessageThread();
-    impl->loadKnownPlugins();
+    juce::ScopedJuceInitialiser_GUI juceInit;
+    auto file = toFile (listFile);
+    file.getParentDirectory().createDirectory();
+    juce::KnownPluginList known;
+    if (auto xml = juce::XmlDocument::parse (file))
+        known.recreateFromXml (*xml);
     PluginScan r;
     juce::VST3PluginFormat vst3;
     auto path = vst3.getDefaultLocationsToSearch();
@@ -659,19 +664,47 @@ PluginScan Engine::scanPlugins (const std::vector<std::string>& extraFolders)
             path.add (toFile (f));
     for (int i = 0; i < path.getNumPaths(); ++i)
         r.folders.push_back (toStd (path.getRawString (i)));
-    // Si un plugin cuelga AllForOne al abrirlo, la próxima búsqueda lo salta (archivo «pedal»)
-    auto pedal = impl->pluginsFile().getSiblingFile ("plugins_scan_pendiente.txt");
-    juce::PluginDirectoryScanner scanner (impl->known, vst3, path, true, pedal, false);
+    // «Pedal»: el archivo que se está abriendo. Si el proceso muere con él, el siguiente escáner lo
+    // pone en la lista negra y sigue desde ahí (la lista se guarda tras cada archivo).
+    auto pedal = file.getSiblingFile ("plugins_scan_pendiente.txt");
+    juce::PluginDirectoryScanner scanner (known, vst3, path, true, pedal, false);
     juce::String name;
-    while (scanner.scanNextFile (true, name)) {}
+    for (;;)
+    {
+        auto next = scanner.getNextPluginFileThatWillBeScanned();
+        if (progress && next.isNotEmpty())
+            progress (toStd (next));
+        bool more = scanner.scanNextFile (true, name);
+        if (auto xml = known.createXml())
+            xml->writeTo (file);
+        if (! more)
+            break;
+    }
     for (auto& f : scanner.getFailedFiles())
         r.failed.push_back (toStd (f));
-    if (auto xml = impl->known.createXml())
-        xml->writeTo (impl->pluginsFile());
-    for (auto& d : impl->known.getTypes())
-        impl->engine->getPluginManager().knownPluginList.addType (d);
+    for (auto& f : known.getBlacklistedFiles())
+        r.failed.push_back (toStd (f));
+    for (auto& d : known.getTypes())
+        if (d.pluginFormatName == "VST3")
+            r.plugins.push_back (toDesc (d));
+    return r;
+}
+
+PluginScan Engine::scanPlugins (const std::vector<std::string>& extraFolders)
+{
+    requireMessageThread();
+    auto r = scanPluginFolders (toStd (impl->pluginsFile().getFullPathName()), extraFolders, nullptr);
+    reloadPlugins();
     r.plugins = knownPlugins();
     return r;
+}
+
+void Engine::reloadPlugins()
+{
+    requireMessageThread();
+    impl->known.clear();
+    impl->knownLoaded = false;
+    impl->loadKnownPlugins();
 }
 
 std::vector<PluginDesc> Engine::knownPlugins()

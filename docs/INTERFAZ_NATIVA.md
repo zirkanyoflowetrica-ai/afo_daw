@@ -1,7 +1,7 @@
 # Interfaz nativa (Qt Quick) — sin HTML ni Chromium
 
 AllForOne es una app de escritorio 100 % nativa que conserva la imagen y el funcionamiento de
-`templates/PLANTILLA_DAW.html`, la **referencia visual**. Desde la fase 5 es la única interfaz: la
+`templates/AllForOne/PLANTILLA_DAW.html`, la **referencia visual**. Desde la fase 5 es la única interfaz: la
 versión web (Qt WebEngine + QWebChannel) se retiró.
 
 Se conserva tal cual: motor C++ (`native/`), `EngineHost`, el Mezclador V4.2 y su adaptador, la
@@ -220,7 +220,7 @@ tiene; el chip de Efectos va en la primera fila para no añadir otra fila de chi
 - QML ordenado: `Main.qml` y `theme/` (Theme, singleton), `controls/` (NeoButton, Knob, Fader,
   Meter, Lcd, Select, ModulePanel…), `modules/` (un cuerpo por módulo y el diálogo de audio),
   `state/` (Mixer, Sequencer y las librerías JS), `assets/` (fuentes Space Grotesk e icono).
-  La plantilla de referencia vive en `templates/`.
+  La plantilla de referencia vive en `templates/AllForOne/`.
 - `tools/native_compare.py` compara ahora con la propia plantilla (dibujada con Qt WebEngine solo en
   esa herramienta de desarrollo, con la fuente local y el mismo encuadre inicial). A 1600×900:
   cabecera 37 % (la plantilla tiene 8 chips de módulo y AllForOne 12, más Audio, Efectos y el
@@ -230,7 +230,7 @@ tiene; el chip de Efectos va en la primera fila para no añadir otra fila de chi
 
 ## Rediseño de los módulos y flujo de DAW (noviembre 2026)
 
-Referencia: `templates/REFERENCIA_PANELES.webp` (imagen del usuario).
+Referencia: `templates/AllForOne/REFERENCIA_PANELES.webp` (imagen del usuario).
 
 - `controls/ModulePanel.qml`: marco del color del módulo, cabecera negra con el título en su color,
   chip blanco con el modelo, □ maximizar / ❐ restaurar y ✕; cuerpo crema (`Theme.panelColor`) con
@@ -274,3 +274,22 @@ normalizar / deshacer clips en el motor.
 - Módulo Efectos: selector de **Preset** con guardar / borrar los propios, y línea de
   **Automatización** del parámetro elegido con el cursor de reproducción; las perillas automatizadas
   llevan «∿» y siguen la curva mientras suena.
+
+
+## Temas, tamaños fijos y flujo de mastering (noviembre 2026)
+
+- **Temas** (`theme/Theme.qml`, `app/allforone/themes.py`): un objeto `base` con colores, estilo y
+  colores de módulo; cada `templates/<Tema>/theme.json` se mezcla encima con `Theme.apply`. Fichas:
+  `canvas`, `panelHead`, `chip`, `device*`, `knobArc/Track/Value`, `frame`, `border`, `radius`,
+  `headHeight`, `knobStyle` (`metal` o `arc`), `canvasStyle` (puntos o rejilla)… El diseño guardado
+  recuerda el tema. Professional: grises oscuros, sin marco grueso ni sombra dura, perillas de arco.
+- **Tamaños fijos**: `ModulePanel` usa siempre `fixedHeight`; el contenido se desplaza dentro. Ya no
+  hay altura automática ni empuje al crecer. `layout.js` versión 4.
+- **Cables = flujo**: inst → piano → pistas; ia, cinta, audios → pistas; pistas → mezcla → fx y
+  antes; mezcla → mastia (Mastering) → fxm (Efectos master) → master (Rebobinado).
+- **Efectos** (`modules/FxBody.qml`): cadena horizontal de dispositivos como en un DAW (cabecera con
+  activar, nombre, ◀ ▶ ≡ ✕; preset, gráfica, perillas en dos filas) y un hueco final «+ Agregar».
+- **Mezcla**: la mezcla IA va arriba de la consola y solo mezcla. **Mastering**
+  (`MasteringBody.qml`) es la mesa del master; **MASTERIZAR AUTOMÁTICAMENTE** (`AutoMasterBox.qml`)
+  va bajo Efectos master; **Rebobinado** (`MasterBody.qml`) lista las versiones para cargar,
+  renombrar, borrar y exportar.

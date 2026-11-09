@@ -19,6 +19,11 @@ SR = 48000
 def host():
     h = EngineHost.create()
     assert h.ok, h.error
+    d = h.engine.device_info()                # las medidas suponen 48 kHz (el render sale a la del dispositivo)
+    if d["sample_rate"] != SR:
+        err = h.engine.set_audio_device(d["type"], d["output"], d["input"], float(SR), d["buffer_size"])
+        if err:
+            pytest.skip(f"el dispositivo de audio no abre a {SR} Hz: {err}")
     yield h
     h.engine = None
 

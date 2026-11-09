@@ -15,6 +15,7 @@ QtObject {
         return {
             bpm: s.bpm, sus: sq.sus, oct: sq.oct, hidden: s.hidden,
             master: { pos: s.masterPos, drive: s.masterDrive, tone: s.masterTone, limiter: s.limiter },
+            masterVersions: mx.versions, versionSel: mx.versionSel,
             tracks: s.tracks.map(function (t) {
                 var it = t.id >= 0 ? mx.itemOfTrack(t.id) : null
                 return { uid: t.uid, id: t.id, type: t.type, name: t.name, vol: t.vol, pan: t.pan, mute: t.mute, solo: t.solo,
@@ -106,6 +107,8 @@ QtObject {
         if (!mf.ok) s.toast(mf.error)
         s.call("setMasterCeiling", doc.master_ceiling === undefined ? -1 : doc.master_ceiling)
         mx.masterStats = null
+        mx.versions = doc.masterVersions || []
+        mx.versionSel = doc.versionSel === undefined ? -1 : doc.versionSel
         s.syncTrackStates()
         s.refreshRacks()
         s.fxCountChanged()

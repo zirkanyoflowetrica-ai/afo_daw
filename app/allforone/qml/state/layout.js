@@ -5,30 +5,32 @@ function clamp(v, a, b) { return Math.max(a, Math.min(b, v)) }
 
 // Versión del lienzo: sube cuando cambian los módulos o su colocación de fábrica (el diseño guardado
 // de otra versión no se aplica)
-var VERSION = 3
+var VERSION = 4
 
-// Módulos: [id, nombre, modelo, [x, y, ancho], alto por defecto]. De izquierda a derecha sigue el
-// camino del sonido: fuentes → Pistas → Mezcla → efectos y master. Al abrir, nada se solapa (Main.settleAll).
+// Módulos: [id, nombre, modelo, [x, y, ancho], alto]. Tamaño fijo: solo cambia si lo cambias tú.
+// De izquierda a derecha sigue el camino del sonido: fuentes → Piano → Pistas → Mezcla → Mastering →
+// Efectos master → Rebobinado. Al abrir, nada se solapa (Main.settleAll).
 var PANELS = [
-    ["piano", "Piano roll", "Teclas S-61", [0, 0, 780], 645],
-    ["inst", "Instrumentos", "Banco VST-1", [880, 0, 440], 560],
-    ["drums", "Batería", "Ritmos R-16", [880, 680, 780], 640],
-    ["cinta", "Grabador de cintas", "Cinta RX-2", [420, 760, 420], 471],
-    ["ia", "Pistas con IA", "Cerebro AI-1", [0, 760, 380], 511],
-    ["pistas", "Pistas", "Mesa MT-8", [1760, 0, 900], 441],
-    ["mezcla", "Mezcla", "Consola 6C", [2760, 0, 780], 748],
-    ["master", "Mezcla final", "Master VU", [4500, 0, 400], 463],
-    ["audios", "Audios", "Carga A-30", [1760, 640, 760], 369],
-    ["afina", "Afinador", "PSOLA AT-1", [2760, 880, 520], 701],
-    ["mastia", "Master IA", "Master M-4", [4500, 560, 440], 563],
-    ["antes", "Antes / Después", "A/B Comp", [3620, 920, 420], 316],
-    ["fx", "Efectos", "Rack FX-96", [3620, 0, 800], 760],
-    ["fxm", "Efectos master", "Rack FX-M", [5000, 0, 780], 640]
+    ["inst", "Instrumentos", "Banco VST-1", [0, 0, 440], 560],
+    ["ia", "Pistas con IA", "Cerebro AI-1", [0, 600, 440], 500],
+    ["cinta", "Grabador de voz", "Cinta RX-2", [0, 1140, 440], 470],
+    ["piano", "Piano roll", "Teclas S-61", [500, 0, 780], 645],
+    ["drums", "Batería", "Ritmos R-16", [500, 690, 780], 640],
+    ["audios", "Audios", "Carga A-30", [500, 1370, 780], 380],
+    ["pistas", "Pistas", "Mesa MT-8", [1340, 0, 960], 860],
+    ["mezcla", "Mezcla", "Consola 6C", [2360, 0, 900], 900],
+    ["antes", "Antes / Después", "A/B Comp", [2360, 940, 440], 330],
+    ["afina", "Afinador", "PSOLA AT-1", [2830, 940, 430], 700],
+    ["fx", "Efectos", "Rack FX-96", [3320, 0, 900], 760],
+    ["mastia", "Mastering", "Master M-4", [4280, 0, 460], 900],
+    ["fxm", "Efectos master", "Rack FX-M", [4800, 0, 900], 760],
+    ["master", "Rebobinado", "Cinta M-2", [5760, 0, 460], 640]
 ]
 
-// Cables fijos entre módulos (orden de la interfaz web: plantilla + afo_panels.js)
-var LINKS = [["piano", "inst"], ["pistas", "mezcla"], ["mezcla", "master"], ["audios", "pistas"],
-             ["mezcla", "mastia"], ["mezcla", "antes"], ["mastia", "master"], ["mezcla", "fx"], ["master", "fxm"]]
+// Cables fijos entre módulos (el camino del sonido). Las pistas de Instrumento van del Piano a su
+// fila en Pistas, y las de Batería, IA y voz desde su módulo (Main.cableLinks).
+var LINKS = [["inst", "piano"], ["audios", "pistas"], ["pistas", "mezcla"], ["mezcla", "fx"], ["mezcla", "antes"],
+             ["mezcla", "mastia"], ["mastia", "fxm"], ["fxm", "master"]]
 
 function links(hidden) {
     var out = []

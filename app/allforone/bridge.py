@@ -17,7 +17,7 @@ from pathlib import Path
 from PySide6.QtCore import QObject, QTimer, Signal, Slot
 from PySide6.QtWidgets import QFileDialog, QWidget
 
-from . import audio_import, fx_presets, paths, project
+from . import audio_import, fx_presets, paths, project, themes
 from .engine_host import EngineHost, fader_to_db
 from .mixer_service import AUDIO_EXT, REF_LABEL, MixerService
 
@@ -68,6 +68,7 @@ def audio_files(items) -> list[str]:
 
 class Bridge(QObject):
     stateChanged = Signal(str)
+    pluginScanEvent = Signal(str)   # búsqueda de VST3 en otro proceso: avance y resultado
     mixerEvent = Signal(str)   # progreso y resultados del Mezclador V4.2 (desde su hilo de trabajo)
 
     def __init__(self, host: EngineHost, parent_widget: QWidget | None = None):
@@ -83,6 +84,7 @@ class Bridge(QObject):
             self._timer.start()
         # El mezclador trabaja en otro hilo: sus eventos se encolan y se emiten desde el hilo
         # principal (las señales que ve QML deben salir de su hilo).
+        self._scanner = None
         self._mixer_events: queue.SimpleQueue = queue.SimpleQueue()
         self.mixsvc = MixerService(self._mixer_events.put)
         self._mixer_timer = QTimer(self)
@@ -508,6 +510,62 @@ class Bridge(QObject):
         except Exception as exc:
             return _err(f"No se pudo recuperar la cadena de efectos: {exc}")
 
+    # --- temas (carpeta templates/ del programa) ----------------------------------------
+    @Slot(result=str)
+    def themeList(self) -> str:
+        """Temas: cada carpeta de templates/ con un theme.json (copiar la carpeta = compartir el tema)."""
+        return _ok(themes=themes.list_themes(), folder=str(themes.folder()))
+
+    @Slot(str, result=str)
+    def themeLoad(self, name: str) -> str:
+        try:
+            return _ok(theme=themes.load(name))
+        except Exception as exc:
+            return _err(f"No se pudo cargar el tema «{name}»: {exc}")
+
+    @Slot(result=str)
+    def themeFolder(self) -> str:
+        from PySide6.QtCore import QUrl
+        from PySide6.QtGui import QDesktopServices
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(themes.folder())))
+        return _ok(folder=str(themes.folder()))
+
+    # --- versiones de master (Rebobinado) ----------------------------------------------
+    @Slot(bool, result=str)
+    def masterSnapshot(self, measure: bool) -> str:
+        """Cadena del master tal como suena ahora (valores, plugins, automatización) y su techo; con
+        `measure`, también su sonoridad procesando la sesión en memoria."""
+        if (g := self._guard()):
+            return g
+        try:
+            eng = self.host.engine
+            chain = project.chain_of(eng, self.host.effect_catalog(), project.MASTER, self._fx_labels, self._auto.get(project.MASTER, ()))
+            out = {"chain": chain, "ceiling": round(eng.master_ceiling(), 2)}
+            if measure:
+                if eng.is_playing():
+                    eng.pause()
+                m = eng.measure_mix()
+                if m["ok"]:
+                    out["lufs"] = round(m["master"]["lufs_i"], 1)
+                    out["peak"] = round(m["master"]["max_peak_db"], 1)
+            return _ok(**out)
+        except Exception as exc:
+            return _err(f"No se pudo leer el master: {exc}")
+
+    @Slot(str, result=str)
+    def masterLoad(self, version_json: str) -> str:
+        """Pone en el master una versión guardada (su cadena y su techo)."""
+        if (g := self._guard()):
+            return g
+        try:
+            v = json.loads(version_json)
+            r = json.loads(self.fxRestore(project.MASTER, json.dumps(v.get("chain") or [])))
+            if r.get("ok") and v.get("ceiling") is not None:
+                self.host.engine.set_master_ceiling(float(v["ceiling"]))
+            return json.dumps(r)
+        except Exception as exc:
+            return _err(f"No se pudo cargar la versión: {exc}")
+
     # --- proyecto -----------------------------------------------------------------
     def _project_dir(self) -> str:
         p = paths.user_data_dir() / "proyectos"
@@ -721,14 +779,26 @@ class Bridge(QObject):
     # --- plugins VST3 externos ------------------------------------------------------
     @Slot(result=str)
     def pluginScan(self) -> str:
-        """Busca VST3 en las carpetas estándar de Windows. Cada plugin se abre una vez para leer sus
-        datos; la lista queda guardada en la carpeta de datos."""
+        """Busca VST3 en las carpetas estándar de Windows en otro proceso (un plugin que se cuelga no
+        cierra AllForOne). Responde enseguida; el avance llega por `pluginScanEvent`."""
         if (g := self._guard()):
             return g
-        try:
-            return _ok(**self.host.engine.scan_plugins([]))
-        except Exception as exc:
-            return _err(f"No se pudieron buscar plugins: {exc}")
+        if self._scanner is None:
+            from .plugin_scan import PluginScanner, list_file
+            self._scanner = PluginScanner(list_file(paths.user_data_dir() / "motor"), self)
+            self._scanner.event.connect(self._scan_event)
+        if not self._scanner.start():
+            return _err("Ya se están buscando plugins.")
+        return _ok(started=True)
+
+    def _scan_event(self, ev: dict) -> None:
+        if ev.get("phase") == "done":
+            try:
+                self.host.engine.reload_plugins()
+                ev["plugins"] = self.host.engine.known_plugins()
+            except Exception as exc:
+                ev.update(ok=False, error=f"No se pudo leer la lista de plugins: {exc}", plugins=[])
+        self.pluginScanEvent.emit(json.dumps(_clean(ev), ensure_ascii=False))
 
     @Slot(result=str)
     def pluginList(self) -> str:

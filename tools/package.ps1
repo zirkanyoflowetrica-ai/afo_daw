@@ -113,9 +113,11 @@ Ok ("Empaquetado en {0:N1} min" -f $sw.Elapsed.TotalMinutes)
 Copy-Item (Join-Path $Root 'THIRD_PARTY_NOTICES.md') $Out
 Copy-Item (Join-Path $Root 'LICENSE') $Out -ErrorAction SilentlyContinue
 Copy-Item (Join-Path $Root 'README.md') $Out -ErrorAction SilentlyContinue
+# Temas: cada carpeta de templates con un theme.json (copiar la carpeta = compartir el tema)
+Copy-Item (Join-Path $Root 'templates') (Join-Path $Out 'templates') -Recurse
 
 Step "Comprobaciones de la distribucion"
-foreach ($rel in @('AllForOne.exe', 'allforone\qml\Main.qml', 'allforone\qml\modules\FxBody.qml', 'allforone\qml\theme\qmldir', 'allforone\qml\assets\fonts\SpaceGrotesk-Bold.ttf', 'allforone\qml\assets\icon.ico')) {
+foreach ($rel in @('AllForOne.exe', 'allforone\qml\Main.qml', 'allforone\qml\modules\FxBody.qml', 'allforone\qml\theme\qmldir', 'allforone\qml\assets\fonts\SpaceGrotesk-Bold.ttf', 'allforone\qml\assets\icon.ico', 'templates\Professional\theme.json')) {
     if (-not (Test-Path (Join-Path $Out $rel))) { Fail "Falta $rel en la distribucion" }
 }
 if (Get-ChildItem $Out -Recurse -Filter 'QtWebEngineProcess.exe') { Fail "La distribucion lleva Qt WebEngine (Chromium) y ya no lo usa" }
@@ -149,9 +151,19 @@ Step "Instalar en $Exe (se conservan tus datos de EXE\datos)"
 Stop-AllForOne
 $keep = Join-Path $Cache "tmp\datos_conservados_$Stamp"
 if (Test-Path (Join-Path $Exe 'datos')) { Move-Item (Join-Path $Exe 'datos') $keep }
+# Temas que anadiste tu (los de fabrica se actualizan)
+$keepT = Join-Path $Cache "tmp\temas_conservados_$Stamp"
+if (Test-Path (Join-Path $Exe 'templates')) { Move-Item (Join-Path $Exe 'templates') $keepT }
 if (Test-Path $Exe) { Remove-Item -Recurse -Force $Exe }
 Move-Item $Out $Exe
 if (Test-Path $keep) { Move-Item $keep (Join-Path $Exe 'datos') }
+if (Test-Path $keepT) {
+    foreach ($t in Get-ChildItem $keepT -Directory) {
+        $dest = Join-Path $Exe "templates\$($t.Name)"
+        if (-not (Test-Path $dest)) { Move-Item $t.FullName $dest }
+    }
+    Remove-Item -Recurse -Force $keepT -ErrorAction SilentlyContinue
+}
 $shell = New-Object -ComObject WScript.Shell
 $lnk = $shell.CreateShortcut((Join-Path $Root 'AllForOne.lnk'))
 $lnk.TargetPath = Join-Path $Exe 'AllForOne.exe'

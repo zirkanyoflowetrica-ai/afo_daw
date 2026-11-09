@@ -9,6 +9,7 @@
 
 #include <map>
 #include <memory>
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -158,6 +159,12 @@ struct MixMeasure
     std::map<int, Loudness> tracks;
 };
 
+// Busca VST3 (carpetas estándar + extra) y guarda la lista en listFile tras cada archivo. Pensado para
+// un proceso aparte: si un plugin cuelga o cierra el proceso, AllForOne sigue abierto y el siguiente
+// intento lo salta. `progress` recibe cada archivo antes de abrirlo.
+PluginScan scanPluginFolders (const std::string& listFile, const std::vector<std::string>& extraFolders,
+                              const std::function<void (const std::string&)>& progress);
+
 class Engine
 {
 public:
@@ -217,6 +224,7 @@ public:
     // datos), insertarlos como efecto en la cadena de una pista o como instrumento de una pista de
     // Instrumento (recibe su clip MIDI), abrir su ventana y leer su estado (base64) para el proyecto.
     PluginScan scanPlugins (const std::vector<std::string>& extraFolders);
+    void reloadPlugins();                       // vuelve a leer la lista (tras buscar en otro proceso)
     std::vector<PluginDesc> knownPlugins();
     EffectInfo addPluginEffect (int trackId, const std::string& pluginId, int index, const std::string& state);
     std::string effectState (int effectId);

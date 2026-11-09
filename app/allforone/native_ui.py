@@ -147,6 +147,7 @@ def _native_daw_checks(rep, app, host, window, bridge, track_id) -> None:
     def lay(what, a=None, b=None):
         return call("layoutCommand", what, a, b)
 
+    h0 = lay("heights")
     rep.check("ningún módulo se monta sobre otro al abrir", lay("overlaps") == [], lay("overlaps"))
     d = lay("drag", "inst", [0, 3000])
     rep.check("arrastrar un módulo contra otro: se detiene antes de chocar", lay("overlaps") == [] and d["to"][1] < d["from"][1] + 3000, d)
@@ -191,6 +192,17 @@ def _native_daw_checks(rep, app, host, window, bridge, track_id) -> None:
     rep.check("los cortes suenan en el render (silencio entre los clips)", out.exists(), str(out))
     edit({"op": "set", "clips": [{"start": 0, "length": 8, "offset": 0}]})
     call("refreshClips", "a" + str(track_id))
+    h1 = lay("heights")
+    rep.check("tamaño fijo: ningún módulo cambia de alto por su contenido", h0 == h1,
+              {k: (h0.get(k), h1.get(k)) for k in h1 if h0.get(k) != h1.get(k)})
+
+    # Temas: carpetas de templates/ (copiar la carpeta = compartir el tema)
+    t = lay("theme", "Professional")
+    rep.check("tema Professional (carpeta templates/Professional): plano, sin marco grueso, perillas de arco",
+              t["ok"] and t["name"] == "Professional" and t["frame"] == 0 and t["knob"] == "arc"
+              and {"AllForOne", "AllForOne Oscuro", "Professional"} <= set(t["themes"]), t)
+    t = lay("theme", "AllForOne")
+    rep.check("volver al tema AllForOne", t["ok"] and t["name"] == "AllForOne" and t["frame"] == 9, t)
 
 
 def _native_project_checks(rep, app, host, window) -> None:
@@ -257,9 +269,14 @@ def run_native_selftest(app, host, report_path: str | None, screenshot_path: str
 
     panels = prop("panelItems")
     rep.check("14 módulos en el lienzo", len(panels or {}) == 14, sorted(panels or {}))
-    links = prop("cableLinks")
-    n_seq = len([t for t in (prop("tracks") or []) if t["type"] in ("inst", "drum", "ia", "voz")])
-    rep.check("cables entre módulos (+ uno por pista de Instrumento/Batería/Voz/IA)", len(links or []) == 9 + n_seq, len(links or []))
+    links = [l["key"] for l in (prop("cableLinks") or [])]
+    seq = [t for t in (prop("tracks") or []) if t["type"] in ("inst", "drum", "ia", "voz")]
+    flow = ["inst-piano", "audios-pistas", "pistas-mezcla", "mezcla-fx", "mezcla-antes", "mezcla-mastia", "mastia-fxm", "fxm-master"]
+    src = {"inst": "piano", "drum": "drums", "ia": "ia", "voz": "cinta"}
+    idle = [f + "-pistas" for f in ("piano", "drums", "ia", "cinta") if f not in {src[t["type"]] for t in seq}]
+    rep.check("cables del camino del sonido: instrumento → piano → pistas → mezcla → mastering → efectos master → rebobinado",
+              all(k in links for k in flow + idle) and len([k for k in links if k.startswith("track-")]) == len(seq)
+              and len(links) == len(flow) + len(idle) + len(seq), links)
     rep.check("motor conectado desde QML", bool(prop("engineOk")))
     rep.check("encuadre inicial aplicado", abs(float(prop("zoom")) - 1.0) > 1e-6, prop("zoom"))
 
@@ -294,7 +311,7 @@ def run_native_selftest(app, host, report_path: str | None, screenshot_path: str
     QMetaObject.invokeMethod(window, "saveLayout")
     saved = json.loads((paths.user_data_dir() / LAYOUT_FILE).read_text(encoding="utf-8"))
     rep.check("diseño y tema guardados en la carpeta de datos",
-              saved.get("theme") == "dark" and len(saved.get("pos", {})) == 14)
+              saved.get("theme") == "AllForOne Oscuro" and len(saved.get("pos", {})) == 14)
     QMetaObject.invokeMethod(window, "setDark", Q_ARG("QVariant", False))
 
     shot = Path(screenshot_path) if screenshot_path else paths.logs_dir() / "selftest_nativo.png"
@@ -334,11 +351,20 @@ def _native_mixer_checks(rep, app, host, window, bridge, prop) -> None:
               [f"{i['name']}:{i['kind']}:{i['role']}" for i in items])
 
     t0 = time.time()
-    call("mixNow", False)                         # al terminar masteriza en vivo (Plataformas)
-    done = _wait(app, lambda: (snap()["runs"] >= 1 and snap()["master"] is not None) or "Error" in snap()["status"], 240, host)
+    call("mixNow", False)
+    done = _wait(app, lambda: snap()["runs"] >= 1 or "Error" in snap()["status"], 240, host)
     st = snap()
     if not rep.check("MEZCLAR AUTOMÁTICAMENTE en vivo desde la interfaz nativa", done and st["runs"] >= 1, st["status"]):
         return
+    _wait(app, lambda: False, 0.3, host)
+    st = snap()
+    rep.check("la mezcla IA solo mezcla: el master queda sin tocar", st["master"] is None and not st["masterChain"], st["masterChain"])
+    call("mixerCommand", "master", 3)             # Efectos master → MASTERIZAR (Plataformas)
+    _wait(app, lambda: snap()["master"] is not None or "Error" in snap()["status"], 240, host)
+    st = snap()
+    rep.check("masterizar automáticamente deja una versión AUTO en Rebobinado",
+              len(st["versions"]) == 1 and st["versions"][0]["kind"] == "auto" and st["versionSel"] == 0
+              and st["versions"][0]["fx"] == len(st["masterChain"]) >= 4, st["versions"])
     check_mix_run(rep, bridge, st, t0)
     stems_ids = {i["trackId"] for i in st["items"]}
     faders = [t for t in st["tracks"] if t["id"] in stems_ids]
@@ -356,6 +382,18 @@ def _native_mixer_checks(rep, app, host, window, bridge, prop) -> None:
     call("mixerCommand", "ab", "B")
     on = [e["enabled"] for tid in bridge._auto for e in host.engine.effects(tid) if e["id"] in bridge._auto[tid]]
     rep.check("A/B: puentear y restablecer los efectos de la mezcla automática", off and not any(off) and all(on), f"{len(off)} efectos")
+    # Rebobinado: versión manual sin efectos, y volver a la automática
+    auto_chain = snap()["masterChain"]
+    call("mixerCommand", "unmaster", None)
+    _wait(app, lambda: not snap()["masterChain"], 5, host)
+    call("mixerCommand", "saveVersion", None)
+    st = snap()
+    rep.check("guardar versión manual (mide LUFS del master en el motor)",
+              len(st["versions"]) == 2 and st["versions"][1]["kind"] == "manual" and st["versions"][1]["lufs"] is not None, st["versions"])
+    call("mixerCommand", "loadVersion", 0)
+    _wait(app, lambda: snap()["masterChain"] == auto_chain, 5, host)
+    rep.check("elegir una versión en Rebobinado la pone en el master", snap()["masterChain"] == auto_chain and snap()["versionSel"] == 0,
+              snap()["masterChain"])
     lv = host.snapshot()
     rep.check("medidores dB, LUFS y RMS por pista y del master", len(lv.get("loud", {})) >= 3 and len(lv.get("mloud") or []) == 5,
               lv.get("mloud"))
@@ -436,7 +474,11 @@ def _native_sequencer_checks(rep, app, host, window, prop) -> None:
     voz = snap()["tracks"][-1]
     rep.check("+ Voz crea una pista de grabación en el motor", voz["type"] == "voz" and voz["id"] >= 0, voz["name"])
     before = host.engine.device_info()
-    if not host.engine.record_inputs():
+    if not before.get("open"):
+        # Sin ningún dispositivo abierto, abrir un driver tras procesar mensajes de JUCE puede cerrar
+        # el proceso dentro del driver ASIO de terceros: no se prueba aquí (se elige en «⚙ Audio»)
+        rep.add("cambiar de driver", "INFO", "no hay ningún dispositivo de audio abierto en este equipo")
+    elif not host.engine.record_inputs():
         # Sin entradas en el dispositivo actual: se prueba como lo haría el usuario en «⚙ Audio»
         # (ASIO4ALL u otro driver con entradas) y al final se vuelve al dispositivo de antes.
         for kind in ("ASIO", "DirectSound"):

@@ -1,6 +1,6 @@
 # AllForOne
 
-DAW modular gratuito para Windows: la interfaz original `templates/PLANTILLA_DAW.html` convertida en una
+DAW modular gratuito para Windows: la interfaz original `templates/AllForOne/PLANTILLA_DAW.html` convertida en una
 aplicación de escritorio nativa (Qt Quick, sin navegador interno) con motor de audio nativo C++ (JUCE + Tracktion Engine), lógica en Python
 y el Mezclador Automático V4.2 integrado por fases.
 
@@ -27,15 +27,19 @@ Todo lo que AllForOne escribe (datos, registros, cachés, temporales) queda dent
 3. En **Mezcla** elige la plantilla trap/rap y pulsa **MEZCLAR AUTOMÁTICAMENTE**. La mezcla es
    **en vivo**: el Mezclador V4.2 decide y deja en cada pista su fader, su paneo y una cadena de
    efectos real (EQ, de-esser, compresión, saturación, espacio, eco) que puedes abrir y ajustar en
-   **Efectos**; no se renderiza ningún WAV. Al terminar, Master IA masteriza en vivo (opcional).
+   **Efectos**; no se renderiza ningún WAV. La mezcla automática solo mezcla: el master va aparte.
 4. Para afinar voces: **Afinador** → Analizar música → Confirmar → sube la intensidad (sus cables
    te muestran a qué tiras está conectado).
-5. **Master IA:** un clic en un preset (Dinámico, Comercial, Fuerte, Plataformas o según tu
-   referencia) mide la sesión en el motor —en memoria, sin archivos— y pone la cadena del master;
-   la ves en **Efectos master**. **Antes / Después:** dos pantallas en vivo, la señal que entra a una
-   cadena y la que sale, conectables al rack del canal o al master. Las tiras de Mezcla miden en
-   **dB, LUFS o RMS** (a elegir); Master IA muestra las tres del master. El botón **◐** cambia al
-   tema oscuro.
+5. **Flujo del sonido** (los cables lo muestran): Instrumentos → Piano roll → Pistas; Pistas con IA,
+   Grabador de voz y Audios → Pistas; Pistas → Mezcla (una tira con su rack por pista) → Efectos y
+   Antes / Después; Mezcla → **Mastering** (VU, LUFS / RMS / pico, fader, saturación, tono, limitador)
+   → **Efectos master** (la cadena del master y, abajo, **MASTERIZAR AUTOMÁTICAMENTE**: mide la
+   sesión en el motor, sin archivos, y pone la cadena) → **Rebobinado**, donde quedan las versiones
+   de master (automáticas y las que guardas con «Guardar versión»): eliges una y exportas.
+   Las tiras de Mezcla miden en **dB, LUFS o RMS** (a elegir).
+   **Temas:** el selector «Tema» de la cabecera cambia el aspecto (AllForOne, AllForOne Oscuro,
+   Professional). Cada tema es una carpeta de `templates/` con un `theme.json`; para compartir uno,
+   copia su carpeta en la carpeta `templates` de tu amigo (📁 la abre) y pulsa ↻.
 
 6. **Grabar voz:** «+ Voz» en Pistas y, en el **Grabador de cintas**, elige la entrada y pulsa
    ● Grabar (graba el motor). Si tu dispositivo no tiene entradas, pulsa **Audio** en la cabecera y
@@ -52,12 +56,14 @@ Todo lo que AllForOne escribe (datos, registros, cachés, temporales) queda dent
    para renombrarlo; **+** agrega otro rack de Efectos o una pista), *Instrumentos* (sintetizador del
    motor, Drum pad, voz, audio y tus instrumentos VST3) y *Efectos* (la Biblioteca nativa por
    familias y tus efectos VST3; se agregan al rack elegido). **Buscar plugins** explora las carpetas
-   VST3 de Windows una vez (la primera puede tardar un par de minutos) y guarda la lista.
+   VST3 de Windows en un proceso aparte (si un plugin se cuelga o rompe la búsqueda, se salta y se
+   sigue; AllForOne no se cierra) y guarda la lista.
 10. **Pistas como en un DAW:** □ en la cabecera de un módulo (o doble clic) lo maximiza al visor; Esc
    vuelve. En Pistas: mover clips (con rejilla), recortar por los bordes, dividir (S o herramienta
    Cortar), duplicar (Ctrl+D), borrar (Supr), volumen por clip (arrastra la etiqueta dB o Vol −/+),
    normalizar, fundidos de entrada y salida, deshacer / rehacer (Ctrl+Z / Ctrl+Y) y zoom. Los módulos
-   chocan entre sí: al arrastrar uno se detiene antes de pisar otro, y si crece empuja a los de abajo.
+   chocan entre sí: al arrastrar uno se detiene antes de pisar otro. Su tamaño es fijo: solo cambia
+   si lo cambias tú (asas de las esquinas), y se guarda.
 
 **Interfaz (Qt Quick, sin navegador interno):** `python -m allforone` desde `app/`. Funcionan el
 lienzo, Pistas, Audios, la consola Mezcla con la mezcla automática, Mezcla final, Afinador, Master
@@ -72,7 +78,8 @@ automatización), y Abrir / Guardar proyecto
 ## Estructura
 
 ```
-templates/PLANTILLA_DAW.html  interfaz original (referencia visual, no se edita)
+templates/<Tema>/theme.json  temas (AllForOne, AllForOne Oscuro, Professional; copiar = compartir)
+templates/AllForOne/PLANTILLA_DAW.html  interfaz original (referencia visual, no se edita)
 CMakeLists.txt, cmake/      motor nativo y dependencias fijadas
 native/src/                 AfoEngine (fachada sobre Tracktion Engine) y AfoSynth (sintetizador)
 native/src/fx/              Biblioteca nativa AFO: DSP compartida y efectos (plugins de Tracktion)

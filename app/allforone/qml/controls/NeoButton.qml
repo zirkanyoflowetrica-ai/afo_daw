@@ -14,7 +14,8 @@ Item {
     property int padX: 10
     property int padY: 5
     property int shadow: 3
-    property int border: 2
+    property int border: Theme.buttonBorder
+    readonly property int sh: Theme.buttonShadow > 0 ? shadow : 0   // los temas planos no llevan sombra dura
     property string tip: ""
     property alias label: lbl
     property bool hovered: mouse.containsMouse
@@ -36,16 +37,16 @@ Item {
     activeFocusOnTab: true
 
     Rectangle {                                 // sombra
-        x: root.shadow; y: root.shadow
+        x: root.sh; y: root.sh
         width: parent.width; height: parent.height
-        color: Theme.line
-        visible: root.shadow > 0 && !mouse.pressed
+        color: Theme.line; radius: Theme.radius
+        visible: root.sh > 0 && !mouse.pressed
     }
     Rectangle {
         id: face
-        x: mouse.pressed ? root.shadow : 0
-        y: mouse.pressed ? root.shadow : 0
-        width: parent.width; height: parent.height
+        x: mouse.pressed ? root.sh : 0
+        y: mouse.pressed ? root.sh : 0
+        width: parent.width; height: parent.height; radius: Theme.radius
         color: mouse.containsMouse && root.hoverColor !== root.color && !root.pressedState ? root.hoverColor : root.color
         border.width: root.border
         border.color: Theme.line

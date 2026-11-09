@@ -28,8 +28,23 @@ Column {
         Keys.onRightPressed: root.setValue(root.value + 5)
         Keys.onDownPressed: root.setValue(root.value - 5)
         Keys.onLeftPressed: root.setValue(root.value - 5)
-        Rectangle { x: 3; y: 3; width: 46; height: 46; radius: 23; color: "#000" }
+        Rectangle { x: 3; y: 3; width: 46; height: 46; radius: 23; color: "#000"; visible: Theme.knobStyle !== "arc" }
+        Shape {                                  // arco (temas tipo DAW): pista, valor y aguja
+            visible: Theme.knobStyle === "arc"
+            anchors.fill: parent
+            preferredRendererType: Shape.CurveRenderer
+            ShapePath { strokeColor: Theme.knobTrack; strokeWidth: 4; fillColor: "transparent"; capStyle: ShapePath.RoundCap
+                        PathAngleArc { centerX: 23; centerY: 23; radiusX: 18; radiusY: 18; startAngle: 135; sweepAngle: 270 } }
+            ShapePath { strokeColor: Theme.knobArc; strokeWidth: 4; fillColor: "transparent"; capStyle: ShapePath.RoundCap
+                        PathAngleArc { centerX: 23; centerY: 23; radiusX: 18; radiusY: 18; startAngle: 135; sweepAngle: Math.max(0.5, root.value * 2.7) } }
+        }
+        Rectangle {
+            visible: Theme.knobStyle === "arc"
+            x: 22; y: 9; width: 2; height: 13; radius: 1; color: Theme.knobValue
+            transform: Rotation { origin.x: 1; origin.y: 14; angle: -135 + root.value * 2.7 }
+        }
         Item {
+            visible: Theme.knobStyle !== "arc"
             anchors.fill: parent
             rotation: -135 + root.value * 2.7
             Shape {

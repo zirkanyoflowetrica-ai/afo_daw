@@ -5,13 +5,96 @@ import "../state/mixdata.js" as MD
 
 // Módulo Mezcla (Consola 6C): CANALES / MIXER con una tira por pista (cabecera de su color, rol de voz,
 // paneo, dB del fader, fader con medidor estéreo del motor en dB de pico, LUFS o RMS, Solo y Mute) y la
-// tira del master; clic en el nombre de una tira = su rack en Efectos. Debajo, la mezcla automática V4.2.
+// tira del master; clic en el nombre de una tira = su rack en Efectos. Arriba, la mezcla IA V4.2 (solo mezcla).
 Column {
     id: root
     property var studio
     property var mixer
     width: parent ? parent.width : 700
     spacing: 0
+
+    // ---------------- mezcla IA (arriba de la consola) ----------------
+    Text { bottomPadding: 8; text: "MEZCLA IA · AUTO-MIX V4.2 (solo mezcla; el master va en Mastering)"
+           color: Theme.ink; font.family: Theme.font; font.pixelSize: 13; font.weight: 700; font.letterSpacing: 0.52 }
+    Row {                                         // .afo-row2
+        width: root.width; spacing: 8; bottomPadding: 10
+        Column {
+            width: (root.width - 8) / 2; spacing: 4
+            Text { text: "Plantilla artística"; color: Theme.ink; font.family: Theme.font; font.pixelSize: 13; font.weight: 600 }
+            Select { width: parent.width; options: root.mixer.data.profiles; current: root.mixer.profile
+                     onPicked: function (v) { root.mixer.profile = v } }
+        }
+        Column {
+            width: (root.width - 8) / 2; spacing: 4
+            Text { text: "Uso en el motor"; color: Theme.ink; font.family: Theme.font; font.pixelSize: 13; font.weight: 600 }
+            Select { width: parent.width; options: root.mixer.data.modes; current: root.mixer.mode
+                     onPicked: function (v) { root.mixer.mode = v } }
+        }
+    }
+    Row {                                         // .krow
+        anchors.horizontalCenter: parent.horizontalCenter; spacing: 16
+        Knob { label: "Escalón L/R"; value: root.mixer.stepKnob; onMoved: function (v) { root.mixer.stepKnob = v } }
+        Knob { label: "Espacio vocal"; value: root.mixer.spaceKnob; onMoved: function (v) { root.mixer.spaceKnob = v } }
+    }
+    Text {
+        width: root.width; topPadding: 8; horizontalAlignment: Text.AlignHCenter; textFormat: Text.StyledText
+        text: "<b>" + root.mixer.stepDb().toFixed(1) + " dB</b> bajo la voz principal · profundidad <b>" + Math.round(root.mixer.spaceKnob) + "</b>"
+        color: Theme.ink; font.family: Theme.font; font.pixelSize: 12; font.weight: 500
+    }
+    Row {                                         // .afo-big
+        width: root.width; spacing: 8; topPadding: 10; bottomPadding: 10 + 4
+        NeoButton {
+            width: (root.width - 8) / 2; text: "MEZCLAR AUTOMÁTICAMENTE"
+            fontSize: 15; fontWeight: 700; padY: 10; shadow: 4
+            color: root.mixer.busy ? "#e0c0a0" : "#ff9f45"; textColor: "#000"
+            onClicked: if (!root.mixer.busy) root.mixer.mix(false)
+        }
+        NeoButton {
+            width: (root.width - 8) / 2; text: "↻ REMEZCLAR"
+            fontSize: 15; fontWeight: 700; padY: 10; shadow: 4
+            opacity: root.mixer.busy || !root.mixer.runs ? 0.5 : 1
+            onClicked: if (!root.mixer.busy && root.mixer.runs) root.mixer.mix(true)
+        }
+    }
+    Rectangle {                                   // .afo-prog
+        width: root.width; height: 16
+        color: "#120f0a"; border.width: 3; border.color: "#000"
+        Item {
+            x: 3; y: 3; height: 10; clip: true
+            width: (parent.width - 6) * Math.max(0, Math.min(100, root.mixer.progress)) / 100
+            Behavior on width { NumberAnimation { duration: 200 } }
+            Row {
+                Repeater {
+                    model: Math.max(0, Math.ceil(root.width / 10))
+                    Row { Rectangle { width: 8; height: 10; color: "#ffb000" } Rectangle { width: 2; height: 10; color: "#ff9f45" } }
+                }
+            }
+        }
+    }
+    Text {                                        // .afo-status
+        width: root.width; topPadding: 6; wrapMode: Text.Wrap
+        text: root.mixer.status; color: Theme.ink
+        font.family: Theme.font; font.pixelSize: 12; font.weight: 600
+    }
+    Row {                                         // A/B de la mezcla automática
+        spacing: 6; topPadding: 8; bottomPadding: 8
+        NeoButton { text: "A · sin mezcla auto"; fontSize: 11; padX: 6; padY: 2; shadow: 2
+                    readonly property bool on: root.mixer.abState === "A"
+                    color: on ? Theme.pressedBg : Theme.button; textColor: on ? Theme.pressedInk : Theme.ink; pressedState: on
+                    tip: "Puentea los efectos que puso la mezcla automática (faders y paneo se quedan)"
+                    onClicked: root.mixer.bypass("A") }
+        NeoButton { text: "B · con mezcla auto"; fontSize: 11; padX: 6; padY: 2; shadow: 2
+                    readonly property bool on: root.mixer.abState === "B"
+                    color: on ? Theme.pressedBg : Theme.button; textColor: on ? Theme.pressedInk : Theme.ink; pressedState: on
+                    onClicked: root.mixer.bypass("B") }
+    }
+    Text {
+        width: root.width; bottomPadding: 10; wrapMode: Text.Wrap; textFormat: Text.StyledText
+        text: "En vivo: el V4.2 deja en cada canal su <b>fader, paneo y cadena de efectos reales</b> (se ven en Efectos). No masteriza ni genera WAVs."
+        color: Theme.ink; font.family: Theme.font; font.pixelSize: 12; font.weight: 500
+    }
+    Rectangle { width: root.width; height: 3; color: Theme.ink }
+    Item { width: 1; height: 12 }
 
     // ---------------- consola: CANALES / MIXER ----------------
     Rectangle {
@@ -110,92 +193,6 @@ Column {
         }
     }
     DashedBox { visible: root.studio.tracks.length === 0; width: root.width; height: visible ? implicitHeight : 0; text: "Sin pistas." }
-
-    // ---------------- mezcla automática (.afo-sep …) ----------------
-    Item { width: 1; height: 14 }
-    Rectangle { width: root.width; height: 3; color: Theme.ink }
-    Text { topPadding: 8; bottomPadding: 10; text: "MEZCLA AUTOMÁTICA · AUTO-MIX V4.2"
-           color: Theme.ink; font.family: Theme.font; font.pixelSize: 13; font.weight: 700; font.letterSpacing: 0.52 }
-    Row {                                         // .afo-row2
-        width: root.width; spacing: 8; bottomPadding: 10
-        Column {
-            width: (root.width - 8) / 2; spacing: 4
-            Text { text: "Plantilla artística"; color: Theme.ink; font.family: Theme.font; font.pixelSize: 13; font.weight: 600 }
-            Select { width: parent.width; options: root.mixer.data.profiles; current: root.mixer.profile
-                     onPicked: function (v) { root.mixer.profile = v } }
-        }
-        Column {
-            width: (root.width - 8) / 2; spacing: 4
-            Text { text: "Uso en el motor"; color: Theme.ink; font.family: Theme.font; font.pixelSize: 13; font.weight: 600 }
-            Select { width: parent.width; options: root.mixer.data.modes; current: root.mixer.mode
-                     onPicked: function (v) { root.mixer.mode = v } }
-        }
-    }
-    Row {                                         // .krow
-        anchors.horizontalCenter: parent.horizontalCenter; spacing: 16
-        Knob { label: "Escalón L/R"; value: root.mixer.stepKnob; onMoved: function (v) { root.mixer.stepKnob = v } }
-        Knob { label: "Espacio vocal"; value: root.mixer.spaceKnob; onMoved: function (v) { root.mixer.spaceKnob = v } }
-    }
-    Text {
-        width: root.width; topPadding: 8; horizontalAlignment: Text.AlignHCenter; textFormat: Text.StyledText
-        text: "<b>" + root.mixer.stepDb().toFixed(1) + " dB</b> bajo la voz principal · profundidad <b>" + Math.round(root.mixer.spaceKnob) + "</b>"
-        color: Theme.ink; font.family: Theme.font; font.pixelSize: 12; font.weight: 500
-    }
-    Row {                                         // .afo-big
-        width: root.width; spacing: 8; topPadding: 10; bottomPadding: 10 + 4
-        NeoButton {
-            width: (root.width - 8) / 2; text: "MEZCLAR AUTOMÁTICAMENTE"
-            fontSize: 15; fontWeight: 700; padY: 10; shadow: 4
-            color: root.mixer.busy ? "#e0c0a0" : "#ff9f45"; textColor: "#000"
-            onClicked: if (!root.mixer.busy) root.mixer.mix(false)
-        }
-        NeoButton {
-            width: (root.width - 8) / 2; text: "↻ REMEZCLAR"
-            fontSize: 15; fontWeight: 700; padY: 10; shadow: 4
-            opacity: root.mixer.busy || !root.mixer.runs ? 0.5 : 1
-            onClicked: if (!root.mixer.busy && root.mixer.runs) root.mixer.mix(true)
-        }
-    }
-    Rectangle {                                   // .afo-prog
-        width: root.width; height: 16
-        color: "#120f0a"; border.width: 3; border.color: "#000"
-        Item {
-            x: 3; y: 3; height: 10; clip: true
-            width: (parent.width - 6) * Math.max(0, Math.min(100, root.mixer.progress)) / 100
-            Behavior on width { NumberAnimation { duration: 200 } }
-            Row {
-                Repeater {
-                    model: Math.max(0, Math.ceil(root.width / 10))
-                    Row { Rectangle { width: 8; height: 10; color: "#ffb000" } Rectangle { width: 2; height: 10; color: "#ff9f45" } }
-                }
-            }
-        }
-    }
-    Text {                                        // .afo-status
-        width: root.width; topPadding: 6; wrapMode: Text.Wrap
-        text: root.mixer.status; color: Theme.ink
-        font.family: Theme.font; font.pixelSize: 12; font.weight: 600
-    }
-    Row {                                         // A/B y master automático
-        spacing: 6; topPadding: 8
-        NeoButton { text: "A · sin mezcla auto"; fontSize: 11; padX: 6; padY: 2; shadow: 2
-                    readonly property bool on: root.mixer.abState === "A"
-                    color: on ? Theme.pressedBg : Theme.button; textColor: on ? Theme.pressedInk : Theme.ink; pressedState: on
-                    tip: "Puentea los efectos que puso la mezcla automática (faders y paneo se quedan)"
-                    onClicked: root.mixer.bypass("A") }
-        NeoButton { text: "B · con mezcla auto"; fontSize: 11; padX: 6; padY: 2; shadow: 2
-                    readonly property bool on: root.mixer.abState === "B"
-                    color: on ? Theme.pressedBg : Theme.button; textColor: on ? Theme.pressedInk : Theme.ink; pressedState: on
-                    onClicked: root.mixer.bypass("B") }
-        NeoButton { text: (root.mixer.autoMaster ? "☑" : "☐") + " masterizar al terminar"; fontSize: 11; padX: 6; padY: 2; shadow: 2
-                    tip: "Al terminar la mezcla, Master IA aplica en vivo el preset elegido"
-                    onClicked: root.mixer.autoMaster = !root.mixer.autoMaster }
-    }
-    Text {
-        width: root.width; topPadding: 8; wrapMode: Text.Wrap; textFormat: Text.StyledText
-        text: "La mezcla es <b>en vivo</b>: el V4.2 analiza cada pista y deja su <b>fader, paneo y cadena de efectos reales</b> (EQ, de-esser, compresión, saturación, espacio, eco) en el motor. Ábrelos en Efectos y ajústalos; no se generan WAVs."
-        color: Theme.ink; font.family: Theme.font; font.pixelSize: 12; font.weight: 500
-    }
 
     readonly property real stripH: 372
     readonly property string rackName: {

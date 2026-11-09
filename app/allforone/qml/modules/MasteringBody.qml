@@ -1,11 +1,12 @@
 import QtQuick
 import "../theme"
 import "../controls"
+import "../state/mixdata.js" as MD
 
-// Módulo Master IA (Master M-4): el master() del V4.2 EN VIVO. Al elegir un preset, el motor procesa
-// la sesión en memoria, mide LUFS integrada y pico, y deja en el master una cadena real (entrada a
-// −18 LUFS, EQ, compresión si hace falta, color y nivel final) con el techo del limitador del preset.
-// Se ve y se ajusta en «Efectos master». Sonoridad del master en vivo: LUFS, RMS y pico.
+// Módulo Mastering (Master M-4): la mesa del master. VU, sonoridad en vivo (LUFS, RMS, pico), fader
+// master con medidores L/R del motor, saturación, tono y limitador, y A/B de la cadena automática.
+// Los efectos del master están en «Efectos master» (allí, abajo, Masterizar automáticamente); cada
+// master se guarda como versión en «Rebobinado», donde se elige y se exporta.
 Column {
     id: root
     property var mixer
@@ -22,8 +23,10 @@ Column {
         if (r.ok) { ab = which; studio.refreshRacks() } else mixer.fail(r)
     }
 
+    VuMeter { width: Math.min(root.width, 300); vu: root.studio.vu; anchors.horizontalCenter: parent.horizontalCenter }
+
     Row {                                       // sonoridad del master en vivo (las 3 medidas)
-        width: root.width; spacing: 6; bottomPadding: 10
+        width: root.width; spacing: 6; bottomPadding: 6
         Repeater {
             model: [["LUFS", 3, "corto plazo"], ["RMS", 1, "300 ms"], ["PICO", 0, "dBFS"]]
             Column {
@@ -36,56 +39,42 @@ Column {
         }
     }
     Text {
-        width: root.width; bottomPadding: 10; wrapMode: Text.Wrap
+        width: root.width; bottomPadding: 12; wrapMode: Text.Wrap
         text: "Integrada desde que suena: " + root.f(root.ml[4]) + " LUFS · momentánea " + root.f(root.ml[2]) + " LUFS"
         color: Theme.ink; font.family: Theme.font; font.pixelSize: 11; font.weight: 600
     }
 
-    Column {                                    // .afo-presets: un clic = masterizar en vivo
-        width: root.width; spacing: 6; bottomPadding: 10
-        Repeater {
-            model: root.mixer.masterNames
-            Item {
-                id: pr
-                required property string modelData
-                required property int index
-                readonly property bool on: !!root.st && root.mixer.masterSel === index
-                width: root.width - 3; height: prCol.height + 12 + 4
-                opacity: root.mixer.mastering ? 0.6 : 1
-                Rectangle { x: 3; y: 3; width: parent.width; height: parent.height; color: "#000"; visible: !pm.pressed }
-                Rectangle {
-                    x: pm.pressed ? 3 : 0; y: pm.pressed ? 3 : 0
-                    width: parent.width; height: parent.height
-                    color: "#2b2720"; border.width: 2; border.color: "#000"
-                    Rectangle {                      // piloto
-                        x: 10; anchors.verticalCenter: parent.verticalCenter
-                        width: 12; height: 12; radius: 6; border.width: 2; border.color: "#000"
-                        color: pr.on ? "#ff4d3d" : "#4a1d1a"
-                        Rectangle { anchors.centerIn: parent; width: 22; height: 22; radius: 11; color: "#ff4d3d"; opacity: 0.25; visible: pr.on; z: -1 }
-                    }
-                    Column {
-                        id: prCol
-                        x: 36; y: 6; width: parent.width - 36 - prLcd.width - 18
-                        Text { width: parent.width; elide: Text.ElideRight; text: pr.modelData
-                               color: "#f3e7c4"; font.family: Theme.font; font.pixelSize: 14; font.weight: 700 }
-                        Text { width: parent.width; elide: Text.ElideRight
-                               text: pr.on ? root.st.lufs_i.toFixed(1) + " LUFS · pico " + root.st.max_peak_db.toFixed(1) + " dB · techo " + root.st.ceiling_db.toFixed(1) + " dB"
-                                           : (pr.index === 4 ? "objetivo de la canción de referencia" : "clic: masterizar en vivo")
-                               color: "#bdb398"; font.family: Theme.font; font.pixelSize: 11; font.weight: 500 }
-                    }
-                    Lcd { id: prLcd; anchors.right: parent.right; anchors.rightMargin: 10; anchors.verticalCenter: parent.verticalCenter
-                          text: pr.on ? root.st.lufs_i.toFixed(1) : "--.-"; fontSize: 12; padX: 6; padY: 1; spacing: 0.04 }
-                }
-                MouseArea { id: pm; anchors.fill: parent; enabled: !root.mixer.mastering && !root.mixer.busy; cursorShape: Qt.PointingHandCursor
-                            onClicked: root.mixer.masterAuto(pr.index) }
+    Row {                                       // fader master, medidores y sección master del motor
+        spacing: 18; bottomPadding: 12
+        Row {
+            spacing: 6
+            Fader { height: 190; value: root.studio.masterPos; tip: "Volumen master (70 = 0 dB)"
+                    onMoved: function (v) { root.studio.setMaster(v) } }
+            Meter { width: 16; height: 190; level: root.studio.playing ? MD.dbToPct(root.studio.masterDb[0]) : 0 }
+            Meter { width: 16; height: 190; level: root.studio.playing ? MD.dbToPct(root.studio.masterDb[1]) : 0 }
+        }
+        Column {
+            spacing: 10
+            Lcd { text: MD.faderDbText(root.studio.masterPos); fontSize: 18; width: Math.max(implicitWidth, 138) }
+            Row {
+                spacing: 16
+                Knob { label: "Saturación"; value: root.studio.masterDrive; tip: "Saturación suave del master (tanh)"
+                       onMoved: function (v) { root.studio.setMasterProcessing(v, root.studio.masterTone, root.studio.limiter) } }
+                Knob { label: "Tono"; value: root.studio.masterTone; tip: "EQ inclinada: 50 = plano; ±6 dB en graves y agudos"
+                       onMoved: function (v) { root.studio.setMasterProcessing(root.studio.masterDrive, v, root.studio.limiter) } }
+            }
+            NeoButton {
+                text: "Limitador: " + (root.studio.limiter ? "activo" : "apagado")
+                tip: "Limitador de seguridad del master: techo −1 dBFS, o el del master automático (también al exportar)"
+                onClicked: root.studio.setMasterProcessing(root.studio.masterDrive, root.studio.masterTone, !root.studio.limiter)
             }
         }
     }
 
-    Row {                                       // .afo-ab: puentear la cadena del master IA
+    Row {                                       // A/B: puentear la cadena del master automático
         width: root.width; spacing: 6; bottomPadding: 8 + 3
         Repeater {
-            model: [["A", "A · sin master IA"], ["B", "B · con master IA"]]
+            model: [["A", "A · sin master auto"], ["B", "B · con master auto"]]
             NeoButton {
                 required property var modelData
                 readonly property bool on: root.ab === modelData[0]
@@ -98,14 +87,16 @@ Column {
     }
     Flow {
         width: root.width; spacing: 6; bottomPadding: 8
-        NeoButton { text: "Quitar master IA"; opacity: root.st ? 1 : 0.5; onClicked: if (root.st) root.mixer.unmaster() }
-        NeoButton { text: "Exportar mezcla"; tip: "WAV con el master en vivo, solo cuando lo pides"; onClicked: root.studio.exportMix() }
+        NeoButton { text: "Guardar versión → Rebobinado"; fontWeight: 700; color: "#7ad6ff"; textColor: "#000"
+                    tip: "Guarda el master tal como suena ahora (efectos, fader, saturación, tono, limitador) como versión manual"
+                    onClicked: root.mixer.saveVersion("", "manual", null) }
+        NeoButton { text: "Quitar master auto"; opacity: root.st ? 1 : 0.5; onClicked: if (root.st) root.mixer.unmaster() }
     }
     Note {
         width: root.width
-        text: root.st ? "Entrada " + (root.st.input_lufs).toFixed(1) + " LUFS → ganancia de entrada " + root.st.pre_gain_db.toFixed(1) +
-                        " dB, nivel final " + root.st.final_gain_db.toFixed(1) + " dB (presupuesto de limitación " + root.st.limit_budget_db.toFixed(1) +
-                        " dB)" + (root.st.compressed ? ", compresión de master" : "") + ". Objetivo " + root.st.target_lufs.toFixed(1) + " LUFS: " + root.st.note
-                      : "Elige un preset: el motor mide la sesión (en memoria, sin archivos) y pone la cadena del master. Ábrela en «Efectos master»."
+        text: root.st ? "Último master automático: entrada " + (root.st.input_lufs).toFixed(1) + " LUFS → " + root.st.lufs_i.toFixed(1) +
+                        " LUFS, pico " + root.st.max_peak_db.toFixed(1) + " dB, techo " + root.st.ceiling_db.toFixed(1) + " dB" +
+                        (root.st.compressed ? ", con compresión de master" : "") + ". " + root.st.note
+                      : "Los efectos del master están en «Efectos master»; abajo de ese rack, «Masterizar automáticamente». Cada master queda en «Rebobinado» para elegirlo y exportarlo."
     }
 }

@@ -23,7 +23,6 @@ QtObject {
     property string status: "Carga audios en el módulo «Audios»: cada uno crea su pista y su tira."
     property int runs: 0                        // mezclas en vivo aplicadas
     property bool lastTuned: false
-    property bool autoMaster: true              // al terminar la mezcla, masterizar con el preset elegido
     property var live: ({})                     // por id de pista del motor: decisiones reales del mezclador
     property int workingTrack: -1
     // Afinador (PSOLA): tonalidad y BPM confirmados antes de afinar
@@ -39,6 +38,9 @@ QtObject {
     property bool mastering: false
     property string abState: "B"                // B = con efectos automáticos, A = puenteados
     readonly property var masterNames: data.masters.concat(["Según referencia"])
+    // Rebobinado: cada master (automático o manual) queda como versión para escucharla, elegirla y exportarla
+    property var versions: []                   // {name, kind, chain, ceiling, pos, drive, tone, limiter, lufs, peak, at}
+    property int versionSel: -1
 
     function stepDb() { return 5 + stepKnob / 20 }
     function call(cmd, data) {
@@ -159,6 +161,7 @@ QtObject {
             if (!r.ok) { status = "Master: " + (r.error || "sin cambios"); return }
             masterStats = r.stats
             studio.refreshRacks()
+            saveVersion("Auto · " + masterNames[sel], "auto", r.stats)
             status = "Master en vivo · " + masterNames[sel] + ": " + r.stats.lufs_i.toFixed(1) + " LUFS · pico " + r.stats.max_peak_db.toFixed(1) + " dB · " + r.stats.note
         })
     }
@@ -166,6 +169,40 @@ QtObject {
         var r = fail(call("unmaster"))
         if (r.ok) { masterStats = null; studio.refreshRacks(); status = "Master IA quitado: el master vuelve a su cadena manual." }
     }
+    // ---------------- versiones de master (Rebobinado) ----------------
+    // stats: lo que midió Master IA; sin stats, el motor mide la sesión (en memoria) para mostrar LUFS y pico
+    function saveVersion(name, kind, stats) {
+        var r = studio.call("masterSnapshot", !stats)
+        if (!r.ok) { studio.toast(r.error); return -1 }
+        var n = versions.filter(function (v) { return v.kind === kind }).length + 1
+        var v = { name: name || (kind === "auto" ? "Auto" : "Manual") + " #" + n, kind: kind, chain: r.chain, ceiling: r.ceiling,
+                  pos: studio.masterPos, drive: studio.masterDrive, tone: studio.masterTone, limiter: studio.limiter,
+                  lufs: stats ? stats.lufs_i : (r.lufs === undefined ? null : r.lufs),
+                  peak: stats ? stats.max_peak_db : (r.peak === undefined ? null : r.peak),
+                  at: Qt.formatTime(new Date(), "hh:mm") }
+        versions = versions.concat([v]); versionSel = versions.length - 1
+        studio.toast("Versión de master en Rebobinado: " + v.name)
+        return versionSel
+    }
+    function loadVersion(i) {
+        var v = versions[i]
+        if (!v) return false
+        var r = fail(studio.call("masterLoad", JSON.stringify(v)))
+        if (!r.ok) return false
+        studio.setMaster(v.pos)
+        studio.setMasterProcessing(v.drive, v.tone, v.limiter)
+        versionSel = i
+        masterStats = v.kind === "auto" ? masterStats : null
+        studio.refreshRacks()
+        return true
+    }
+    function removeVersion(i) {
+        var out = versions.slice(); out.splice(i, 1); versions = out
+        if (versionSel === i) versionSel = -1; else if (versionSel > i) versionSel--
+    }
+    function renameVersion(i, name) { var out = versions.slice(); out[i] = Object.assign({}, out[i], { name: name }); versions = out }
+    function exportVersion(i) { if (i === versionSel || loadVersion(i)) studio.exportMix() }
+
     // A/B de escucha: puentea (A) o activa (B) todos los efectos que puso la mezcla automática
     function bypass(ab) {
         var r = fail(call("bypass", { bypass: ab === "A" }))
@@ -200,7 +237,6 @@ QtObject {
             status = "Mezcla en vivo #" + runs + " (" + ev.profile + ") aplicada a " + ev.applied + " pistas en " + ev.seconds + " s" +
                      (lastTuned ? " · voces afinadas" : "") + ". No se reproduce en vivo: " + ev.skipped.join(", ") + "."
             studio.toast("Mezcla automática aplicada: faders, paneo y cadenas de efectos reales")
-            if (autoMaster) masterAuto(masterSel)
         } else if (ev.type === "error") {
             busy = false; workingTrack = -1; status = "Error: " + ev.error
             if (ev.panel === "analysis") setTune({ status: "Error: " + ev.error })

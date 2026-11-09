@@ -1,6 +1,7 @@
 // afo_audio — extensión Python (pybind11) del motor nativo de AllForOne.
 // API pensada para crecer sin romper la interfaz: dicts simples hacia Python.
 #include <pybind11/pybind11.h>
+#include <pybind11/functional.h>
 #include <pybind11/stl.h>
 
 #include "AfoEngine.h"
@@ -80,9 +81,18 @@ afo::SynthSettings settings (int mode, int wave, float vel, float bri, bool sus,
 PYBIND11_MODULE (afo_audio, m)
 {
     m.doc() = "AllForOne: motor de audio nativo (JUCE + Tracktion Engine)";
-    m.attr("API_VERSION") = 10;
+    m.attr("API_VERSION") = 11;
 
     m.def ("version", &afo::version);
+    m.def ("scan_plugin_folders", [] (const std::string& listFile, const std::vector<std::string>& extra,
+                                      std::function<void (const std::string&)> progress)
+           {
+               auto r = afo::scanPluginFolders (listFile, extra, progress);
+               py::dict d;
+               d["plugins"] = toList (r.plugins); d["failed"] = r.failed; d["folders"] = r.folders;
+               return d;
+           }, py::arg ("list_file"), py::arg ("extra_folders") = std::vector<std::string>(), py::arg ("progress") = nullptr,
+           "Busca VST3 sin motor (para un proceso aparte); guarda la lista tras cada archivo.");
     m.def ("juce_version", &afo::juceVersion);
     m.def ("write_test_tone", &afo::writeTestTone,
            py::arg ("path"), py::arg ("frequency") = 440.0, py::arg ("seconds") = 4.0,
@@ -229,6 +239,7 @@ PYBIND11_MODULE (afo_audio, m)
                   return d;
               }, py::arg ("extra_folders") = std::vector<std::string>())
         .def ("known_plugins", [] (afo::Engine& e) { return toList (e.knownPlugins()); })
+        .def ("reload_plugins", &afo::Engine::reloadPlugins)
         .def ("add_plugin_effect", [] (afo::Engine& e, int t, const std::string& id, int index, const std::string& state)
               { return toDict (e.addPluginEffect (t, id, index, state)); },
               py::arg ("track_id"), py::arg ("plugin_id"), py::arg ("index") = -1, py::arg ("state") = "")

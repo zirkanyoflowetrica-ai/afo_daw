@@ -1,0 +1,14 @@
+{
+  "name": "AllForOne Oscuro",
+  "description": "AllForOne con fondo oscuro (los mismos marcos de color).",
+  "dark": true,
+  "colors": {
+    "bg": "#121017", "pn2": "#3a3346", "ink": "#efe9ff", "line": "#000000", "button": "#2a2533",
+    "header": "#17141d", "input": "#1b1822", "dot": "#2effffff", "help": "#1d1a24", "mdl": "#2a2533",
+    "grip": "#3a3446", "pressedBg": "#efe9ff", "pressedInk": "#000000",
+    "canvas": "#121017", "panelBody": "#1b1822", "sidebar": "#17141d",
+    "device": "#2a2533", "deviceHead": "#3a3346", "deviceInk": "#efe9ff", "deviceBorder": "#000000",
+    "knobArc": "#ffb000", "knobTrack": "#14111a", "knobValue": "#efe9ff", "chain": "#1b1822"
+  },
+  "style": { "bodyTint": 0.17 }
+}

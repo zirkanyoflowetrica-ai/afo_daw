@@ -45,8 +45,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--report", help="Ruta del informe JSON de --selftest")
     parser.add_argument("--screenshot", help="Ruta de la captura de --selftest")
     parser.add_argument("--nativo", action="store_true", help=argparse.SUPPRESS)   # antes elegía la interfaz nativa; hoy es la única
+    parser.add_argument("--scan-plugins", metavar="LISTA", help=argparse.SUPPRESS)   # proceso buscador de VST3
     parser.add_argument("--verbose", action="store_true")
     args, qt_args = parser.parse_known_args(argv if argv is not None else sys.argv[1:])
+
+    if args.scan_plugins:                       # sin interfaz ni motor: solo abrir plugins y guardar la lista
+        from .plugin_scan import run_child
+
+        return run_child(args.scan_plugins)
 
     setup_logging(args.verbose)
     _prepare_qt_environment()

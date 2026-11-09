@@ -113,13 +113,17 @@ Window {
         // Cada pista de Instrumento, Batería o IA tiene su cable desde su módulo hasta su fila en Pistas
         var sources = {}, trackLinks = []
         for (var i = 0; i < tracks.length; i++) {
-            var src = sq.src[tracks[i].type]
-            if (src === "pistas" || hidden[src] || hidden.pistas) continue
+            var src = tracks[i].type === "inst" ? "piano" : sq.src[tracks[i].type]   // instrumento → piano → pistas
+            if (src === "pistas" || hidden[src] || hidden.pistas || sq.disconnected(tracks[i])) continue
             var slot = sources[src] || 0; sources[src] = slot + 1
             trackLinks.push({ key: "track-" + tracks[i].uid, f: src, t: "pistas", i: i, slot: slot })
         }
         trackLinks.forEach(function (l) { l.total = sources[l.f] })
-        out.splice.apply(out, [out.length && out[0].key === "piano-inst" ? 1 : 0, 0].concat(trackLinks))
+        // Una fuente sin pistas todavía también va a Pistas (ahí creará las suyas)
+        ;["piano", "drums", "ia", "cinta"].forEach(function (f) {
+            if (!sources[f] && !hidden[f] && !hidden.pistas) trackLinks.push({ key: f + "-pistas", f: f, t: "pistas" })
+        })
+        out.splice.apply(out, [out.length && out[0].key === "inst-piano" ? 1 : 0, 0].concat(trackLinks))
         if (mx.tuneStrength > 0 && !hidden.afina && !hidden.mezcla) {
             mx.items; mx.tune; tracks
             var S = mx.tunedStrips()
@@ -168,12 +172,24 @@ Window {
         var z = Math.max(.2, Math.min(1.6, zoom * f)); f = z / zoom
         tx = cx - (cx - tx) * f; ty = cy - (cy - ty) * f; zoom = z
     }
-    function setDark(b) { Theme.dark = b }
+    function setDark(b) { setTheme(b ? "AllForOne Oscuro" : "AllForOne") }
+    // ---------------- temas (carpeta templates/) ----------------
+    property var themes: []
+    function loadThemes() { var r = call("themeList"); if (r.ok) themes = r.themes; return themes }
+    function setTheme(name, quiet) {
+        var r = call("themeLoad", name)
+        if (!r.ok) { if (!quiet) toast(r.error); Theme.apply({}); return false }
+        Theme.apply(r.theme)
+        if (!loading) saveLayout()
+        return true
+    }
     // Para la autoprueba y las comparaciones: estado del mezclador, mezclar y encuadrar un módulo a zoom 1
     function mixerSnapshot() {
         return { items: mx.items, runs: mx.runs, busy: mx.busy, status: mx.status, live: mx.live,
                  tune: mx.tune, links: cableLinks.map(function (l) { return l.key }),
                  lastTuned: mx.lastTuned, master: mx.masterStats, mastering: mx.mastering, rackTrack: rackTrack,
+                 versions: mx.versions.map(function (v) { return { name: v.name, kind: v.kind, fx: v.chain.length, lufs: v.lufs } }),
+                 versionSel: mx.versionSel,
                  masterChain: fxMasterBody ? fxMasterBody.chain.map(function (e) { return e.label || e.key }) : [],
                  masterLoud: masterLoud,
                  tracks: tracks.map(function (t) { return { uid: t.uid, id: t.id, type: t.type, name: t.name, vol: t.vol, pan: t.pan,
@@ -198,6 +214,8 @@ Window {
     function mixerCommand(what, a) {
         if (what === "master") mx.masterAuto(a === undefined ? mx.masterSel : a)
         else if (what === "unmaster") mx.unmaster()
+        else if (what === "saveVersion") mx.saveVersion("", "manual", null)
+        else if (what === "loadVersion") mx.loadVersion(a)
         else if (what === "ab") mx.bypass(a)
         else if (what === "rack") rackTrack = a
         else if (what === "meter") meterMode = a
@@ -224,6 +242,9 @@ Window {
         if (what === "remove") { removeExtra(a); return panelList.map(function (q) { return q.pid }) }
         if (what === "rename") { renamePanel(a, b); return { title: titleOf(a), panel: panelItems[a] ? panelItems[a].title : "" } }
         if (what === "goto") { goTo(a); return { currentId: currentId, hidden: !!hidden[a] } }
+        if (what === "heights") { var hs = {}; for (var hid in panelItems) hs[hid] = panelItems[hid].height; return hs }
+        if (what === "theme") { var ok = setTheme(a, true); return { ok: ok, name: Theme.name, frame: Theme.frame, knob: Theme.knobStyle,
+                                                                   themes: loadThemes().map(function (t) { return t.name }) } }
         return panelList.map(function (q) { return q.pid })
     }
     function setView(z, x, y) { zoom = z; tx = x; ty = y }
@@ -239,12 +260,12 @@ Window {
         var pos = {}
         for (var id in panelItems) {
             var p = panelItems[id], o = [p.x, p.y, p.width]
-            if (id === maxId && maxSaved) { o = [maxSaved.x, maxSaved.y, maxSaved.w]; if (maxSaved.resized) o.push(maxSaved.h) }
-            else if (p.resized) o.push(p.fixedHeight)
+            if (id === maxId && maxSaved) o = [maxSaved.x, maxSaved.y, maxSaved.w, maxSaved.h]
+            else o.push(p.fixedHeight)
             pos[id] = o
         }
         var extra = panelList.filter(function (q) { return q.extra }).map(function (q) { return { pid: q.pid, base: q.base } })
-        layoutStore.save(JSON.stringify({ v: L.VERSION, pos: pos, ports: portOverride, bends: bends, theme: Theme.dark ? "dark" : "light",
+        layoutStore.save(JSON.stringify({ v: L.VERSION, pos: pos, ports: portOverride, bends: bends, theme: Theme.name,
                                           names: names, extra: extra, targets: extraTargets }))
     }
     // Un diseño de otra versión del lienzo (módulos distintos) no se aplica: se usa el de fábrica y
@@ -335,14 +356,6 @@ Window {
         obstacles(p).forEach(function (b) {
             if (hits(r, b) && b.y >= p.y) { b.item.y = p.y + p.height + gap; pushFrom(b.item, (depth || 0) + 1) }
         })
-    }
-    // Módulos que cambiaron de alto en este ciclo (Qt.callLater juntaría las llamadas y solo empujaría el último)
-    property var pushQueue: []
-    function queuePush(p) { if (pushQueue.indexOf(p) < 0) pushQueue.push(p); Qt.callLater(flushPush) }
-    function flushPush() {
-        var q = pushQueue; pushQueue = []
-        q.sort(function (a, b) { return a.y - b.y })
-        q.forEach(function (p) { pushFrom(p) })
     }
     // Recoloca todo de arriba abajo para que nada se solape (al abrir y al restaurar el diseño)
     function settleAll() {
@@ -477,19 +490,24 @@ Window {
     function scanPlugins() {
         if (!engineOk) { toast("Motor nativo no disponible"); return }
         if (pluginScanning) return
-        pluginScanning = true; pluginStatus = "Buscando plugins VST3… cada uno se abre una vez para leer sus datos: la primera vez puede tardar unos minutos y la ventana no responde mientras tanto."
-        scanTimer.start()
+        var r = call("pluginScan")
+        if (!r.ok) { pluginStatus = r.error; return }
+        pluginScanning = true
+        pluginStatus = "Buscando plugins VST3 en otro proceso (puedes seguir trabajando; la primera vez tarda unos minutos)…"
     }
-    Timer {
-        id: scanTimer; interval: 50
-        onTriggered: {
-            var r = win.call("pluginScan")
-            win.pluginScanning = false
-            if (!r.ok) { win.pluginStatus = r.error; return }
-            win.plugins = r.plugins
-            win.pluginStatus = r.plugins.length + " plugins VST3 en " + r.folders.join(", ")
-                             + (r.failed.length ? " · " + r.failed.length + " no se pudieron abrir" : "")
+    // Avance de la búsqueda (otro proceso): si un plugin la tumba, se salta y sigue
+    function onScanEvent(ev) {
+        if (ev.phase === "progress") {
+            pluginStatus = (ev.skipped ? "«" + ev.name + "» cerró el buscador: se salta. " : "") + "Abriendo " + ev.name + "…"
+            return
         }
+        pluginScanning = false
+        if (ev.plugins) plugins = ev.plugins
+        if (ev.error) { pluginStatus = ev.error; return }
+        pluginStatus = plugins.length + " plugins VST3" + (ev.folders.length ? " en " + ev.folders.join(", ") : "")
+                     + (ev.crashed.length ? " · saltados por cerrar el buscador: " + ev.crashed.join(", ") : "")
+                     + (ev.failed.length ? " · " + ev.failed.length + " no se pudieron abrir" : "")
+        toast("Búsqueda de plugins terminada: " + plugins.length + " VST3")
     }
     function loadPluginList() {
         var r = call("pluginList")
@@ -582,6 +600,7 @@ Window {
     }
     Connections {
         target: afo
+        function onPluginScanEvent(s) { try { win.onScanEvent(JSON.parse(s)) } catch (e) { console.warn(e) } }
         function onStateChanged(s) {
             var st; try { st = JSON.parse(s) } catch (e) { return }
             win.playing = st.playing
@@ -638,7 +657,7 @@ Window {
         width: parent.width
         height: Math.round(leftGroup.y + leftGroup.height + 10 + 3)
         color: Theme.header
-        Rectangle { y: parent.height - 3; width: parent.width; height: 3; color: Theme.line }
+        Rectangle { y: parent.height - Math.max(1, Theme.border); width: parent.width; height: Math.max(1, Theme.border); color: Theme.line }
 
         Row {
             id: leftGroup
@@ -713,10 +732,22 @@ Window {
                 NeoButton { text: "+"; tip: "Acercar"; onClicked: win.zoomAt(1.25, viewport.width / 2, viewport.height / 2) }
                 NeoButton { text: "Ver todo"; onClicked: win.fitIds(win.visibleIds()) }
                 NeoButton { text: "Restaurar diseño"; tip: "Restaurar posiciones, tamaños y cables iniciales"; onClicked: win.resetLayout() }
-                NeoButton {
-                    text: Theme.dark ? "◑ Claro" : "◐ Oscuro"
-                    tip: "Cambiar entre el tema claro original y el oscuro"
-                    onClicked: { Theme.dark = !Theme.dark; win.saveLayout() }
+                Row {                               // selector de tema (carpetas de templates/)
+                    spacing: 4
+                    Text { text: "Tema"; anchors.verticalCenter: parent.verticalCenter; color: Theme.ink
+                           font.family: Theme.font; font.pixelSize: 13; font.weight: 600 }
+                    Select {
+                        width: 170; fontSize: 13; padY: 4
+                        anchors.verticalCenter: parent.verticalCenter
+                        options: win.themes.map(function (t) { return [t.name, t.name] })
+                        current: Theme.name
+                        tip: (win.themes.filter(function (t) { return t.name === Theme.name })[0] || { description: "" }).description
+                        onPicked: function (v) { win.setTheme(v) }
+                    }
+                    NeoButton { text: "↻"; tip: "Volver a leer la carpeta de temas (templates)"; padX: 6
+                                onClicked: { win.loadThemes(); win.toast(win.themes.length + " temas en templates") } }
+                    NeoButton { text: "📁"; tip: "Abrir la carpeta de temas: copia aquí la carpeta de un tema para usarlo"; padX: 6
+                                onClicked: win.call("themeFolder") }
                 }
                 NeoButton {
                     text: "⚙ Audio"
@@ -752,11 +783,21 @@ Window {
             property real s: 34 * win.zoom
             property real ox: win.tx
             property real oy: win.ty
-            property bool dark: Theme.dark
+            property var spec: Theme.spec
             onSChanged: requestPaint(); onOxChanged: requestPaint(); onOyChanged: requestPaint()
-            onDarkChanged: requestPaint(); onWidthChanged: requestPaint(); onHeightChanged: requestPaint()
+            onSpecChanged: requestPaint(); onWidthChanged: requestPaint(); onHeightChanged: requestPaint()
             onPaint: {
                 var ctx = getContext("2d"); ctx.reset()
+                ctx.fillStyle = Theme.canvas; ctx.fillRect(0, 0, width, height)
+                if (Theme.canvasStyle === "grid") {         // rejilla de líneas finas (temas tipo DAW)
+                    var g = Theme.gridStep * win.zoom
+                    ctx.strokeStyle = Theme.dot; ctx.lineWidth = 1
+                    ctx.beginPath()
+                    for (var gx = ((ox % g) + g) % g; gx < width; gx += g) { ctx.moveTo(Math.round(gx) + .5, 0); ctx.lineTo(Math.round(gx) + .5, height) }
+                    for (var gy = ((oy % g) + g) % g; gy < height; gy += g) { ctx.moveTo(0, Math.round(gy) + .5); ctx.lineTo(width, Math.round(gy) + .5) }
+                    ctx.stroke()
+                    return
+                }
                 ctx.fillStyle = Theme.dot
                 var x0 = ((ox % s) + s) % s + s / 2 - s, y0 = ((oy % s) + s) % s + s / 2 - s
                 for (var y = y0; y < height + s; y += s)
@@ -841,7 +882,6 @@ Window {
                     accent: Theme.pcOf(pid)
                     viewZ: win.zoom
                     visible: !win.hidden[pid] && (!win.maxId || win.maxId === pid)
-                    autoHeight: base !== "cinta"
                     mover: win.slideTo
                     sizer: win.sizeTo
                     z: index + 1
@@ -855,7 +895,7 @@ Window {
                     onXChanged: win.geomRev++
                     onYChanged: win.geomRev++
                     onWidthChanged: win.geomRev++
-                    onHeightChanged: { win.geomRev++; if (!win.loading && visible && !maximized) win.queuePush(panel) }
+                    onHeightChanged: win.geomRev++
                     onVisibleChanged: win.geomRev++
                     onRaiseRequested: z = ++win.zTop
                     onEditFinished: { win.pushFrom(panel); win.saveLayout() }
@@ -873,7 +913,7 @@ Window {
                     }
                     Component { id: audiosComp; AudiosBody { mixer: mx; studio: win } }
                     Component { id: mixComp; MixBody { mixer: mx; studio: win } }
-                    Component { id: masterComp; MasterBody { studio: win } }
+                    Component { id: masterComp; MasterBody { studio: win; mixer: mx } }
                     Component { id: tuneComp; TuneBody { mixer: mx } }
                     Component { id: masteringComp; MasteringBody { mixer: mx; studio: win } }
                     Component { id: reviewComp; ReviewBody { mixer: mx; studio: win; shown: panel.visible } }
@@ -883,7 +923,14 @@ Window {
                     Component { id: iaComp; IaBody { seq: sq } }
                     Component { id: cintaComp; CintaBody { seq: sq; studio: win } }
                     Component { id: fxComp; FxBody { studio: win; shown: panel.visible } }
-                    Component { id: fxmComp; FxBody { studio: win; shown: panel.visible; master: true } }
+                    Component {
+                        id: fxmComp
+                        Column {
+                            width: parent ? parent.width : 700
+                            FxBody { studio: win; shown: panel.visible; master: true }
+                            AutoMasterBox { mixer: mx }
+                        }
+                    }
                     Component { id: fxExtraComp; FxBody { studio: win; shown: panel.visible; extraId: panel.pid } }
                     Component {
                         id: tracksComp
@@ -1032,7 +1079,7 @@ Window {
             id: helpText
             x: 10; y: 6; width: Math.min(implicitWidth, viewport.width - 48)
             wrapMode: Text.Wrap
-            text: "Cabecera negra: mover (los módulos chocan, no se montan) · □: maximizar (Esc vuelve) · Bordes: cambiar tamaño · Conectores y cuadrado del cable: arrastrar."
+            text: "Cabecera: mover (los módulos chocan, no se montan; su tamaño solo cambia si lo cambias tú) · □: maximizar (Esc vuelve) · Bordes: cambiar tamaño · Conectores y cuadrado del cable: arrastrar."
             color: Theme.ink; font.family: Theme.font; font.pixelSize: 12; font.weight: 600
             lineHeight: 1.5
         }
@@ -1067,7 +1114,9 @@ Window {
         names = okn
         extraTargets = savedLayout.targets || {}
         ;(savedLayout.extra || []).forEach(function (e) { if (e && e.base === "fx" && /^fx~\d+$/.test(e.pid)) addExtra("fx", e.pid) })
-        Theme.dark = savedLayout.theme === "dark"
+        loadThemes()                              // tema guardado (los diseños antiguos guardaban "dark"/"light")
+        var tn = savedLayout.theme === "dark" ? "AllForOne Oscuro" : (!savedLayout.theme || savedLayout.theme === "light") ? "AllForOne" : savedLayout.theme
+        if (!setTheme(tn, true)) setTheme("AllForOne", true)
         var po = savedLayout.ports || {}, ok = {}
         for (var k in po) if (po[k] && ["top", "bottom", "left", "right"].indexOf(po[k].side) >= 0 && isFinite(po[k].u)) ok[k] = { side: po[k].side, u: L.clamp(po[k].u, .03, .97) }
         portOverride = ok

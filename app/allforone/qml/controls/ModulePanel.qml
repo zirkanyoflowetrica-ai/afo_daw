@@ -11,15 +11,14 @@ Item {
     property string modelName
     property color accent: Theme.pc[pid] || "#ffffff"
     property real viewZ: 1                    // zoom del lienzo (para convertir el arrastre)
-    property bool autoHeight: false           // alto según el contenido mientras no se redimensione
-    property real fixedHeight: 300
+    property real fixedHeight: 300            // tamaño fijo: solo cambia si lo cambias tú (cuadritos o maximizar)
     property bool resized: false
     property bool maximized: false
     property var mover: null                  // function(panel, x, y) → {x, y} sin chocar
     property var sizer: null                  // function(panel, {x, y, w, h}) → rect sin chocar
     readonly property real minW: 240
     readonly property real minH: 190
-    readonly property int frame: 9            // grosor del marco de color
+    readonly property int frame: Theme.frame  // grosor del marco de color (0 en temas planos: franja arriba)
     default property alias body: bodyContent.data
     property alias bodyWidth: bodyContent.width
     readonly property real headerHeight: head.height
@@ -31,26 +30,32 @@ Item {
     signal maximizeRequested()
     signal renamed(string name)
 
-    height: autoHeight && !resized ? Math.max(minH, frame + head.height + 12 + bodyContent.childrenRect.height + 16 + frame + 3)
-                                   : fixedHeight
+    height: fixedHeight
 
     Rectangle {                                // sombra dura
-        x: 7; y: 7; width: parent.width; height: parent.height
-        color: Theme.panelShadow(root.accent)
+        visible: Theme.panelShadowSize > 0
+        x: Theme.panelShadowSize; y: Theme.panelShadowSize; width: parent.width; height: parent.height
+        color: Theme.panelShadow(root.accent); radius: Theme.radius
     }
     Rectangle {                                // marco de color
         id: face
         anchors.fill: parent
-        color: root.accent
-        border.width: 3; border.color: Theme.line
+        color: root.frame > 0 ? root.accent : Theme.panelHead
+        radius: Theme.radius
+        border.width: Theme.border; border.color: Theme.panelBorder
         MouseArea { anchors.fill: parent }    // un clic en el módulo no arrastra el lienzo
 
         // cabecera negra: arrastrar mueve el módulo, doble clic en el nombre lo renombra
         Rectangle {
             id: head
-            x: root.frame; y: root.frame; width: parent.width - 2 * root.frame
-            height: 44
-            color: "#000"
+            x: Math.max(root.frame, face.border.width); y: Math.max(root.frame, face.border.width); width: parent.width - 2 * x
+            height: Theme.headHeight
+            color: Theme.panelHead
+            radius: root.frame > 0 ? 0 : Theme.radius
+            Rectangle {                        // franja del color del módulo (temas sin marco)
+                visible: Theme.accentStripe > 0
+                width: parent.width; height: Theme.accentStripe; color: root.accent; radius: Theme.radius
+            }
             MouseArea {
                 anchors.fill: parent
                 enabled: !root.maximized
@@ -75,19 +80,19 @@ Item {
                 x: 14; spacing: 10
                 width: parent.width - 22
                 anchors.verticalCenter: parent.verticalCenter
-                Rectangle { width: 14; height: 14; radius: 7; color: root.accent; anchors.verticalCenter: parent.verticalCenter }
+                Rectangle { width: Theme.headHeight > 36 ? 14 : 10; height: width; radius: width / 2; color: root.accent; anchors.verticalCenter: parent.verticalCenter }
                 Item {
                     id: titleBox
-                    width: parent.width - 14 - mdl.width - maxBtn.width - closeBtn.width - 4 * 10
+                    width: parent.width - 14 - (mdl.visible ? mdl.width : 0) - maxBtn.width - closeBtn.width - 4 * 10
                     height: titleText.implicitHeight
                     anchors.verticalCenter: parent.verticalCenter
                     Text {
                         id: titleText
                         visible: !nameEdit.visible
                         width: parent.width
-                        text: root.title.toUpperCase()
-                        color: root.accent
-                        font.family: Theme.font; font.pixelSize: 19; font.weight: 700; font.letterSpacing: 0.6
+                        text: Theme.upperTitles ? root.title.toUpperCase() : root.title
+                        color: Theme.headInk(root.accent)
+                        font.family: Theme.font; font.pixelSize: Theme.titleSize; font.weight: 700; font.letterSpacing: Theme.upperTitles ? 0.6 : 0.2
                         elide: Text.ElideRight
                         MouseArea {
                             anchors.fill: parent
@@ -111,11 +116,11 @@ Item {
                 }
                 Rectangle {
                     id: mdl
-                    width: mdlText.implicitWidth + 18; height: 28
-                    color: "#fff"; border.width: 2; border.color: "#000"
+                    width: mdlText.implicitWidth + 18; height: Theme.headHeight - 16
+                    color: Theme.chip; border.width: Math.min(2, Theme.buttonBorder); border.color: Theme.panelBorder; radius: Theme.radius
                     anchors.verticalCenter: parent.verticalCenter
-                    Text { id: mdlText; anchors.centerIn: parent; text: root.modelName.toUpperCase(); color: "#000"
-                           font.family: Theme.font; font.pixelSize: 12; font.weight: 700 }
+                    Text { id: mdlText; anchors.centerIn: parent; text: root.modelName.toUpperCase(); color: Theme.chipInk
+                           font.family: Theme.font; font.pixelSize: Theme.headHeight > 36 ? 12 : 10; font.weight: 700 }
                 }
                 HeadButton { id: maxBtn; glyph: root.maximized ? "❐" : "□"
                              tip: root.maximized ? "Volver al lienzo" : "Maximizar: este módulo ocupa toda la ventana"
@@ -132,7 +137,7 @@ Item {
             width: parent.width - 2 * root.frame
             height: parent.height - y - root.frame
             color: Theme.panelColor(root.pid, root.accent)
-            border.width: 3; border.color: Theme.line
+            border.width: root.frame > 0 ? Theme.border : 0; border.color: Theme.line
             Flickable {
                 id: flick
                 x: 14; y: 12
@@ -160,12 +165,12 @@ Item {
         property string glyph
         property string tip
         signal clicked()
-        width: 28; height: 28
-        color: hbm.containsMouse ? Theme.accent : "#fff"
-        border.width: 2; border.color: "#000"
+        width: Theme.headHeight - 16; height: width
+        color: hbm.containsMouse ? Theme.accent : Theme.chip
+        border.width: Math.min(2, Theme.buttonBorder); border.color: Theme.panelBorder; radius: Theme.radius
         anchors.verticalCenter: parent ? parent.verticalCenter : undefined
-        Text { anchors.centerIn: parent; text: hb.glyph; color: "#000"
-               font.family: "Segoe UI Symbol"; font.pixelSize: 15; font.weight: 700 }
+        Text { anchors.centerIn: parent; text: hb.glyph; color: hbm.containsMouse ? "#000" : Theme.chipInk
+               font.family: "Segoe UI Symbol"; font.pixelSize: Theme.headHeight > 36 ? 15 : 11; font.weight: 700 }
         MouseArea { id: hbm; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: hb.clicked() }
         ToolTipLite { text: hb.tip; show: hbm.containsMouse }
     }
@@ -182,8 +187,8 @@ Item {
             x: side.indexOf("w") >= 0 ? -7 : side.indexOf("e") >= 0 ? root.width - 7 : root.width / 2 - 7
             y: side.indexOf("n") >= 0 ? -7 : side.indexOf("s") >= 0 ? root.height - 7 : root.height / 2 - 7
             z: 9
-            color: gm.containsMouse || gm.pressed ? Theme.accent : "#fff"
-            border.width: 2; border.color: "#000"
+            color: gm.containsMouse || gm.pressed ? Theme.accent : Theme.grip
+            border.width: 2; border.color: Theme.line
             MouseArea {
                 id: gm
                 anchors.fill: parent

@@ -97,6 +97,16 @@ cada efecto. `--selftest` repite el ciclo desde la interfaz con todas las pistas
   `duplicate_clip`, `remove_clip`, `set_clip_gain`, `set_clip_fades`, `clip_peak_db` (para
   normalizar) y `set_clips` (reemplaza la lista entera: deshacer y abrir proyecto).
 
+## Búsqueda de plugins aparte y versiones de master (API 11)
+
+- `scan_plugin_folders(list_file, extra_folders=[], progress=None)` es una función libre (con su propio
+  `ScopedJuceInitialiser_GUI`) que escribe la lista XML tras cada archivo. La usa el proceso hijo
+  `AllForOne --scan-plugins LISTA` (`app/allforone/plugin_scan.py`): si un plugin rompe o cuelga el
+  hijo (vigilancia de 150 s), el padre lee el «pedal» (UTF-16 de JUCE), relanza el hijo y el plugin
+  queda en la lista negra (`failed`). Al terminar, `reload_plugins` relee la lista en el motor.
+- Versiones de master (Rebobinado): `masterSnapshot` guarda la cadena del master, el techo y su
+  sonoridad medida; `masterLoad` la restaura. La mezcla automática ya no toca el master.
+
 ## Siguientes hitos (metas, no funciones existentes)
 
 | Hito | Módulos |

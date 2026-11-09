@@ -1,4 +1,4 @@
-"""Comparación visual: la plantilla de referencia (templates/PLANTILLA_DAW.html) vs la interfaz nativa.
+"""Comparación visual: la plantilla de referencia (templates/AllForOne/PLANTILLA_DAW.html) vs la interfaz nativa.
 
 Uso:  python tools/native_compare.py [--out logs/visual_nativo] [--size 1600x900]
 
@@ -22,7 +22,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "app"))
-TEMPLATE = ROOT / "templates" / "PLANTILLA_DAW.html"
+TEMPLATE = ROOT / "templates" / "AllForOne" / "PLANTILLA_DAW.html"
 FONTS = ROOT / "app" / "allforone" / "qml" / "assets" / "fonts"
 GOOGLE_FONT = '<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">'
 
@@ -112,7 +112,7 @@ def main() -> int:
     save(b, "nativo.png")
     save(diff, "diff.png")
     save(np.concatenate([a, np.full((hh, 12, 3), 0, np.uint8), b], axis=1), "side_by_side.png")
-    report = {"size": [ww, hh], "threshold": 24, "reference": "templates/PLANTILLA_DAW.html",
+    report = {"size": [ww, hh], "threshold": 24, "reference": "templates/AllForOne/PLANTILLA_DAW.html",
               "header_pixels_changed_pct": round(float(mask[:head].mean() * 100), 3),
               "canvas_pixels_changed_pct": round(float(mask[head:].mean() * 100), 3),
               "total_pixels_changed_pct": round(float(mask.mean() * 100), 3)}

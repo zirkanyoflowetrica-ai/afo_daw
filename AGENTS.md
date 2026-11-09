@@ -2,8 +2,8 @@
 
 Especificación completa: `docs/MASTER_PROMPT.md`. Resumen de lo que no se negocia:
 
-1. **Referencia visual:** `templates/PLANTILLA_DAW.html` (colores, tipografía, controles) y, para los
-   módulos, `templates/REFERENCIA_PANELES.webp` (noviembre 2026, del usuario: marco grueso del color del
+1. **Referencia visual:** `templates/AllForOne/PLANTILLA_DAW.html` (colores, tipografía, controles) y, para los
+   módulos, `templates/AllForOne/REFERENCIA_PANELES.webp` (noviembre 2026, del usuario: marco grueso del color del
    módulo, cabecera negra con chip blanco del modelo, □ maximizar y ✕, consola CANALES / MIXER). Es un
    DAW profesional con otro flujo, no un juego: los módulos no se solapan y el menú lateral lleva a
    ellos. La interfaz es **nativa Qt Quick** (`app/allforone/qml/`, sin HTML ni Chromium; la web se
@@ -11,6 +11,9 @@ Especificación completa: `docs/MASTER_PROMPT.md`. Resumen de lo que no se negoc
    `theme/` (colores), `controls/` (botones, perillas, medidores…), `modules/` (cuerpo de cada
    módulo), `state/` (estado y lógica compartida), `assets/` (fuentes e icono). Algo que aún no
    funciona lo dice en su cuerpo; nunca se rellena con controles decorativos.
+   **Temas:** cada carpeta de `templates/` con un `theme.json` es un tema (AllForOne es el de fábrica;
+   Professional imita un DAW típico). Los colores y estilos salen de `Theme.qml` (`Theme.apply`), nunca
+   fijos en un módulo. Los módulos tienen tamaño fijo: solo cambia si lo cambia el usuario.
 2. **Capas:** QML dibuja → `bridge.py` (objeto `afo`, slots de Qt, respuestas JSON) → Python coordina
    (`engine_host.py`) → C++ (`native/src/AfoEngine.*`, `AfoSynth.*` y la Biblioteca nativa en
    `native/src/fx/`, Tracktion + JUCE) procesa. Todo el sonido nuevo (síntesis, efectos, grabación)
