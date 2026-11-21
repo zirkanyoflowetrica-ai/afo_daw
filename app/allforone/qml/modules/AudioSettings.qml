@@ -19,6 +19,7 @@ Item {
     property int buffer: 0
     property string status: ""
     property bool failed: false
+    property bool pendingRestart: false         // driver elegido sin dispositivo abierto: se abre al reiniciar
     readonly property bool asio: type === "ASIO"
     anchors.fill: parent
     visible: open
@@ -40,6 +41,11 @@ Item {
                                                                sampleRate: rate, bufferSize: buffer }))
         failed = !r.ok
         device = r.device || device
+        if (r.ok && r.pending) {
+            status = "Sin ningún dispositivo abierto, el driver nuevo se abre al reiniciar AllForOne (cambiarlo en marcha puede cerrar el programa). Guarda el proyecto y pulsa «Reiniciar ahora»."
+            pendingRestart = true
+            return
+        }
         status = r.ok ? "Abierto: " + device.type + " · " + device.output + " · " + device.sample_rate + " Hz · búfer " + device.buffer_size
                       : r.error
         if (r.ok) load(type)
@@ -55,9 +61,9 @@ Item {
         width: Math.min(560, root.width - 40)
         height: col.height + 28
         anchors.centerIn: parent
-        color: Theme.dark ? "#24262c" : "#c9ccd2"
-        border.width: 3; border.color: "#000"
-        Rectangle { x: 6; y: 6; z: -1; width: parent.width; height: parent.height; color: "#000" }
+        color: Theme.dark ? Theme.help : "#c9ccd2"
+        border.width: Math.max(1, Theme.border); border.color: Theme.line; radius: Theme.radius
+        Rectangle { visible: Theme.panelShadowSize > 0; x: 6; y: 6; z: -1; width: parent.width; height: parent.height; color: "#000" }
         MouseArea { anchors.fill: parent }                                         // no cerrar al pulsar dentro
 
         Column {
@@ -123,6 +129,12 @@ Item {
                     visible: root.asio && root.type === root.device.type
                     text: "Panel del driver"; tip: "Panel propio del driver ASIO (en ASIO4ALL: qué entradas y salidas usa)"
                     onClicked: { var r = root.studio.call("audioControlPanel"); if (!r.ok) root.studio.toast(r.error); else root.load(root.type) }
+                }
+                NeoButton {
+                    visible: root.pendingRestart
+                    text: "Reiniciar ahora"; color: Theme.accent; textColor: "#000"
+                    tip: "Cierra y vuelve a abrir AllForOne con el driver elegido (guarda antes tu proyecto)"
+                    onClicked: { var r = root.studio.call("restartApp"); if (!r.ok) root.studio.toast(r.error) }
                 }
                 NeoButton { text: "Releer"; tip: "Volver a buscar dispositivos (tras conectar una interfaz)"; onClicked: root.load(root.type) }
             }

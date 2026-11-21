@@ -34,13 +34,23 @@ FACTORY: dict[str, dict[str, dict[str, float]]] = {
         "Quitar barro": {"mid1Freq": 300, "mid1Gain": -5, "mid1Q": 1.4},
         "Bombo: golpe": {"hpf": 30, "lowFreq": 60, "lowGain": 4, "mid1Freq": 350, "mid1Gain": -5,
                          "mid2Freq": 3500, "mid2Gain": 4, "mid2Q": 1.5},
+        "Master: limpiar y abrir": {"hpf": 25, "hpfSlope": 1, "mid1Freq": 300, "mid1Gain": -1.5, "mid1Q": 0.7,
+                                    "highFreq": 12000, "highGain": 1.5},
         "Teléfono": {"hpf": 400, "hpfSlope": 1, "mid2Freq": 1500, "mid2Gain": 6, "lpf": 3500},
     },
     "compressor": {
         "Voz suave": {"threshold": -20, "ratio": 3, "attack": 10, "release": 150, "knee": 6, "detector": 1, "makeup": 3},
         "Batería paralela": {"threshold": -30, "ratio": 8, "attack": 1, "release": 80, "knee": 3, "makeup": 8, "mix": 40},
         "Bus: pegamento": {"threshold": -16, "ratio": 2, "attack": 30, "release": 200, "knee": 10, "detector": 1, "makeup": 2},
+        "Master: pegamento suave": {"threshold": -14, "ratio": 1.5, "attack": 30, "release": 150, "knee": 12,
+                                    "detector": 1, "makeup": 1},
         "Bajo firme": {"threshold": -22, "ratio": 5, "attack": 15, "release": 120, "makeup": 4},
+    },
+    "limiter": {
+        "Seguro (−1 dBFS)": {"ceiling": -1, "release": 150},
+        "Streaming (−1 dBTP aprox.)": {"input": 3, "ceiling": -1.5, "release": 120},
+        "Fuerte": {"input": 8, "ceiling": -0.3, "release": 60},
+        "Transparente": {"input": 2, "ceiling": -1, "release": 400},
     },
     "gate": {
         "Voz: quitar ruido": {"threshold": -50, "range": -24, "attack": 1, "hold": 80, "release": 250},
@@ -57,6 +67,7 @@ FACTORY: dict[str, dict[str, dict[str, float]]] = {
         "Tubo cálido": {"drive": 9, "character": 0, "tone": -10, "mix": 100},
         "Cinta": {"drive": 12, "character": 1, "tone": -20, "bias": 10, "mix": 100},
         "Recorte duro": {"drive": 24, "character": 2, "tone": 10, "mix": 100, "output": -6},
+        "Master: cinta sutil": {"drive": 4, "character": 1, "tone": 0, "mix": 30},
         "Paralelo sutil": {"drive": 18, "character": 0, "mix": 30},
     },
     "delay": {

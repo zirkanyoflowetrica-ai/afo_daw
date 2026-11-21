@@ -85,7 +85,7 @@ Column {
                        font.family: Theme.font; font.pixelSize: 10; font.weight: 700 }
             }
             NeoButton { id: del; anchors.right: parent.right; anchors.rightMargin: 8; anchors.verticalCenter: parent.verticalCenter
-                        text: "✕"; fontSize: 11; padX: 6; padY: 1; shadow: 2; tip: "Borrar esta versión"
+                        text: "✕"; fontSize: 11; padX: 6; padY: 1; shadow: 2; tip: "Borrar esta versión"; confirm: "¿Borrar?"
                         onClicked: root.mixer.removeVersion(row.index) }
         }
     }

@@ -20,7 +20,16 @@ Item {
     property alias label: lbl
     property bool hovered: mouse.containsMouse
     default property alias content: extra.data
+    // Confirmación en el sitio (guía de diseño §3): con `confirm` («¿Borrar?») el primer clic arma el
+    // botón y solo el segundo, antes de 3 s, emite clicked()
+    property string confirm: ""
+    property bool arming: false
     signal clicked()
+    function press() {
+        if (!confirm.length || arming) { arming = false; root.clicked(); return }
+        arming = true; disarm.restart()
+    }
+    Timer { id: disarm; interval: 3000; onTriggered: root.arming = false }
 
     // Los símbolos (■ ▶ ◐ ✕ …) no están en Space Grotesk: el navegador los toma de Segoe UI Symbol
     function styled(t) {
@@ -28,8 +37,9 @@ Item {
                 .replace(/([←-➿⬀-⯿])/g, '<font face="Segoe UI Symbol">$1</font>')
     }
     readonly property real gap: extra.children.length && text.length ? 7 : 0
-    implicitWidth: Math.round(lbl.implicitWidth + extra.childrenRect.width + gap + 2 * padX + 2 * border)
-    implicitHeight: Math.round(lbl.height + 2 * padY + 2 * border)
+    // nunca menos de 24 × 24 px (WCAG 2.5.8)
+    implicitWidth: Math.max(24, Math.round(lbl.implicitWidth + extra.childrenRect.width + gap + 2 * padX + 2 * border))
+    implicitHeight: Math.max(24, Math.round(lbl.height + 2 * padY + 2 * border))
     property bool wrap: false
     property bool leftAlign: false              // text-align:left (contenido a la izquierda)                   // texto en varias líneas si el botón es más estrecho que el texto
     width: implicitWidth
@@ -47,7 +57,7 @@ Item {
         x: mouse.pressed ? root.sh : 0
         y: mouse.pressed ? root.sh : 0
         width: parent.width; height: parent.height; radius: Theme.radius
-        color: mouse.containsMouse && root.hoverColor !== root.color && !root.pressedState ? root.hoverColor : root.color
+        color: root.arming ? "#b3261e" : mouse.containsMouse && root.hoverColor !== root.color && !root.pressedState ? root.hoverColor : root.color
         border.width: root.border
         border.color: Theme.line
         Row {
@@ -57,9 +67,9 @@ Item {
             Item { id: extra; width: childrenRect.width; height: childrenRect.height; anchors.verticalCenter: parent.verticalCenter }
             Text {
                 id: lbl
-                text: root.styled(root.text)
+                text: root.styled(root.arming ? root.confirm : root.text)
                 textFormat: Text.RichText
-                color: root.textColor
+                color: root.arming ? "#ffffff" : root.textColor
                 font.family: Theme.font
                 font.pixelSize: root.fontSize
                 font.weight: root.fontWeight
@@ -86,9 +96,9 @@ Item {
         anchors.fill: parent
         hoverEnabled: true
         cursorShape: Qt.PointingHandCursor
-        onClicked: root.clicked()
+        onClicked: root.press()
     }
-    Keys.onSpacePressed: root.clicked()
-    Keys.onReturnPressed: root.clicked()
-    ToolTipLite { text: root.tip; show: mouse.containsMouse && root.tip.length > 0 }
+    Keys.onSpacePressed: root.press()
+    Keys.onReturnPressed: root.press()
+    ToolTipLite { text: root.arming ? "Pulsa otra vez para confirmar" : root.tip; show: mouse.containsMouse && (root.tip.length > 0 || root.arming) }
 }

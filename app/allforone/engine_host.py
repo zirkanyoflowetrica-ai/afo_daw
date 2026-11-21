@@ -5,6 +5,7 @@ no se simula audio ni medidores.
 """
 from __future__ import annotations
 
+import json
 import logging
 import math
 import sys
@@ -100,8 +101,33 @@ class EngineHost:
             log.exception("No se pudo iniciar el motor")
             return cls(error=f"No se pudo iniciar el motor: {exc}")
         host = cls(engine=eng)
+        host.apply_pending_device()
         log.info("Motor nativo %s (JUCE %s) | dispositivo %s", afo_audio.version(), afo_audio.juce_version(), eng.device_info())
         return host
+
+    # Sin ningún dispositivo abierto, cambiar de driver con el programa en marcha puede cerrar el
+    # proceso dentro del driver (visto con ASIO). Al arrancar, antes de procesar mensajes, funciona:
+    # la elección se guarda y se aplica al volver a abrir AllForOne.
+    @staticmethod
+    def pending_device_file() -> Path:
+        return paths.user_data_dir() / "motor" / "dispositivo_pendiente.json"
+
+    def save_pending_device(self, d: dict) -> None:
+        f = self.pending_device_file()
+        f.parent.mkdir(parents=True, exist_ok=True)
+        f.write_text(json.dumps(d, ensure_ascii=False), encoding="utf-8")
+
+    def apply_pending_device(self) -> None:
+        f = self.pending_device_file()
+        if not f.is_file():
+            return
+        try:
+            d = json.loads(f.read_text(encoding="utf-8"))
+            f.unlink()
+            err = self.set_audio_device(d)
+            log.info("Dispositivo elegido antes de reiniciar: %s%s", d, f" ({err})" if err else "")
+        except Exception:
+            log.exception("No se pudo aplicar el dispositivo pendiente")
 
     @property
     def ok(self) -> bool:

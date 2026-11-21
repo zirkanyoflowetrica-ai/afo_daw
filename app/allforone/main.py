@@ -55,6 +55,9 @@ def main(argv: list[str] | None = None) -> int:
         return run_child(args.scan_plugins)
 
     setup_logging(args.verbose)
+    from . import diagnostics
+
+    diagnostics.install()
     _prepare_qt_environment()
     log.info("AllForOne %s | Python %s | %s", __version__, sys.version.split()[0], sys.executable)
 

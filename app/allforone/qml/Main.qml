@@ -15,11 +15,26 @@ Window {
     width: 1600; height: 900
     minimumWidth: 900; minimumHeight: 560
     visible: true
-    title: "AllForOne " + appVersion + (pj.name ? " — " + pj.name : "")
+    title: (dirty ? "● " : "") + (pj.name || "Sin título") + " — AllForOne " + appVersion
     color: Theme.bg
 
     // ---------------- estado ----------------
     property bool engineOk: false
+    // Barra de estado (guía de diseño §1): dispositivo de audio y cambios sin guardar
+    property var deviceInfo: ({})
+    property real latencyMs: 0
+    property bool dirty: false
+    // Llamadas al motor que cambian el proyecto (las de leer y medir no cuentan)
+    readonly property var editCalls: ["fxAdd", "fxAddPlugin", "fxApplyPreset", "fxEnable", "fxMove", "fxParam", "fxRemove",
+        "fxRestore", "fxSetAutomation", "clipEdit", "masterLoad", "setMasterCeiling", "setMasterProcessing", "setMasterVolume",
+        "setTrackAudio", "setTrackPan", "setTrackVolume", "synthUpdate", "unmaster"]
+    function markDirty() { if (!loading && !pj.loading) dirty = true }
+    function refreshDevice() {
+        if (!engineOk) return
+        var r = call("deviceStatus")
+        if (r.ok) { deviceInfo = r.device; latencyMs = r.latency_ms }
+    }
+    Timer { interval: 2500; repeat: true; running: win.engineOk; onTriggered: win.refreshDevice() }
     property bool playing: false
     property real posSec: 0                   // posición del motor en segundos
     property int bpm: 96
@@ -100,9 +115,9 @@ Window {
         if (what === "open") return pj.open(path)
         return pj.snapshot()
     }
-    onBpmChanged: sq.rerenderAll()                // el patrón depende del tempo: se vuelve a sintetizar
+    onBpmChanged: { sq.rerenderAll(); markDirty() }   // el patrón depende del tempo: se vuelve a sintetizar
     onHiddenChanged: { syncTrackStates(); sq.arm() }   // módulo quitado = sus pistas desconectadas (no suenan ni graban)
-    onTracksChanged: Qt.callLater(function () { win.geomRev++ })   // las filas de Pistas se movieron
+    onTracksChanged: { markDirty(); Qt.callLater(function () { win.geomRev++ }) }   // las filas de Pistas se movieron
     property var rowCenter: null                  // función de TracksBody: centro de la fila i (coord. del módulo)
     readonly property real bar16: 16 * 4 * 60 / Math.max(40, bpm)
     property real stripScroll: 0               // desplazamiento horizontal de las tiras de la consola
@@ -242,6 +257,19 @@ Window {
         if (what === "remove") { removeExtra(a); return panelList.map(function (q) { return q.pid }) }
         if (what === "rename") { renamePanel(a, b); return { title: titleOf(a), panel: panelItems[a] ? panelItems[a].title : "" } }
         if (what === "goto") { goTo(a); return { currentId: currentId, hidden: !!hidden[a] } }
+        if (what === "contrast") {                // pares texto/fondo del tema actual (guía de diseño §8)
+            var c = function (x) { return String(x) }, out2 = [
+                ["texto/fondo", c(Theme.ink), c(Theme.bg)], ["texto/cabecera", c(Theme.ink), c(Theme.header)],
+                ["texto/campo", c(Theme.ink), c(Theme.input)], ["texto/botón", c(Theme.ink), c(Theme.button)],
+                ["texto/menú", c(Theme.ink), c(Theme.sidebar)], ["botón pulsado", c(Theme.pressedInk), c(Theme.pressedBg)],
+                ["botón principal", "#000000", c(Theme.accent)], ["chip del modelo", c(Theme.chipInk), c(Theme.chip)],
+                ["dispositivo", c(Theme.deviceInk), c(Theme.device)], ["cabecera de dispositivo", c(Theme.deviceInk), c(Theme.deviceHead)]]
+            for (var mid in Theme.pc) {
+                out2.push(["título " + mid, c(Theme.headInk(Theme.pc[mid])), c(Theme.panelHead)])
+                if (mid !== "piano") out2.push(["cuerpo " + mid, c(Theme.ink), c(Theme.panelColor(mid, Theme.pc[mid]))])
+            }
+            return out2
+        }
         if (what === "heights") { var hs = {}; for (var hid in panelItems) hs[hid] = panelItems[hid].height; return hs }
         if (what === "theme") { var ok = setTheme(a, true); return { ok: ok, name: Theme.name, frame: Theme.frame, knob: Theme.knobStyle,
                                                                    themes: loadThemes().map(function (t) { return t.name }) } }
@@ -528,7 +556,10 @@ Window {
     // ---------------- motor ----------------
     function call(name) {
         var args = Array.prototype.slice.call(arguments, 1)
-        try { return JSON.parse(afo[name].apply(afo, args)) } catch (e) { return { ok: false, error: String(e) } }
+        var r
+        try { r = JSON.parse(afo[name].apply(afo, args)) } catch (e) { return { ok: false, error: String(e) } }
+        if (r.ok && editCalls.indexOf(name) >= 0) markDirty()
+        return r
     }
     // stem = false: la pista no es un audio para el mezclador (tono de prueba, master enviado a Pistas)
     function addTrack(info, stem) {
@@ -634,7 +665,7 @@ Window {
     }
     // Tras cambiar de driver se vuelve a armar la pista de voz; algunos (ASIO4ALL) se reinician al
     // arrancar, así que se reintenta unas veces antes de darse por vencido
-    function audioDeviceChanged() { rearm.tries = 0; rearm.restart() }
+    function audioDeviceChanged() { rearm.tries = 0; rearm.restart(); refreshDevice() }
     Timer {
         id: rearm
         interval: 300
@@ -672,12 +703,13 @@ Window {
                     onClicked: win.menuOpen = !win.menuOpen
                 }
                 NeoButton {
-                    text: "■"; tip: "Detener"
+                    text: "■"; tip: "Detener y volver al principio"
                     onClicked: { if (win.engineOk) win.call("stop"); win.step = -1 }
                 }
                 NeoButton {
                     text: win.playing ? "❚❚ Pausa" : "▶ Reproducir"
-                    color: "#ffc233"; textColor: "#000"
+                    tip: "Reproducir o pausar (Espacio)"
+                    color: Theme.accent; textColor: "#000"
                     width: Math.max(100, implicitWidth)
                     onClicked: {
                         if (!win.engineOk) { win.toast("Motor nativo no disponible"); return }
@@ -764,7 +796,7 @@ Window {
         id: sideMenu
         studio: win
         z: 4
-        anchors { top: header.bottom; bottom: parent.bottom; left: parent.left }
+        anchors { top: header.bottom; bottom: statusBar.top; left: parent.left }
         width: win.menuOpen ? 290 : 0
         visible: win.menuOpen
     }
@@ -772,7 +804,7 @@ Window {
     // ---------------- lienzo infinito ----------------
     Item {
         id: viewport
-        anchors { top: header.bottom; left: sideMenu.right; right: parent.right; bottom: parent.bottom }
+        anchors { top: header.bottom; left: sideMenu.right; right: parent.right; bottom: statusBar.top }
         clip: true
         onWidthChanged: if (win.maxId) win.fitMax()
         onHeightChanged: if (win.maxId) win.fitMax()
@@ -1066,30 +1098,18 @@ Window {
     }
 
     // ---------------- ayuda y aviso ----------------
-    Rectangle {                                     // #help
-        z: 4
-        visible: !win.maxId
-        x: viewport.x + 14; y: win.height - 14 - height
-        width: Math.min(helpText.implicitWidth + 24, viewport.width - 28)
-        height: helpText.height + 12
-        color: Theme.help
-        border.width: 2; border.color: "#000"
-        Rectangle { x: 3; y: 3; z: -1; width: parent.width; height: parent.height; color: "#000" }
-        Text {
-            id: helpText
-            x: 10; y: 6; width: Math.min(implicitWidth, viewport.width - 48)
-            wrapMode: Text.Wrap
-            text: "Cabecera: mover (los módulos chocan, no se montan; su tamaño solo cambia si lo cambias tú) · □: maximizar (Esc vuelve) · Bordes: cambiar tamaño · Conectores y cuadrado del cable: arrastrar."
-            color: Theme.ink; font.family: Theme.font; font.pixelSize: 12; font.weight: 600
-            lineHeight: 1.5
-        }
+    StatusBar {                                     // estado siempre visible: audio, proyecto, ayuda, zoom
+        id: statusBar
+        studio: win
+        z: 5
+        anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
     }
     Rectangle {                                     // #toast
         id: toastBox
         z: 6
         opacity: 0
         Behavior on opacity { NumberAnimation { duration: 200 } }
-        x: (win.width - width) / 2; y: win.height - 60 - height
+        x: (win.width - width) / 2; y: statusBar.y - 24 - height
         width: Math.min(toastText.implicitWidth + 28, win.width * 0.9)
         height: toastText.height + 16
         color: "#000"
@@ -1134,10 +1154,15 @@ Window {
             toast(dev.open ? "Motor nativo listo · " + dev.type + " · " + dev.output : "Motor nativo listo · sin dispositivo de salida abierto")
         } else toast("Motor nativo no disponible: " + (info.error || "desconocido"))
         if (engineOk) loadPluginList()            // plugins VST3 de la última búsqueda
+        refreshDevice()
         mx.connect()
         sq.createDefaults()
         firstFit.start()
     }
     Timer { id: firstFit; interval: 60; onTriggered: { win.settleAll(); win.loading = false; win.fitIds(["inst", "drums", "pistas"]) } }
     Shortcut { sequence: "Escape"; enabled: !!win.maxId; onActivated: win.toggleMax(win.maxId) }
+    Shortcut {                                      // Espacio: reproducir / pausa, como en cualquier DAW
+        sequence: "Space"; enabled: win.engineOk
+        onActivated: { var r = win.call("togglePlay"); if (!r.ok) win.toast(r.error) }
+    }
 }

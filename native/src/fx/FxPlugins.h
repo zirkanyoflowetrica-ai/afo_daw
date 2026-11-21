@@ -296,6 +296,17 @@ inline const FxDesc& compDesc()
     return d;
 }
 
+inline const FxDesc& limiterDesc()
+{
+    static const FxDesc d { "limiter", "AF-14", "AFO Limiter", "Dinámica y transitorios",
+        "Limitador de picos con anticipación de 1,5 ms: sube el nivel sin que nada pase del techo.",
+        { { "input", "Entrada", 0, 24, 0, "dB", 6, nullptr, "Cuánto se empuja contra el techo (más volumen, más reducción)" },
+          { "ceiling", "Techo", -6, 0, -1, "dBFS", 0, nullptr, "Nivel máximo de salida (−1 dBFS deja margen para MP3/AAC)" },
+          { "release", "Liberación", 10, 1000, 120, "ms", 100, nullptr, "Cuánto tarda en soltar (corto = más volumen, largo = más limpio)" } },
+        "reducción dB" };
+    return d;
+}
+
 inline const FxDesc& gateDesc()
 {
     static const FxDesc d { "gate", "AF-18", "AFO Gate", "Dinámica y transitorios",
@@ -526,6 +537,27 @@ protected:
     }
 private:
     Compressor comp;
+    std::atomic<float> grMin { 0.0f };
+};
+
+//==============================================================================
+class LimiterFx : public FxBase
+{
+public:
+    LimiterFx (te::PluginCreationInfo i) : FxBase (i, limiterDesc()) {}
+    AFO_FX_TYPE ("afoFxLimiter", limiterDesc)
+    std::vector<float> extraMeters() override { return { grMin.exchange (0.0f) }; }
+    double getLatencySeconds() override { return lim.la / sampleRate; }     // Tracktion la compensa
+protected:
+    void prepareFx (double sr) override { lim.prepare (sr, 1.5f); }
+    void resetFx() override { lim.reset(); }
+    void processFx (float* l, float* r, int n) override
+    {
+        lim.process (l, r, n, dbToGain (p (0)), dbToGain (p (1)), p (2));
+        grMin.store (juce::jmin (grMin.load(), lim.grDb));
+    }
+private:
+    Limiter lim;
     std::atomic<float> grMin { 0.0f };
 };
 
@@ -883,7 +915,7 @@ inline const std::vector<FxType>& fxTypes()
 {
     static const std::vector<FxType> t {
         { gainDesc, GainFx::xmlTypeName }, { stripDesc, StripFx::xmlTypeName }, { eqDesc, EqFx::xmlTypeName },
-        { compDesc, CompressorFx::xmlTypeName }, { gateDesc, GateFx::xmlTypeName }, { deesserDesc, DeEsserFx::xmlTypeName },
+        { compDesc, CompressorFx::xmlTypeName }, { limiterDesc, LimiterFx::xmlTypeName }, { gateDesc, GateFx::xmlTypeName }, { deesserDesc, DeEsserFx::xmlTypeName },
         { satDesc, SaturatorFx::xmlTypeName },
         { delayDesc, DelayFx::xmlTypeName }, { spaceDesc, SpaceFx::xmlTypeName }, { analyzerDesc, AnalyzerFx::xmlTypeName } };
     return t;
@@ -894,7 +926,7 @@ inline void registerFx (te::PluginManager& pm)
     pm.createBuiltInType<GainFx>();      pm.createBuiltInType<StripFx>();   pm.createBuiltInType<EqFx>();
     pm.createBuiltInType<CompressorFx>(); pm.createBuiltInType<GateFx>();   pm.createBuiltInType<SaturatorFx>();
     pm.createBuiltInType<DelayFx>();     pm.createBuiltInType<SpaceFx>();   pm.createBuiltInType<AnalyzerFx>();
-    pm.createBuiltInType<DeEsserFx>();
+    pm.createBuiltInType<DeEsserFx>();  pm.createBuiltInType<LimiterFx>();
 }
 
 inline const char* xmlTypeFor (const std::string& key)

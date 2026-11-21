@@ -165,7 +165,7 @@ Item {
         property string glyph
         property string tip
         signal clicked()
-        width: Theme.headHeight - 16; height: width
+        width: Math.max(24, Theme.headHeight - 16); height: width   // nunca menos de 24 px (WCAG 2.5.8)
         color: hbm.containsMouse ? Theme.accent : Theme.chip
         border.width: Math.min(2, Theme.buttonBorder); border.color: Theme.panelBorder; radius: Theme.radius
         anchors.verticalCenter: parent ? parent.verticalCenter : undefined

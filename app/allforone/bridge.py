@@ -6,6 +6,7 @@ Todas las respuestas son JSON: {"ok": bool, ...}.
 """
 from __future__ import annotations
 
+import functools
 import json
 import logging
 import math
@@ -52,6 +53,19 @@ def _ok(**kw) -> str:
 def _err(msg: str, **kw) -> str:
     log.warning(msg)
     return _json({"ok": False, "error": msg, **kw})
+
+
+def _safe(fn):
+    """Un error de Python dentro de un slot vuelve a QML como {"ok": false} (con su traza en el
+    registro) en vez de `undefined`, que rompía la interfaz al leer `r.ok`."""
+    @functools.wraps(fn)
+    def wrapper(*a, **kw):
+        try:
+            return fn(*a, **kw)
+        except Exception as exc:
+            log.exception("Error en %s", fn.__name__)
+            return _json({"ok": False, "error": f"Error interno en {fn.__name__}: {exc}"})
+    return wrapper
 
 
 def audio_files(items) -> list[str]:
@@ -126,6 +140,7 @@ class Bridge(QObject):
 
     # --- conexión -------------------------------------------------------------
     @Slot(result=str)
+    @_safe
     def hello(self) -> str:
         self.hello_count += 1
         return json.dumps(self.host.info())
@@ -136,6 +151,7 @@ class Bridge(QObject):
 
     # --- transporte -------------------------------------------------------------
     @Slot(result=str)
+    @_safe
     def togglePlay(self) -> str:
         if (g := self._guard()):
             return g
@@ -150,6 +166,7 @@ class Bridge(QObject):
         return _ok(playing=True)
 
     @Slot(result=str)
+    @_safe
     def stop(self) -> str:
         if (g := self._guard()):
             return g
@@ -157,6 +174,7 @@ class Bridge(QObject):
         return _ok()
 
     @Slot(float, result=str)
+    @_safe
     def seek(self, seconds: float) -> str:
         """Lleva el cursor de reproducción a ese segundo (clic en la regla o en un carril de Pistas)."""
         if (g := self._guard()):
@@ -165,6 +183,7 @@ class Bridge(QObject):
         return _ok()
 
     @Slot(float, result=str)
+    @_safe
     def setTempo(self, bpm: float) -> str:
         if (g := self._guard()):
             return g
@@ -173,6 +192,7 @@ class Bridge(QObject):
 
     # --- mezcla ------------------------------------------------------------------
     @Slot(float, result=str)
+    @_safe
     def setMasterVolume(self, pos: float) -> str:
         if (g := self._guard()):
             return g
@@ -181,6 +201,7 @@ class Bridge(QObject):
         return _ok(db=db)
 
     @Slot(float, float, bool, result=str)
+    @_safe
     def setMasterProcessing(self, drive: float, tone: float, limiter: bool) -> str:
         """Saturación, Tono y Limitador de «Mezcla final» (sección master del motor)."""
         if (g := self._guard()):
@@ -189,6 +210,7 @@ class Bridge(QObject):
         return _ok()
 
     @Slot(int, float, result=str)
+    @_safe
     def setTrackVolume(self, track_id: int, pos: float) -> str:
         if (g := self._guard()):
             return g
@@ -197,6 +219,7 @@ class Bridge(QObject):
         return _ok(db=db)
 
     @Slot(int, float, result=str)
+    @_safe
     def setTrackPan(self, track_id: int, pan: float) -> str:
         if (g := self._guard()):
             return g
@@ -204,6 +227,7 @@ class Bridge(QObject):
         return _ok()
 
     @Slot(str, result=str)
+    @_safe
     def setTrackStates(self, payload: str) -> str:
         if (g := self._guard()):
             return g
@@ -215,6 +239,7 @@ class Bridge(QObject):
     # --- tomas del grabador --------------------------------------------------------
     # --- configuración de audio (driver, dispositivo, frecuencia, búfer) ---------------------
     @Slot(str, result=str)
+    @_safe
     def audioOptions(self, type_name: str) -> str:
         if (g := self._guard()):
             return g
@@ -224,11 +249,18 @@ class Bridge(QObject):
             return _err(f"No se pudo leer el dispositivo: {exc}")
 
     @Slot(str, result=str)
+    @_safe
     def setAudioDevice(self, payload: str) -> str:
         if (g := self._guard()):
             return g
+        want = json.loads(payload)
+        info = self.host.engine.device_info()
+        if not info.get("open"):
+            self.host.save_pending_device(want)
+            log.info("Sin dispositivo abierto: %s queda para el próximo arranque", want)
+            return _ok(pending=True, device=info)
         try:
-            err = self.host.set_audio_device(json.loads(payload))
+            err = self.host.set_audio_device(want)
         except Exception as exc:
             return _err(f"No se pudo cambiar el dispositivo: {exc}")
         info = self.host.engine.device_info()
@@ -238,6 +270,32 @@ class Bridge(QObject):
         return _ok(device=info)
 
     @Slot(result=str)
+    @_safe
+    def deviceStatus(self) -> str:
+        """Lo que muestra la barra de estado: dispositivo y latencia de salida."""
+        if not self.host.ok:
+            return _err("Motor nativo no disponible")
+        info = self.host.engine.device_info()
+        lat = 0.0
+        if info.get("open"):
+            o = self.host.audio_options("")
+            lat = float(o.get("output_latency_ms") or 0) + 1000.0 * info["buffer_size"] / max(1.0, info["sample_rate"])
+        return _ok(device=info, latency_ms=lat)
+
+    @Slot(result=str)
+    @_safe
+    def restartApp(self) -> str:
+        """Cierra y vuelve a abrir AllForOne (para aplicar un dispositivo de audio pendiente)."""
+        import sys
+        from PySide6.QtCore import QCoreApplication, QProcess
+        args = sys.argv[1:] if paths.is_frozen() else ["-m", "allforone", *sys.argv[1:]]
+        if not QProcess.startDetached(sys.executable, args, str(Path.cwd())):
+            return _err("No se pudo volver a abrir AllForOne: ábrelo tú")
+        QTimer.singleShot(200, QCoreApplication.quit)
+        return _ok()
+
+    @Slot(result=str)
+    @_safe
     def audioControlPanel(self) -> str:
         if (g := self._guard()):
             return g
@@ -247,12 +305,14 @@ class Bridge(QObject):
 
     # --- grabador de cintas: graba el motor (Tracktion), no la interfaz ---------------------
     @Slot(result=str)
+    @_safe
     def recInputs(self) -> str:
         if (g := self._guard()):
             return g
         return _ok(inputs=self.host.engine.record_inputs())
 
     @Slot(str, result=str)
+    @_safe
     def recCreate(self, name: str) -> str:
         if (g := self._guard()):
             return g
@@ -262,6 +322,7 @@ class Bridge(QObject):
             return _err(f"No se pudo crear la pista de voz: {exc}")
 
     @Slot(int, str, bool, result=str)
+    @_safe
     def recArm(self, track_id: int, input_name: str, monitor: bool) -> str:
         if (g := self._guard()):
             return g
@@ -272,6 +333,7 @@ class Bridge(QObject):
         return _err(err) if err else _ok(state=self.host._rec_state())
 
     @Slot(result=str)
+    @_safe
     def recStart(self) -> str:
         if (g := self._guard()):
             return g
@@ -279,6 +341,7 @@ class Bridge(QObject):
         return _err(err) if err else _ok()
 
     @Slot(bool, result=str)
+    @_safe
     def recStop(self, discard: bool) -> str:
         if (g := self._guard()):
             return g
@@ -291,6 +354,7 @@ class Bridge(QObject):
         return _ok(track=info)
 
     @Slot(int, result=str)
+    @_safe
     def recListen(self, track_id: int) -> str:
         """Escuchar la toma de una pista de voz (o pararla si ya suena)."""
         if (g := self._guard()):
@@ -308,10 +372,12 @@ class Bridge(QObject):
 
     # --- efectos nativos (biblioteca AFO, Hito 1) -----------------------------------------
     @Slot(result=str)
+    @_safe
     def fxCatalog(self) -> str:
         return _ok(catalog=self.host.effect_catalog())
 
     @Slot(int, str, int, result=str)
+    @_safe
     def fxAdd(self, track_id: int, key: str, index: int) -> str:
         if (g := self._guard()):
             return g
@@ -331,6 +397,7 @@ class Bridge(QObject):
         return out
 
     @Slot(int, result=str)
+    @_safe
     def fxList(self, track_id: int) -> str:
         if (g := self._guard()):
             return g
@@ -340,6 +407,7 @@ class Bridge(QObject):
             return _err(str(exc))
 
     @Slot(int, int, result=str)
+    @_safe
     def fxRemove(self, effect_id: int, track_id: int) -> str:
         if (g := self._guard()):
             return g
@@ -348,6 +416,7 @@ class Bridge(QObject):
         return _ok(chain=self._chain(track_id))
 
     @Slot(int, int, int, result=str)
+    @_safe
     def fxMove(self, effect_id: int, index: int, track_id: int) -> str:
         if (g := self._guard()):
             return g
@@ -355,6 +424,7 @@ class Bridge(QObject):
         return _ok(chain=self._chain(track_id))
 
     @Slot(int, str, float, result=str)
+    @_safe
     def fxParam(self, effect_id: int, param: str, value: float) -> str:
         if (g := self._guard()):
             return g
@@ -364,6 +434,7 @@ class Bridge(QObject):
             return _err(str(exc))
 
     @Slot(int, bool, result=str)
+    @_safe
     def fxEnable(self, effect_id: int, enabled: bool) -> str:
         if (g := self._guard()):
             return g
@@ -371,6 +442,7 @@ class Bridge(QObject):
         return _ok()
 
     @Slot(int, result=str)
+    @_safe
     def fxMeters(self, effect_id: int) -> str:
         if (g := self._guard()):
             return g
@@ -380,6 +452,7 @@ class Bridge(QObject):
             return _err(str(exc))
 
     @Slot(float, result=str)
+    @_safe
     def setMasterCeiling(self, db: float) -> str:
         """Techo del limitador del master (−6..0 dBFS); Master IA lo fija según el preset."""
         if (g := self._guard()):
@@ -388,6 +461,7 @@ class Bridge(QObject):
         return _ok(ceiling=self.host.engine.master_ceiling())
 
     @Slot(int, int, result=str)
+    @_safe
     def chainScope(self, track_id: int, bands: int) -> str:
         """Antes / después de la cadena de una pista (0 = master): espectro y nivel a la entrada del
         primer efecto activo y a la salida del último. Sin archivos: tomas del audio en curso."""
@@ -402,6 +476,7 @@ class Bridge(QObject):
             return _err(str(exc))
 
     @Slot(int, int, result=str)
+    @_safe
     def fxSpectrum(self, effect_id: int, bands: int) -> str:
         """Espectro del Analizador (AF-76): dB por banda logarítmica de 20 Hz a 20 kHz."""
         if (g := self._guard()):
@@ -419,6 +494,7 @@ class Bridge(QObject):
         raise KeyError(f"Efecto desconocido: {key}")
 
     @Slot(str, result=str)
+    @_safe
     def fxPresets(self, key: str) -> str:
         try:
             return _ok(presets=fx_presets.listing(key))
@@ -426,6 +502,7 @@ class Bridge(QObject):
             return _err(str(exc))
 
     @Slot(int, str, result=str)
+    @_safe
     def fxApplyPreset(self, effect_id: int, name: str) -> str:
         """Pone todos los parámetros del efecto con los valores del preset (los que no nombra, por defecto)."""
         if (g := self._guard()):
@@ -440,6 +517,7 @@ class Bridge(QObject):
             return _err(f"No se pudo aplicar el preset: {exc}")
 
     @Slot(int, str, result=str)
+    @_safe
     def fxSavePreset(self, effect_id: int, name: str) -> str:
         if (g := self._guard()):
             return g
@@ -452,6 +530,7 @@ class Bridge(QObject):
             return _err(str(exc))
 
     @Slot(str, str, result=str)
+    @_safe
     def fxDeletePreset(self, key: str, name: str) -> str:
         try:
             if not fx_presets.delete(key, name):
@@ -461,6 +540,7 @@ class Bridge(QObject):
             return _err(str(exc))
 
     @Slot(int, str, result=str)
+    @_safe
     def fxAutomation(self, effect_id: int, param: str) -> str:
         if (g := self._guard()):
             return g
@@ -470,6 +550,7 @@ class Bridge(QObject):
             return _err(str(exc))
 
     @Slot(int, str, str, result=str)
+    @_safe
     def fxSetAutomation(self, effect_id: int, param: str, points_json: str) -> str:
         """Puntos [[segundos, valor], …] de la automatización de un parámetro; [] la quita."""
         if (g := self._guard()):
@@ -483,6 +564,7 @@ class Bridge(QObject):
             return _err(f"No se pudo guardar la automatización: {exc}")
 
     @Slot(int, result=str)
+    @_safe
     def fxInfo(self, effect_id: int) -> str:
         if (g := self._guard()):
             return g
@@ -492,6 +574,7 @@ class Bridge(QObject):
             return _err(str(exc))
 
     @Slot(int, str, result=str)
+    @_safe
     def fxRestore(self, track_id: int, chain_json: str) -> str:
         """Sustituye la cadena de efectos de una pista por una guardada (al abrir un proyecto)."""
         if (g := self._guard()):
@@ -512,11 +595,13 @@ class Bridge(QObject):
 
     # --- temas (carpeta templates/ del programa) ----------------------------------------
     @Slot(result=str)
+    @_safe
     def themeList(self) -> str:
         """Temas: cada carpeta de templates/ con un theme.json (copiar la carpeta = compartir el tema)."""
         return _ok(themes=themes.list_themes(), folder=str(themes.folder()))
 
     @Slot(str, result=str)
+    @_safe
     def themeLoad(self, name: str) -> str:
         try:
             return _ok(theme=themes.load(name))
@@ -524,6 +609,7 @@ class Bridge(QObject):
             return _err(f"No se pudo cargar el tema «{name}»: {exc}")
 
     @Slot(result=str)
+    @_safe
     def themeFolder(self) -> str:
         from PySide6.QtCore import QUrl
         from PySide6.QtGui import QDesktopServices
@@ -532,6 +618,7 @@ class Bridge(QObject):
 
     # --- versiones de master (Rebobinado) ----------------------------------------------
     @Slot(bool, result=str)
+    @_safe
     def masterSnapshot(self, measure: bool) -> str:
         """Cadena del master tal como suena ahora (valores, plugins, automatización) y su techo; con
         `measure`, también su sonoridad procesando la sesión en memoria."""
@@ -553,6 +640,7 @@ class Bridge(QObject):
             return _err(f"No se pudo leer el master: {exc}")
 
     @Slot(str, result=str)
+    @_safe
     def masterLoad(self, version_json: str) -> str:
         """Pone en el master una versión guardada (su cadena y su techo)."""
         if (g := self._guard()):
@@ -574,6 +662,7 @@ class Bridge(QObject):
 
     # --- edición de clips de audio (Pistas) -------------------------------------------
     @Slot(int, result=str)
+    @_safe
     def clipList(self, track_id: int) -> str:
         if (g := self._guard()):
             return g
@@ -583,6 +672,7 @@ class Bridge(QObject):
             return _err(f"No se pudieron leer los clips: {exc}")
 
     @Slot(int, str, result=str)
+    @_safe
     def clipEdit(self, track_id: int, op_json: str) -> str:
         """Una edición de clip: range (mover/recortar), split, dup, remove, gain, fades, normalize o set
         (sustituir todos: deshacer y abrir proyecto). Devuelve los clips de la pista y su duración."""
@@ -621,6 +711,7 @@ class Bridge(QObject):
             return _err(f"No se pudo editar el clip: {exc}")
 
     @Slot(str, str, result=str)
+    @_safe
     def projectSave(self, doc_json: str, path: str) -> str:
         """Guarda la sesión. `path` vacío = elegir archivo; la interfaz recuerda el último."""
         if (g := self._guard()):
@@ -642,6 +733,7 @@ class Bridge(QObject):
             return _err(f"No se pudo guardar el proyecto: {exc}")
 
     @Slot(str, result=str)
+    @_safe
     def projectOpen(self, path: str) -> str:
         """Lee un proyecto; la interfaz recrea la sesión con él (ver qml/state/Project.qml)."""
         if not path:
@@ -656,6 +748,7 @@ class Bridge(QObject):
             return _err(f"No se pudo abrir el proyecto: {exc}")
 
     @Slot(str, str, result=str)
+    @_safe
     def addAudioPath(self, path: str, name: str) -> str:
         """Pista de audio desde una ruta conocida (al abrir un proyecto), sin diálogo."""
         if (g := self._guard()):
@@ -666,6 +759,7 @@ class Bridge(QObject):
             return _err(f"No se pudo cargar {Path(path).name}: {exc}")
 
     @Slot(int, str, float, result=str)
+    @_safe
     def setTrackAudio(self, track_id: int, path: str, start: float) -> str:
         """Pone una toma guardada en una pista de voz."""
         if (g := self._guard()):
@@ -680,6 +774,7 @@ class Bridge(QObject):
 
     # --- pistas -------------------------------------------------------------------
     @Slot(result=str)
+    @_safe
     def importAudio(self) -> str:
         if (g := self._guard()):
             return g
@@ -689,6 +784,7 @@ class Bridge(QObject):
         return self.import_paths(files)
 
     @Slot(str, result=str)
+    @_safe
     def importPaths(self, payload: str) -> str:
         """Importa a Pistas archivos soltados desde el Explorador."""
         if (g := self._guard()):
@@ -754,6 +850,7 @@ class Bridge(QObject):
 
     # --- Instrumento y Batería: sintetizador del motor (clip MIDI + plugin) --------------
     @Slot(str, int, result=str)
+    @_safe
     def synthCreate(self, name: str, mode: int) -> str:
         """Pista nueva con el sintetizador del motor (mode 0 = instrumento, 1 = batería)."""
         if (g := self._guard()):
@@ -761,6 +858,7 @@ class Bridge(QObject):
         return _ok(track=self.host.add_synth(name, int(mode)))
 
     @Slot(int, str, result=str)
+    @_safe
     def synthUpdate(self, track_id: int, payload: str) -> str:
         """Parámetros y patrón de la pista: {type, cfg, clips, roll | pat, sus}. Inmediato (sin renderizar)."""
         if (g := self._guard()):
@@ -778,6 +876,7 @@ class Bridge(QObject):
 
     # --- plugins VST3 externos ------------------------------------------------------
     @Slot(result=str)
+    @_safe
     def pluginScan(self) -> str:
         """Busca VST3 en las carpetas estándar de Windows en otro proceso (un plugin que se cuelga no
         cierra AllForOne). Responde enseguida; el avance llega por `pluginScanEvent`."""
@@ -801,6 +900,7 @@ class Bridge(QObject):
         self.pluginScanEvent.emit(json.dumps(_clean(ev), ensure_ascii=False))
 
     @Slot(result=str)
+    @_safe
     def pluginList(self) -> str:
         if (g := self._guard()):
             return g
@@ -810,6 +910,7 @@ class Bridge(QObject):
             return _err(f"No se pudo leer la lista de plugins: {exc}")
 
     @Slot(int, str, int, result=str)
+    @_safe
     def fxAddPlugin(self, track_id: int, plugin_id: str, index: int) -> str:
         if (g := self._guard()):
             return g
@@ -821,6 +922,7 @@ class Bridge(QObject):
             return _err(f"No se pudo cargar el plugin: {exc}")
 
     @Slot(int, result=str)
+    @_safe
     def fxPluginEditor(self, effect_id: int) -> str:
         if (g := self._guard()):
             return g
@@ -830,6 +932,7 @@ class Bridge(QObject):
             return _err(f"No se pudo abrir el plugin: {exc}")
 
     @Slot(int, result=str)
+    @_safe
     def instPluginEditor(self, track_id: int) -> str:
         if (g := self._guard()):
             return g
@@ -839,6 +942,7 @@ class Bridge(QObject):
             return _err(f"No se pudo abrir el instrumento: {exc}")
 
     @Slot(str, result=str)
+    @_safe
     def synthAudition(self, payload: str) -> str:
         """Escuchar una nota ({type, cfg, note, seconds}) o un golpe ({type: drum, cfg, lane}) al pulsar."""
         if (g := self._guard()):
@@ -848,6 +952,7 @@ class Bridge(QObject):
         return _ok(playing=self.host.audition(json.loads(payload)))
 
     @Slot(result=str)
+    @_safe
     def addTestTone(self) -> str:
         if (g := self._guard()):
             return g
@@ -857,6 +962,7 @@ class Bridge(QObject):
             return _err(f"Tono de prueba: {exc}")
 
     @Slot(int, result=str)
+    @_safe
     def removeTrack(self, track_id: int) -> str:
         if (g := self._guard()):
             return g
@@ -864,6 +970,7 @@ class Bridge(QObject):
 
     # --- exportación ------------------------------------------------------------------
     @Slot(result=str)
+    @_safe
     def exportMix(self) -> str:
         if (g := self._guard()):
             return g
@@ -885,6 +992,7 @@ class Bridge(QObject):
 
     # --- Mezclador V4.2 (paneles Mezcla IA, Afinador, Master IA, Antes/Después) ---------------
     @Slot(str, str, result=str)
+    @_safe
     def mixer(self, cmd: str, payload: str) -> str:
         try:
             data = json.loads(payload or "{}")

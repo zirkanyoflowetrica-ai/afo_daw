@@ -235,6 +235,7 @@ QtObject {
     function toggleRoll(r, c) {
         var t = active("inst"); if (!t) return
         var roll = Object.assign({}, t.roll), k = r + "-" + c
+        if (base[r] === undefined) return                  // fila fuera del teclado
         if (roll[k]) delete roll[k]; else { roll[k] = 1; previewNote(t.cfg, base[r]) }
         replace(t.uid, { roll: roll }); update(t.uid)
     }

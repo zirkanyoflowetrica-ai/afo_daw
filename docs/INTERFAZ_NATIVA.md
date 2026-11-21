@@ -293,3 +293,31 @@ normalizar / deshacer clips en el motor.
   (`MasteringBody.qml`) es la mesa del master; **MASTERIZAR AUTOMÁTICAMENTE** (`AutoMasterBox.qml`)
   va bajo Efectos master; **Rebobinado** (`MasterBody.qml`) lista las versiones para cargar,
   renombrar, borrar y exportar.
+
+## Estabilidad y diseño amigable (21 de noviembre de 2026)
+
+Guía: `docs/GUIA_DISENO_INTERFAZ.md` (heurísticas de Nielsen, reglas de Shneiderman, WCAG 2.2,
+leyes de Fitts y Hick, convenciones de los dispositivos de Ableton). Lo que se aplicó:
+
+- **Barra de estado** fija abajo (`controls/StatusBar.qml`): dispositivo, frecuencia, búfer y
+  latencia; «⚠ Sin salida de audio» en rojo con texto (clic abre ⚙ Audio); proyecto y «● cambios
+  sin guardar (Ctrl+S)»; ayuda corta y zoom. Sustituye al cuadro de ayuda flotante. El título de la
+  ventana lleva «●» con cambios sin guardar.
+- **Espacio** reproduce o pausa; los tooltips del transporte dicen su atajo.
+- **Confirmación en el sitio** (`NeoButton.confirm`): quitar una pista o borrar una versión de master
+  pide un segundo clic («¿Quitar?» / «¿Borrar?» en rojo) antes de 3 s; si no, el botón vuelve solo.
+- **Dispositivos de efecto** como en Ableton: activador de 14 px (área de 24), nombre tachado en
+  bypass, doble clic en el nombre pliega la tarjeta, chip «AUTO» para lo que puso la mezcla automática,
+  valores de las perillas a 11 px sin transparencias, botones de 24 × 24 px.
+- **Contraste medido:** el selftest calcula la relación WCAG de cada par texto/fondo de los tres temas
+  (`layoutCommand("contrast")`) y exige ≥ 4,5:1.
+- **Driver de audio sin dispositivo abierto:** cambiarlo en marcha podía cerrar el programa dentro
+  del driver (ASIO); ahora se guarda y se aplica al arrancar, con un botón «Reiniciar ahora».
+- **Fallos:** los slots del puente devuelven el error en vez de lanzar; `logs/cierre.log` guarda la
+  traza de un cierre inesperado y los avisos de QML van al registro.
+- **AFO Limiter (AF-14)** cierra la cadena del master automático con el techo del preset y presets
+  de mastering nuevos en EQ, compresor y saturador.
+- **Perillas de los dispositivos:** mostraban siempre el valor por defecto (buscaban su índice con
+  `indexOf` sobre una copia del parámetro); ahora lo buscan por id y enseñan el valor real del motor,
+  también el que deja la mezcla o el master automático. Los botones ◀ ▶ ≡ de la cabecera salen al
+  pasar el ratón o con la tarjeta elegida, para que el nombre quepa; el selector dice «Preset…».

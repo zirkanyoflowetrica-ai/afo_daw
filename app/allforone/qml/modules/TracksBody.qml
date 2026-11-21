@@ -281,7 +281,7 @@ Column {
                                                 textColor: row.modelData.solo ? "#000" : Theme.ink
                                                 tip: "Solo"; onClicked: root.toggleSolo(row.index) }
                                     NeoButton { text: "✕"; fontSize: 12; padX: 6; padY: 0; shadow: 2
-                                                tip: "Quitar pista"; onClicked: root.removeTrack(row.index) }
+                                                tip: "Quitar pista (y su canal y efectos)"; confirm: "¿Quitar?"; onClicked: root.removeTrack(row.index) }
                                 }
                                 Row {                       // .afo-trole: tipo y rol de voz
                                     id: trole

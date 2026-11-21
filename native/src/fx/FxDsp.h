@@ -164,6 +164,53 @@ struct Compressor
     }
 };
 
+// Limitador de picos con anticipación: la señal sale `la` muestras tarde y la ganancia ya ha bajado
+// cuando llega el pico (ataque en la ventana de anticipación, se mantiene la ventana y luego libera).
+// Por debajo del techo la ganancia es exactamente 1 (transparente); un recorte final en el techo
+// garantiza que nada lo pasa.
+struct Limiter
+{
+    static constexpr int maxLook = 1024;
+    std::array<std::array<float, maxLook>, 2> buf {};
+    int la = 64, pos = 0, hold = 0;
+    float target = 1.0f, gain = 1.0f, attack = 0.0f, grDb = 0.0f;
+    double sr = 48000;
+    Coef rel;
+
+    void prepare (double sampleRate, float lookMs)
+    {
+        sr = sampleRate;
+        la = std::clamp ((int) std::lround (lookMs * 0.001 * sr), 1, maxLook);
+        attack = 1.0f - std::exp (-5.0f / (float) la);
+        rel = {};
+        reset();
+    }
+    void reset() { for (auto& b : buf) b.fill (0.0f); pos = hold = 0; target = gain = 1.0f; grDb = 0.0f; }
+
+    void process (float* l, float* r, int n, float inGain, float ceiling, float releaseMs) noexcept
+    {
+        const float rc = rel.get (releaseMs, sr);
+        float lo = 1.0f;
+        for (int i = 0; i < n; ++i)
+        {
+            const float inL = l[i] * inGain, inR = r[i] * inGain;
+            const float peak = std::max (std::abs (inL), std::abs (inR));
+            if (peak > ceiling && ceiling / peak < target) { target = ceiling / peak; hold = la; }
+            else if (hold > 0) --hold;
+            else target += (1.0f - target) * rc;
+            gain += (target - gain) * (target < gain ? attack : rc);
+            if (gain > 0.99999f && target >= 1.0f) gain = 1.0f;
+            lo = std::min (lo, gain);
+            const float outL = buf[0][(size_t) pos] * gain, outR = buf[1][(size_t) pos] * gain;
+            buf[0][(size_t) pos] = inL; buf[1][(size_t) pos] = inR;
+            if (++pos >= la) pos = 0;
+            l[i] = std::clamp (outL, -ceiling, ceiling);
+            r[i] = std::clamp (outR, -ceiling, ceiling);
+        }
+        grDb = gainToDb (lo);
+    }
+};
+
 // Puerta de ruido: histéresis, mantenimiento, ataque y cierre; `range` es la atenuación al cerrar
 struct Gate
 {

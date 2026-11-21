@@ -94,6 +94,21 @@ def build_native_window(host):
     return engine, window, bridge
 
 
+def _luminance(hex_color: str) -> float:
+    h = hex_color.lstrip("#")[-6:]           # "#aarrggbb" de Qt: la opacidad no cuenta
+    def lin(c):
+        c = int(c, 16) / 255
+        return c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4
+    r, g, b = (lin(h[i:i + 2]) for i in (0, 2, 4))
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b
+
+
+def contrast_ratio(fg: str, bg: str) -> float:
+    """Contraste WCAG 2.x entre dos colores «#rrggbb»: de 1 a 21."""
+    a, b = sorted((_luminance(fg), _luminance(bg)), reverse=True)
+    return (a + 0.05) / (b + 0.05)
+
+
 def _native_fx_checks(rep, app, host, window, bridge, track_id: int) -> None:
     """Módulo Efectos: insertar en una pista desde la interfaz y leer lo que mide el motor."""
     from PySide6.QtCore import QMetaObject, Q_ARG, Q_RETURN_ARG
@@ -106,7 +121,7 @@ def _native_fx_checks(rep, app, host, window, bridge, track_id: int) -> None:
         return v.toVariant() if hasattr(v, "toVariant") else v
 
     st = fx("target", track_id)
-    rep.check("Efectos: catálogo del motor (10 módulos)", st and st["catalog"] == 10, st and st["catalog"])
+    rep.check("Efectos: catálogo del motor (11 módulos)", st and st["catalog"] == 11, st and st["catalog"])
     fx("add", "eq")
     st = fx("add", "analyzer")
     rep.check("Efectos: insertar EQ y Analizador en la pista", [e["key"] for e in st["chain"]] == ["eq", "analyzer"],
@@ -203,6 +218,13 @@ def _native_daw_checks(rep, app, host, window, bridge, track_id) -> None:
               and {"AllForOne", "AllForOne Oscuro", "Professional"} <= set(t["themes"]), t)
     t = lay("theme", "AllForOne")
     rep.check("volver al tema AllForOne", t["ok"] and t["name"] == "AllForOne" and t["frame"] == 9, t)
+
+    # Guía de diseño §8: contraste WCAG AA (texto ≥ 4,5:1) en cada tema de fábrica
+    for name in ("AllForOne", "AllForOne Oscuro", "Professional"):
+        lay("theme", name)
+        low = [(what, round(r, 2)) for what, fg, bg in lay("contrast") if (r := contrast_ratio(fg, bg)) < 4.5]
+        rep.check(f"contraste del tema {name}: todo el texto ≥ 4,5:1 (WCAG AA)", not low, low)
+    lay("theme", "AllForOne")
 
 
 def _native_project_checks(rep, app, host, window) -> None:

@@ -217,7 +217,8 @@ def plan(m, stems: list[dict], opts: dict, progress=None) -> dict:
 
 
 def master_chain(m, preset: str, bands: dict, crest_db: float, pre_gain_db: float) -> list[dict]:
-    """La cadena de master() del V4.2 como efectos: entrada a −18 LUFS, EQ, compresión, color y nivel final."""
+    """La cadena de master() del V4.2 como efectos: entrada a −18 LUFS, EQ, compresión, color, nivel final
+    y el limitador (AFO Limiter, con el techo del preset: su reducción se ve en la tarjeta)."""
     p = m.eng.MASTERS[preset]
     eq = {"hpf": 24}
     if bands.get("mud", 0.0) > .27:
@@ -231,6 +232,7 @@ def master_chain(m, preset: str, bands: dict, crest_db: float, pre_gain_db: floa
                          knee=0, detector=0, makeup=0, mix=100))
     chain.append(_fx("saturator", "Color del master (V4.2)", drive=4, character=1, tone=0, bias=0, mix=2.5, output=0))
     chain.append(_fx("gain", "Nivel final del master", input=0, output=0))
+    chain.append(_fx("limiter", "Limitador del master", input=0, ceiling=float(p["tp"]), release=120))
     return chain
 
 
@@ -291,19 +293,19 @@ def apply_master(eng, m, preset: str, bands: dict, old_ids: list[int], target_lu
     else:
         eng.set_effect_param(ids[0], "input", float(np.clip(pre, -36, 36)))
         chain[0]["values"]["input"] = pre
-    final = ids[-1]
+    final = ids[-2]                                  # «Nivel final», justo antes del limitador
     eng.effect_meters(final)                         # vacía el pico de salida antes de medir
     m1 = _measure(eng)["master"]
     peak_pre = eng.effect_meters(final)[1]           # pico antes del limitador
     budget = p["tp"] - peak_pre + p["max_gr"]
     gain = min(float(np.clip(p["lufs"] - m1["lufs_i"], -18, 18)), budget)
     eng.set_effect_param(final, "output", float(np.clip(gain, -36, 36)))
-    chain[-1]["values"]["output"] = gain
+    chain[-2]["values"]["output"] = gain
     m2 = _measure(eng)["master"]
     if m2["lufs_i"] < p["lufs"] - .5 and gain < budget:   # una corrección: el limitador baja la media
         gain = min(gain + (p["lufs"] - m2["lufs_i"]), budget)
         eng.set_effect_param(final, "output", float(np.clip(gain, -36, 36)))
-        chain[-1]["values"]["output"] = gain
+        chain[-2]["values"]["output"] = gain
         m2 = _measure(eng)["master"]
     stats = {"preset": preset, "target_lufs": p["lufs"], "ceiling_db": p["tp"], "lufs_i": round(m2["lufs_i"], 2),
              "max_peak_db": round(m2["max_peak_db"], 2), "input_lufs": round(l0, 2), "pre_gain_db": round(pre, 2),

@@ -21,6 +21,8 @@ Column {
     property int menuFor: -1                    // efecto con el menú ⋮ abierto
     property var presetCache: ({})              // key → [{name, factory}]
     property var cardLive: ({})                 // id → medidores (delay: tiempo real; analizador: espectro)
+    property var folded: ({})                   // id → true: dispositivo plegado (doble clic en su nombre, como en Ableton)
+    function toggleFold(id) { var f = Object.assign({}, folded); if (f[id]) delete f[id]; else f[id] = true; folded = f }
     property var catalog: []
     property int target: 0                      // pista del motor (0 = master)
     property var chain: []
@@ -61,6 +63,8 @@ Column {
     readonly property var autoDesc: { if (!type) return null; for (var i = 0; i < type.params.length; i++) if (type.params[i].id === autoParam) return type.params[i]; return null }
     readonly property real span: studio.bar16                   // la línea abarca los 16 compases del lienzo
 
+    // Índice de un parámetro por su id (el modelData de un Repeater es una copia: indexOf no lo encuentra)
+    function paramIndex(desc, id) { if (desc) for (var i = 0; i < desc.params.length; i++) if (desc.params[i].id === id) return i; return -1 }
     function typeOf(key) { for (var i = 0; i < catalog.length; i++) if (catalog[i].key === key) return catalog[i]; return null }
     function setChain(c) {
         chain = c || []
@@ -248,42 +252,85 @@ Column {
                         readonly property var knobs: desc ? desc.params.filter(function (p) { return !p.choices.length }) : []
                         readonly property var picks: desc ? desc.params.filter(function (p) { return p.choices.length > 0 }) : []
                         readonly property int cols: Math.max(2, Math.ceil(knobs.length / 2))
-                        width: modelData.key === "vst3" ? 200 : Math.max(200, cols * 64 + 16)
+                        readonly property bool isFolded: !!root.folded[modelData.id]
+                        width: isFolded ? 36 : modelData.key === "vst3" ? 200 : Math.max(200, cols * 64 + 16)
+                        clip: true
                         height: devRow.height
                         color: Theme.device; radius: Theme.radius
                         border.width: picked ? 2 : 1; border.color: picked ? Theme.knobArc : Theme.deviceBorder
                         MouseArea { anchors.fill: parent; onClicked: root.sel = card.modelData.id }
+                        HoverHandler { id: cardHover }   // ◀ ▶ ≡ solo al pasar o con la tarjeta elegida: el nombre cabe
+                        readonly property bool tools: cardHover.hovered || picked
                         Rectangle {                      // cabecera: activar · nombre · ◀ ▶ ≡ ✕
                             id: devHead
-                            x: 1; y: 1; width: parent.width - 2; height: 24
+                            visible: !card.isFolded
+                            x: 1; y: 1; width: parent.width - 2; height: 28
                             color: Theme.deviceHead; radius: Theme.radius
                             Rectangle {
-                                x: 7; anchors.verticalCenter: parent.verticalCenter
-                                width: 12; height: 12; radius: 6
+                                x: 8; anchors.verticalCenter: parent.verticalCenter
+                                width: 14; height: 14; radius: 7
                                 color: card.modelData.enabled ? Theme.knobArc : Theme.knobTrack
                                 border.width: 1; border.color: Theme.deviceBorder
-                                MouseArea { anchors.fill: parent; anchors.margins: -4; cursorShape: Qt.PointingHandCursor
+                                MouseArea { anchors.fill: parent; anchors.margins: -5; cursorShape: Qt.PointingHandCursor
                                             onClicked: root.enable(card.modelData.id, !card.modelData.enabled) }
                                 ToolTipLite { text: card.modelData.enabled ? "Activo: clic para puentear" : "Puenteado: clic para activar"; show: false }
                             }
                             Text {
-                                x: 26; width: parent.width - 26 - devBtns.width - 8; anchors.verticalCenter: parent.verticalCenter
+                                id: devName
+                                x: 30; width: parent.width - 30 - devBtns.width - 8; anchors.verticalCenter: parent.verticalCenter
                                 elide: Text.ElideRight
                                 text: root.nameOf(card.modelData) + ((card.modelData.automated || []).length ? " ∿" : "")
-                                color: Theme.deviceInk; opacity: card.modelData.enabled ? 1 : 0.55
+                                color: Theme.deviceInk; font.strikeout: !card.modelData.enabled
                                 font.family: Theme.font; font.pixelSize: 12; font.weight: 700
+                                MouseArea { anchors.fill: parent; onClicked: root.sel = card.modelData.id
+                                            onDoubleClicked: root.toggleFold(card.modelData.id) }
+                                ToolTipLite { text: "Doble clic: plegar"; show: false }
                             }
                             Row {
                                 id: devBtns
                                 anchors.right: parent.right; anchors.rightMargin: 4; anchors.verticalCenter: parent.verticalCenter
-                                spacing: 1
-                                DevBtn { glyph: "◀"; tip: "Mover antes"; visible: card.index > 0; onClicked: root.move(card.modelData.id, card.index - 1) }
-                                DevBtn { glyph: "▶"; tip: "Mover después"; visible: card.index < root.chain.length - 1; onClicked: root.move(card.modelData.id, card.index + 1) }
-                                DevBtn { glyph: "≡"; tip: "Detalle: medidores, presets propios y automatización"; onClicked: root.sel = card.modelData.id }
+                                spacing: 0
+                                Rectangle {              // lo puso la mezcla automática (antes, un texto al pie que pisaba los valores)
+                                    visible: !!card.modelData.auto
+                                    width: autoTxt.implicitWidth + 8; height: 18; radius: 2
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    color: Theme.knobArc
+                                    Text { id: autoTxt; anchors.centerIn: parent; text: "AUTO"; color: "#000"
+                                           font.family: Theme.font; font.pixelSize: 10; font.weight: 700 }
+                                    MouseArea { id: autoM; anchors.fill: parent; hoverEnabled: true }
+                                    ToolTipLite { text: "Lo puso la mezcla automática; puedes cambiarlo"; show: autoM.containsMouse }
+                                }
+                                DevBtn { glyph: "◀"; tip: "Mover antes"; visible: card.tools && card.index > 0; onClicked: root.move(card.modelData.id, card.index - 1) }
+                                DevBtn { glyph: "▶"; tip: "Mover después"; visible: card.tools && card.index < root.chain.length - 1; onClicked: root.move(card.modelData.id, card.index + 1) }
+                                DevBtn { glyph: "≡"; tip: "Detalle: medidores, presets propios y automatización"; visible: card.tools; onClicked: root.sel = card.modelData.id }
                                 DevBtn { glyph: "✕"; tip: "Quitar de la cadena"; onClicked: root.remove(card.modelData.id) }
                             }
                         }
+                        Column {                         // plegado: activador y nombre en vertical
+                            visible: card.isFolded
+                            anchors.fill: parent; anchors.topMargin: 8; spacing: 10
+                            Rectangle {
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                width: 14; height: 14; radius: 7
+                                color: card.modelData.enabled ? Theme.knobArc : Theme.knobTrack
+                                border.width: 1; border.color: Theme.deviceBorder
+                                MouseArea { anchors.fill: parent; anchors.margins: -5; cursorShape: Qt.PointingHandCursor
+                                            onClicked: root.enable(card.modelData.id, !card.modelData.enabled) }
+                            }
+                            Item {
+                                width: parent.width; height: parent.height - 40
+                                Text {
+                                    anchors.centerIn: parent; rotation: -90
+                                    width: parent.height; horizontalAlignment: Text.AlignHCenter; elide: Text.ElideRight
+                                    text: root.nameOf(card.modelData)
+                                    color: Theme.deviceInk; font.family: Theme.font; font.pixelSize: 12; font.weight: 700
+                                }
+                                MouseArea { anchors.fill: parent; onDoubleClicked: root.toggleFold(card.modelData.id)
+                                            onClicked: root.sel = card.modelData.id }
+                            }
+                        }
                         Column {
+                            visible: !card.isFolded
                             x: 8; y: devHead.height + 6; width: parent.width - 16; spacing: 6
                             opacity: card.modelData.enabled ? 1 : 0.55
                             Column {                     // plugin VST3: su propia ventana
@@ -293,13 +340,13 @@ Column {
                                             tip: "Abre la ventana del plugin (sus controles y presets)"
                                             onClicked: { var r = root.studio.call("fxPluginEditor", card.modelData.id); if (!r.ok) root.studio.toast(r.error) } }
                                 Text { width: parent.width; wrapMode: Text.Wrap; text: "VST3 externo. Su estado se guarda con el proyecto."
-                                       color: Theme.deviceInk; opacity: 0.75; font.family: Theme.font; font.pixelSize: 11; font.weight: 500 }
+                                       color: Theme.deviceInk; font.family: Theme.font; font.pixelSize: 11; font.weight: 500 }
                             }
                             Select {
                                 visible: card.modelData.key !== "vst3"
                                 width: parent.width; fontSize: 10; padX: 4; padY: 2
                                 fill: Theme.deviceHead; ink: Theme.deviceInk
-                                options: [["", (card.desc || { af: "" }).af + " · preset…"]].concat((root.presetCache[card.modelData.key] || []).map(function (p) { return [p.name, p.name + (p.factory ? "" : " ★")] }))
+                                options: [["", "Preset…"]].concat((root.presetCache[card.modelData.key] || []).map(function (p) { return [p.name, p.name + (p.factory ? "" : " ★")] }))
                                 current: ""
                                 tip: "Presets de fábrica y los tuyos (★)"
                                 onPicked: function (v) { if (v) root.applyPresetTo(card.modelData, v) }
@@ -321,7 +368,7 @@ Column {
                                     Column {
                                         id: kc
                                         required property var modelData
-                                        readonly property int pi: card.desc.params.indexOf(modelData)
+                                        readonly property int pi: root.paramIndex(card.desc, modelData.id)
                                         readonly property real v: card.modelData.values[pi] !== undefined ? card.modelData.values[pi] : modelData.def
                                         readonly property bool auto: (card.modelData.automated || []).indexOf(modelData.id) >= 0
                                         width: 60; spacing: 0
@@ -334,8 +381,8 @@ Column {
                                             onMoved: function (pos) { root.setParamOf(card.modelData, kc.pi, root.fromPos(kc.modelData, pos)) }
                                         }
                                         Text { anchors.horizontalCenter: parent.horizontalCenter
-                                               text: root.fmtVal(kc.modelData, kc.v); color: Theme.deviceInk; opacity: 0.8
-                                               font.family: Theme.font; font.pixelSize: 9; font.weight: 700 }
+                                               text: root.fmtVal(kc.modelData, kc.v); color: Theme.deviceInk
+                                               font.family: Theme.font; font.pixelSize: 11; font.weight: 700 }
                                     }
                                 }
                             }
@@ -346,7 +393,7 @@ Column {
                                     Column {
                                         id: pcol
                                         required property var modelData
-                                        readonly property int pi: card.desc.params.indexOf(modelData)
+                                        readonly property int pi: root.paramIndex(card.desc, modelData.id)
                                         readonly property real v: card.modelData.values[pi] !== undefined ? card.modelData.values[pi] : modelData.def
                                         spacing: 1
                                         Text { text: pcol.modelData.name; color: Theme.deviceInk; font.family: Theme.font; font.pixelSize: 10; font.weight: 600 }
@@ -362,12 +409,6 @@ Column {
                                 }
                             }
                         }
-                        Text {
-                            visible: !!card.modelData.auto
-                            anchors.bottom: parent.bottom; anchors.bottomMargin: 4; x: 8
-                            text: "puesto por la mezcla automática"; color: Theme.deviceInk; opacity: 0.6
-                            font.family: Theme.font; font.pixelSize: 9; font.weight: 600
-                        }
                     }
                 }
                 Rectangle {                              // hueco final: agregar efecto
@@ -377,10 +418,10 @@ Column {
                     Column {
                         anchors.centerIn: parent; spacing: 6; width: parent.width - 20
                         Text { width: parent.width; horizontalAlignment: Text.AlignHCenter; text: root.libOpen ? "×" : "+"
-                               color: Theme.ink; opacity: 0.7; font.family: Theme.font; font.pixelSize: 30; font.weight: 300 }
+                               color: Theme.ink; font.family: Theme.font; font.pixelSize: 30; font.weight: 300 }
                         Text { width: parent.width; horizontalAlignment: Text.AlignHCenter; wrapMode: Text.Wrap
                                text: root.libOpen ? "Cerrar biblioteca" : (root.chain.length ? "Agregar efecto" : "Sin efectos en " + root.targetName + ". Agrega uno" + (root.master ? " o pulsa MASTERIZAR abajo" : "") + ".")
-                               color: Theme.ink; opacity: 0.7; font.family: Theme.font; font.pixelSize: 11; font.weight: 600 }
+                               color: Theme.ink; font.family: Theme.font; font.pixelSize: 12; font.weight: 600 }
                     }
                     MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.libOpen = !root.libOpen }
                 }
@@ -549,8 +590,8 @@ Column {
                 readonly property bool an: !!root.cur && root.cur.key === "analyzer"
                 visible: eq || an
                 width: ed.width; height: visible ? 120 : 0
-                property var data: eq ? root.meters.slice(2) : root.spectrum
-                onDataChanged: requestPaint()
+                property var bands: eq ? root.meters.slice(2) : root.spectrum
+                onBandsChanged: requestPaint()
                 onPaint: {
                     var ctx = getContext("2d"); ctx.reset()
                     ctx.fillStyle = "#0c0a07"; ctx.fillRect(0, 0, width, height)
@@ -562,7 +603,7 @@ Column {
                     for (var g = lo; g <= hi; g += eq ? 6 : 15) {
                         var gy = height * (hi - g) / (hi - lo); ctx.beginPath(); ctx.moveTo(0, gy); ctx.lineTo(width, gy); ctx.stroke()
                     }
-                    var d = data || []; if (d.length < 2) return
+                    var d = bands || []; if (d.length < 2) return
                     ctx.beginPath()
                     for (var i = 0; i < d.length; i++) {
                         var x2 = width * i / (d.length - 1), y2 = height * (hi - Math.max(lo, Math.min(hi, d[i]))) / (hi - lo)
@@ -656,10 +697,10 @@ Column {
         property string glyph
         property string tip
         signal clicked()
-        width: 18; height: 18; radius: 2
+        width: 24; height: 24; radius: 2              // objetivo mínimo de 24 px (WCAG 2.5.8)
         color: dbm.containsMouse ? Theme.knobArc : "transparent"
         Text { anchors.centerIn: parent; text: db.glyph; color: dbm.containsMouse ? "#000" : Theme.deviceInk
-               font.family: "Segoe UI Symbol"; font.pixelSize: 10 }
+               font.family: "Segoe UI Symbol"; font.pixelSize: 12 }
         MouseArea { id: dbm; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: db.clicked() }
         ToolTipLite { text: db.tip; show: dbm.containsMouse }
     }

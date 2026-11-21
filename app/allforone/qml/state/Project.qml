@@ -31,6 +31,7 @@ QtObject {
         var r = studio.call("projectSave", JSON.stringify(snapshot()), saveAs ? "" : file)
         if (!r.ok) { if (!r.cancelled) studio.toast(r.error); return false }
         file = r.path; name = r.name
+        studio.dirty = false
         studio.toast("Proyecto guardado: " + r.path)
         return true
     }
@@ -41,6 +42,8 @@ QtObject {
         if (!r.ok) { if (!r.cancelled) studio.toast(r.error); return false }
         load(r.doc)
         file = r.path; name = r.name
+        studio.dirty = false
+        studio.fitIds(studio.visibleIds())     // el proyecto abierto se ve entero
         var miss = r.doc.missing || []
         studio.toast("Proyecto abierto: " + r.name + (miss.length ? " · falta el audio de: " + miss.join(", ") : ""))
         return true

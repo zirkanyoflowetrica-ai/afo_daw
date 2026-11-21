@@ -138,3 +138,26 @@ def test_proyecto_rutas_relativas(tmp_path):
     (moved / "y.afo").write_text("{}", encoding="utf-8")
     with pytest.raises(ValueError):
         project.load(moved / "y.afo")
+
+
+def test_slot_con_error_no_lanza(bridge):
+    """Un fallo dentro de un slot vuelve a la interfaz como {"ok": false, "error"} (antes llegaba undefined)."""
+    r = json.loads(bridge.setAudioDevice("esto no es json"))
+    assert r["ok"] is False and "setAudioDevice" in r["error"]
+    r = json.loads(bridge.deviceStatus())
+    assert r["ok"] and "open" in r["device"] and r["latency_ms"] >= 0
+
+
+def test_dispositivo_pendiente_se_aplica_al_arrancar(tmp_path, monkeypatch):
+    from allforone import paths
+    monkeypatch.setattr(paths, "user_data_dir", lambda: tmp_path)
+    h = EngineHost.create()
+    assert h.ok, h.error
+    d = h.engine.device_info()
+    h.save_pending_device({"type": d["type"], "output": d["output"], "input": d["input"],
+                           "sampleRate": d["sample_rate"], "bufferSize": d["buffer_size"]})
+    assert h.pending_device_file().is_file()
+    h.engine = None
+    h2 = EngineHost.create()                      # el siguiente arranque lo aplica y lo borra
+    assert h2.ok and not h2.pending_device_file().exists()
+    h2.engine = None

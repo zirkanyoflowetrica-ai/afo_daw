@@ -79,8 +79,8 @@ def with_fx(eng, path, key, **params):
 def test_catalogo():
     cat = afo_audio.effect_catalog()
     keys = [c["key"] for c in cat]
-    assert keys == ["gain", "strip", "eq", "compressor", "gate", "deesser", "saturator", "delay", "space", "analyzer"]
-    assert {c["af"] for c in cat} == {"AF-01", "AF-02", "AF-07", "AF-13", "AF-18", "AF-20", "AF-26", "AF-41", "AF-35", "AF-76"}
+    assert keys == ["gain", "strip", "eq", "compressor", "limiter", "gate", "deesser", "saturator", "delay", "space", "analyzer"]
+    assert {c["af"] for c in cat} == {"AF-01", "AF-02", "AF-07", "AF-13", "AF-14", "AF-18", "AF-20", "AF-26", "AF-41", "AF-35", "AF-76"}
     for c in cat:
         assert c["params"], c["key"]
         for p in c["params"]:
@@ -137,6 +137,26 @@ def test_compresor_ratio_y_reduccion(host, tmp_path):
     eng.set_effect_param(fx, "mix", 0)                   # paralelo al 0 %: sin cambio
     y = render(eng, tmp_path)
     assert db(np.abs(mid(y[:, 0])).max()) == pytest.approx(-12, abs=0.05)
+
+
+def test_limitador_techo_y_transparencia(host, tmp_path):
+    eng = host.engine
+    # Tono a −12 dBFS empujado +12 dB contra un techo de −3 dBFS: nada pasa del techo y el medidor
+    # de reducción marca ≈ −3 dB: el pico llega a 0 dBFS (el limitador del master, a −1 dBFS, no llega a actuar)
+    tid, fx = with_fx(eng, tone(tmp_path), "limiter", input=12, ceiling=-3, release=100)
+    y = render(eng, tmp_path)
+    assert db(np.abs(y).max()) <= -3 + 0.01
+    assert db(np.abs(mid(y[:, 0])).max()) == pytest.approx(-3, abs=0.3)
+    assert eng.effect_meters(fx)[2] == pytest.approx(-3, abs=0.3)
+    # Por debajo del techo es transparente: misma señal, con la anticipación compensada
+    eng.set_effect_param(fx, "input", 0)
+    eng.set_effect_param(fx, "ceiling", 0)
+    y = render(eng, tmp_path)
+    ref = sine()
+    assert db(np.abs(mid(y[:, 0])).max()) == pytest.approx(-12, abs=0.05)
+    # (el render tiene el desfase fijo de 2 muestras de siempre; la anticipación de 72 no se nota)
+    err = min(np.max(np.abs(y[int(0.8 * SR) + k: int(1.8 * SR) + k, 0] - mid(ref))) for k in range(5))
+    assert err < 1e-3
 
 
 def test_gate_cierra_bajo_el_umbral(host, tmp_path):

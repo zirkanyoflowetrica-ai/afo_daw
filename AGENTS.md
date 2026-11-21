@@ -26,6 +26,11 @@ Especificación completa: `docs/MASTER_PROMPT.md`. Resumen de lo que no se negoc
 5. **Mezclador V4.2** (`app/allforone/mixer_v42/`): se reutiliza, no se reescribe. Sus 27 pruebas deben
    seguir pasando.
 6. Ocultar ≠ silenciar ≠ desconectar.
+7. **Interfaz amigable:** cada cambio de interfaz pasa la lista de `docs/GUIA_DISENO_INTERFAZ.md`
+   (estado visible en la barra de estado, contraste ≥ 4,5:1 medido por el selftest en los tres temas,
+   objetivos ≥ 24 px, confirmación en el sitio para lo destructivo, atajos en los tooltips).
+8. **Fallos:** los slots del puente no lanzan (`@_safe` devuelve el error a la interfaz y lo registra);
+   un cierre inesperado deja su traza en `logs/cierre.log` (`diagnostics.py`).
 
 ## Verificar
 

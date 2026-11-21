@@ -50,6 +50,7 @@ fader** de la pista (o del master) y Tracktion compensa la latencia que informan
 | AF-02 | Channel Strip | HPF, puerta, EQ de 3 bandas, compresor y saturación en una tira | Compresión de la tira: pico −30 + 18/4 dB y reducción > 10 dB en su medidor |
 | AF-07 | Parametric EQ | 6 bandas (paso alto 12/24 dB/oct, grave, 2 medios, agudo, paso bajo) | Campana +12 dB medida en el tono; curva real; HPF 24 dB/oct |
 | AF-13 | Compressor | Rodilla suave, detector Peak/RMS, compensación, mezcla paralela | Reducción ≈ −9 dB en el caso de prueba; mezcla 0 = señal intacta |
+| AF-14 | Limiter | Entrada, techo (dBFS), liberación; anticipación de 1,5 ms compensada; recorte final en el techo. Es el último efecto de la cadena del master automático | Tono empujado contra −3 dBFS no pasa del techo y marca su reducción; bajo el techo, señal idéntica |
 | AF-18 | Gate | Umbral, rango, ataque, mantenimiento, liberación, histéresis | Cierra 60 dB por debajo del umbral; por encima deja la señal intacta (±0,1 dB) |
 | AF-20 | De-Esser | Detector de banda (frecuencia, Q), umbral, rango, modo Banda/Ancha, escucha de la sibilancia | Baja la sibilancia y deja la voz grave intacta |
 | AF-26 | Saturator | Tubo / Cinta / Recorte con sobremuestreo ×4, tono, bias, mezcla | 3.er armónico presente; aliasing < −70 dB; mezcla 0 = referencia |
