@@ -17,8 +17,8 @@ Column {
 
     Rectangle {                                 // .afo-lcdbig
         width: root.width; height: 62
-        color: "#120f0a"; border.width: 3; border.color: "#000"
-        Rectangle { anchors.fill: parent; anchors.margins: 3; color: "transparent"; border.width: 2; border.color: "#3a3020" }
+        color: "#120f0a"; border.width: Theme.border; border.color: Theme.line
+        Rectangle { anchors.fill: parent; anchors.margins: 3; color: "transparent"; border.width: Theme.buttonBorder; border.color: "#3a3020" }
         Column {
             x: 15; anchors.verticalCenter: parent.verticalCenter
             Text { text: root.conf ? "CONFIRMADO" : "SIN CONFIRMAR"; color: "#c98f00"
@@ -69,7 +69,7 @@ Column {
             Text { text: "BPM"; color: Theme.ink; font.family: Theme.font; font.pixelSize: 13; font.weight: 600 }
             Rectangle {                         // .afo-num
                 width: parent.width; height: 34
-                color: Theme.input; border.width: 2; border.color: "#000"
+                color: Theme.input; border.width: Theme.buttonBorder; border.color: Theme.line
                 TextInput {
                     x: 8; width: parent.width - 16; anchors.verticalCenter: parent.verticalCenter
                     text: String(root.tn.bpm); selectByMouse: true; color: Theme.ink
@@ -114,15 +114,15 @@ Column {
                 text: modelData[1]; fontSize: 12; leftAlign: true
                 color: on ? Theme.pc.afina : Theme.button; textColor: on ? "#000" : Theme.ink; pressedState: on
                 onClicked: root.mixer.toggleVoice(modelData[0])
-                Rectangle { width: 12; height: 12; border.width: 2; border.color: "#000"; color: tg.on ? "#000" : (Theme.dark ? "#1b1822" : "#fff") }
+                Rectangle { width: 12; height: 12; border.width: Theme.buttonBorder; border.color: Theme.line; color: tg.on ? "#000" : (Theme.dark ? "#1b1822" : "#fff") }
             }
         }
     }
 
     Rectangle {                                 // .afo-wires
         width: root.width; height: wires.height + 14 + 6
-        color: "#16130e"; border.width: 3; border.color: "#000"
-        Rectangle { anchors.fill: parent; anchors.margins: 3; color: "transparent"; border.width: 2; border.color: "#4a4030" }
+        color: "#16130e"; border.width: Theme.border; border.color: Theme.line
+        Rectangle { anchors.fill: parent; anchors.margins: 3; color: "transparent"; border.width: Theme.buttonBorder; border.color: "#4a4030" }
         Flow {
             id: wires
             x: 11; y: 10; width: parent.width - 22; spacing: 5
@@ -138,7 +138,7 @@ Column {
                 Rectangle {
                     required property var modelData
                     width: Math.min(wires.width, wt.implicitWidth + 20); height: wt.implicitHeight + 6
-                    color: "#2b2720"; border.width: 2; border.color: "#000"
+                    color: "#2b2720"; border.width: Theme.buttonBorder; border.color: Theme.line
                     Rectangle { x: 2; y: 2; width: 6; height: parent.height - 4; color: Theme.pc.afina }
                     Text { id: wt; x: 12; width: parent.width - 16; anchors.verticalCenter: parent.verticalCenter; elide: Text.ElideRight
                            text: parent.modelData.name + " · " + parent.modelData.role
@@ -151,8 +151,8 @@ Column {
 
     Rectangle {                                 // .afo-pitch: aún sin curva (lo dice)
         width: root.width; height: 70
-        color: "#16130e"; border.width: 3; border.color: "#000"
-        Rectangle { anchors.fill: parent; anchors.margins: 3; color: "transparent"; border.width: 2; border.color: "#4a4030" }
+        color: "#16130e"; border.width: Theme.border; border.color: Theme.line
+        Rectangle { anchors.fill: parent; anchors.margins: 3; color: "transparent"; border.width: Theme.buttonBorder; border.color: "#4a4030" }
         Repeater { model: [14, 28, 42, 56]
                    Rectangle { required property real modelData; x: 3; y: 3 + (64 * modelData / 70); width: parent.width - 6; height: 1.5; color: Qt.rgba(1, 1, 1, 0.12) } }
         Text { x: 3 + 8 * (parent.width - 6) / 300; y: 3 + 40 * 64 / 70 - 11; text: "Curva de tono antes/después: pendiente (V0.6)"

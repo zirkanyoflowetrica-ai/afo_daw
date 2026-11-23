@@ -343,7 +343,7 @@ Las entradas van a la izquierda y las salidas a la derecha. Arrastra para moverl
         }
         var extra = panelList.filter(function (q) { return q.extra }).map(function (q) { return { pid: q.pid, base: q.base } })
         layoutStore.save(JSON.stringify({ v: L.VERSION, pos: pos, ports: portOverride, bends: bends, theme: Theme.name,
-                                          names: names, extra: extra, targets: extraTargets, view: view, darkDefault: 1 }))
+                                          names: names, extra: extra, targets: extraTargets, view: view, darkDefault: 1, look2: 1 }))
     }
     // Un diseño de otra versión del lienzo (módulos distintos) no se aplica: se usa el de fábrica y
     // solo se conserva el tema
@@ -793,8 +793,8 @@ Las entradas van a la izquierda y las salidas a la derecha. Arrastra para moverl
                 Rectangle {                         // .time
                     width: timeLbl.implicitWidth + 26; height: 35
                     anchors.verticalCenter: parent.verticalCenter
-                    color: "#120f0a"; border.width: 3; border.color: "#000"
-                    Rectangle { anchors.fill: parent; anchors.margins: 3; color: "transparent"; border.width: 2; border.color: "#3a3020" }
+                    color: "#120f0a"; border.width: Theme.border; border.color: Theme.line
+                    Rectangle { anchors.fill: parent; anchors.margins: 3; color: "transparent"; border.width: Theme.buttonBorder; border.color: "#3a3020" }
                     Text { id: timeGlow; anchors.centerIn: parent; text: timeLbl.text; color: "#ffb000"; opacity: 0.45
                            font: timeLbl.font; scale: 1.06 }
                     Text { id: timeLbl; anchors.centerIn: parent; text: win.timeText(); color: "#ffb000"
@@ -807,7 +807,7 @@ Las entradas van a la izquierda y las salidas a la derecha. Arrastra para moverl
                            anchors.verticalCenter: parent.verticalCenter }
                     Rectangle {
                         width: 64; height: 32
-                        color: Theme.input; border.width: 2; border.color: "#000"
+                        color: Theme.input; border.width: Theme.buttonBorder; border.color: Theme.line
                         TextInput {
                             id: bpmInput
                             x: 6; width: parent.width - 12
@@ -968,7 +968,7 @@ Las entradas van a la izquierda y las salidas a la derecha. Arrastra para moverl
                         visible: cable.modelData.key === "mezcla-fx" && nm.length > 0
                         x: cable.geo.m.x - width / 2; y: cable.geo.m.y - height - 16
                         width: cl.implicitWidth + 16; height: 26
-                        color: "#fff"; border.width: 2; border.color: "#000"
+                        color: "#fff"; border.width: Theme.buttonBorder; border.color: Theme.line
                         Text { id: cl; anchors.centerIn: parent; text: parent.nm.toUpperCase() + " → FX"; color: "#000"
                                font.family: Theme.font; font.pixelSize: 12; font.weight: 700 }
                     }
@@ -1095,8 +1095,8 @@ Las entradas van a la izquierda y las salidas a la derecha. Arrastra para moverl
                             x: io.pnl ? (out ? io.pnl.x + io.pnl.width - 3 : io.pnl.x - win.plateW + 3) : 0
                             y: io.pnl ? io.pnl.y + 16 : 0
                             width: win.plateW; height: io.pnl ? io.pnl.height - 32 : 0
-                            color: "#1d1d1f"; border.width: 3; border.color: "#000"
-                            Rectangle { x: 4; y: 4; z: -1; width: parent.width; height: parent.height; color: "#000" }
+                            color: "#1d1d1f"; border.width: Theme.border; border.color: Theme.line
+                            Rectangle { x: 4; y: 4; z: -1; width: parent.width; height: parent.height; color: "#000"; visible: Theme.buttonShadow > 0 }
                             Rectangle {                  // cabecera de la placa con el color del módulo
                                 x: 3; y: 3; width: parent.width - 6; height: 24; color: io.mc
                                 Text { anchors.centerIn: parent; text: plate.modelData[1] + " · " + io.count[plate.modelData[0]]
@@ -1106,7 +1106,7 @@ Las entradas van a la izquierda y las salidas a la derecha. Arrastra para moverl
                                 model: [[8, 33], [plate.width - 16, 33], [8, plate.height - 16], [plate.width - 16, plate.height - 16]]
                                 Rectangle { required property var modelData
                                             x: modelData[0]; y: modelData[1]; width: 8; height: 8; radius: 4
-                                            color: "#6b6b6b"; border.width: 1; border.color: "#000" }
+                                            color: "#6b6b6b"; border.width: 1; border.color: Theme.line }
                             }
                             HoverHandler { id: ph }
                             ToolTipLite { text: (plate.out ? "Salidas de " : "Entradas de ") + L.panelName(io.modelData.base || io.modelData.pid) +
@@ -1131,16 +1131,16 @@ Las entradas van a la izquierda y las salidas a la derecha. Arrastra para moverl
                     z: pnl ? pnl.z + 0.5 : 0
                     width: 26; height: 26
                     scale: pm.containsMouse || pm.pressed ? 1.13 : 1
-                    Rectangle { x: 2; y: 2; width: 26; height: 26; radius: 13; color: "#000" }
+                    Rectangle { x: 2; y: 2; width: 26; height: 26; radius: 13; color: "#000"; visible: Theme.buttonShadow > 0 }
                     Rectangle {
-                        anchors.fill: parent; radius: 13; color: "#d0d0d0"; border.width: 3; border.color: "#000"
+                        anchors.fill: parent; radius: 13; color: "#d0d0d0"; border.width: Theme.border; border.color: Theme.line
                         Rectangle { anchors.centerIn: parent; width: 17; height: 17; radius: 8.5; color: "#111" }
                         Rectangle { anchors.centerIn: parent; width: 10; height: 10; radius: 5; color: port.c }
                         Rectangle { anchors.fill: parent; anchors.margins: 3; radius: 10; color: "transparent"
                                     border.width: 1; border.color: "#fff"; visible: port.modelData.end === "from" }
                     }
                     Rectangle { anchors.fill: parent; anchors.margins: -5; radius: 18; color: "transparent"
-                                border.width: 3; border.color: "#fff"; visible: pm.containsMouse || pm.pressed }
+                                border.width: Theme.border; border.color: "#fff"; visible: pm.containsMouse || pm.pressed }
                     MouseArea {
                         id: pm
                         anchors.fill: parent
@@ -1184,9 +1184,9 @@ Las entradas van a la izquierda y las salidas a la derecha. Arrastra para moverl
                     x: m.x - 10.5; y: m.y - 10.5
                     width: 21; height: 21; radius: 4
                     color: bm.containsMouse ? "#ffc233" : Theme.grip
-                    border.width: 3; border.color: "#000"
-                    Rectangle { x: 2; y: 2; z: -1; width: 21; height: 21; radius: 4; color: "#000" }
-                    Rectangle { anchors.centerIn: parent; width: 8; height: 8; color: Theme.pc[bend.modelData.f]; border.width: 1; border.color: "#000" }
+                    border.width: Theme.border; border.color: Theme.line
+                    Rectangle { x: 2; y: 2; z: -1; width: 21; height: 21; radius: 4; color: "#000"; visible: Theme.buttonShadow > 0 }
+                    Rectangle { anchors.centerIn: parent; width: 8; height: 8; color: Theme.pc[bend.modelData.f]; border.width: 1; border.color: Theme.line }
                     MouseArea {
                         id: bm
                         anchors.fill: parent
@@ -1268,11 +1268,12 @@ Las entradas van a la izquierda y las salidas a la derecha. Arrastra para moverl
         extraTargets = savedLayout.targets || {}
         ;(savedLayout.extra || []).forEach(function (e) { if (e && e.base === "fx" && /^fx~\d+$/.test(e.pid)) addExtra("fx", e.pid) })
         loadThemes()                              // tema guardado (los diseños antiguos guardaban "dark"/"light")
-        // El oscuro es el de fábrica (noviembre 2026). Un diseño guardado antes de eso con el claro de
-        // fábrica pasa una vez al oscuro; después se respeta lo que elija el usuario.
+        // De fábrica: Professional (oscuro, plano, como un DAW de estudio; 23-11-2026). Un diseño guardado
+        // antes con un tema de fábrica (AllForOne claro u oscuro) pasa una vez a Professional; después
+        // se respeta lo que elija el usuario en «Tema».
         var tn = savedLayout.theme === "dark" ? "AllForOne Oscuro" : savedLayout.theme === "light" ? "AllForOne" : savedLayout.theme
-        if (!tn || (!savedLayout.darkDefault && tn === "AllForOne")) tn = "AllForOne Oscuro"
-        if (!setTheme(tn, true)) setTheme("AllForOne Oscuro", true)
+        if (!tn || (!savedLayout.look2 && (tn === "AllForOne" || tn === "AllForOne Oscuro"))) tn = "Professional"
+        if (!setTheme(tn, true)) setTheme("Professional", true)
         var po = savedLayout.ports || {}, ok = {}
         for (var k in po) if (po[k] && L.sideOf(k.split(":").pop()) === po[k].side && isFinite(po[k].u)) ok[k] = { side: po[k].side, u: L.clamp(po[k].u, .03, .97) }
         portOverride = ok

@@ -235,7 +235,7 @@ Rectangle {
                                     required property var modelData
                                     readonly property var cl: modelData
                                     x: cl.start * root.pps; y: 4; width: Math.max(3, cl.length * root.pps); height: parent.height - 8
-                                    color: Qt.darker(trk.c, trk.t.mute ? 2.2 : 1.0); border.width: 2; border.color: "#000"; radius: 3
+                                    color: Qt.darker(trk.c, trk.t.mute ? 2.2 : 1.0); border.width: Theme.buttonBorder; border.color: Theme.line; radius: 3
                                     clip: true
                                     Text { x: 5; y: 2; width: parent.width - 10; elide: Text.ElideRight; text: trk.t.name
                                            color: "#000"; font.family: Theme.font; font.pixelSize: 11; font.weight: 700 }
@@ -265,7 +265,7 @@ Rectangle {
                                 visible: (trk.t.midi || []).length > 0
                                 x: 0; y: 4; height: parent.height - 8
                                 width: { var e = 0; (trk.t.midi || []).forEach(function (n) { e = Math.max(e, n[0] + n[1]) }); return e * root.beat * root.pps + 4 }
-                                color: Qt.darker(trk.c, trk.t.mute ? 2.2 : 1.0); border.width: 2; border.color: "#000"; radius: 3
+                                color: Qt.darker(trk.c, trk.t.mute ? 2.2 : 1.0); border.width: Theme.buttonBorder; border.color: Theme.line; radius: 3
                                 clip: true
                                 Canvas {
                                     anchors.fill: parent; anchors.margins: 3
@@ -290,7 +290,7 @@ Rectangle {
                                 visible: !trk.master && !(trk.t.aclips || []).length && !(trk.t.midi || []).length
                                          && (Object.keys(trk.t.roll || {}).length + Object.keys(trk.t.pat || {}).length) > 0
                                 x: 0; y: 4; height: parent.height - 8; width: 16 * 4 * root.beat * root.pps
-                                color: Qt.darker(trk.c, trk.t.mute ? 2.2 : 1.0); border.width: 2; border.color: "#000"; radius: 3
+                                color: Qt.darker(trk.c, trk.t.mute ? 2.2 : 1.0); border.width: Theme.buttonBorder; border.color: Theme.line; radius: 3
                                 Text { x: 6; anchors.verticalCenter: parent.verticalCenter; width: parent.width - 12; elide: Text.ElideRight
                                        text: trk.t.name + " · patrón de 16 compases (se repite)"; color: "#000"
                                        font.family: Theme.font; font.pixelSize: 11; font.weight: 700 }
@@ -383,7 +383,7 @@ Rectangle {
                                     }
                                 }
                                 Rectangle {                 // punto del valor actual bajo el cursor
-                                    width: 10; height: 10; radius: 5; color: Theme.accent; border.width: 2; border.color: "#000"
+                                    width: 10; height: 10; radius: 5; color: Theme.accent; border.width: Theme.buttonBorder; border.color: Theme.line
                                     x: root.studio.posSec * root.pps - 5
                                     y: 6 + (parent.height - 12) * (1 - root.norm(ln.l, ln.now)) - 5
                                 }
@@ -471,7 +471,7 @@ Rectangle {
                         readonly property real fv: master ? root.studio.masterPos : (t.vol === undefined ? 70 : t.vol)
                         readonly property var lr: master ? root.studio.masterDb : root.studio.trackLR(t.id)
                         width: master ? 150 : 132; height: strips.height
-                        color: Theme.device; border.width: 2; border.color: st.master ? st.c : Theme.deviceBorder
+                        color: Theme.device; border.width: Theme.buttonBorder; border.color: st.master ? st.c : Theme.deviceBorder
                         Rectangle { width: parent.width; height: 26; color: st.c
                             Text { x: 6; width: parent.width - 12; anchors.verticalCenter: parent.verticalCenter; elide: Text.ElideRight
                                    text: st.t.name; color: "#000"; font.family: Theme.font; font.pixelSize: 12; font.weight: 800 } }
@@ -492,7 +492,7 @@ Rectangle {
                                     color: modelData.enabled ? Theme.button : Theme.deviceHead
                                     border.width: 1; border.color: Theme.deviceBorder
                                     Rectangle { x: 5; anchors.verticalCenter: parent.verticalCenter; width: 8; height: 8; radius: 4
-                                                color: modelData.enabled ? "#2fbf71" : "#7a7a7a"; border.width: 1; border.color: "#000" }
+                                                color: modelData.enabled ? "#2fbf71" : "#7a7a7a"; border.width: 1; border.color: Theme.line }
                                     Text { x: 17; width: parent.width - 21 - (aut.visible ? aut.width + 2 : 0); anchors.verticalCenter: parent.verticalCenter
                                            elide: Text.ElideRight; text: modelData.label; color: Theme.ink
                                            font.family: Theme.font; font.pixelSize: 11; font.weight: 600
@@ -523,7 +523,7 @@ Rectangle {
                             x: 8; y: parent.height - 128 - 26; width: parent.width - 16; height: 24
                             Rectangle { y: 10; width: parent.width; height: 4; color: Theme.dark ? Qt.tint(Theme.device, Qt.rgba(Qt.color(Theme.ink).r, Qt.color(Theme.ink).g, Qt.color(Theme.ink).b, 0.55)) : Theme.knobTrack }
                             Rectangle { x: parent.width / 2 - 1; y: 6; width: 2; height: 12; color: Theme.deviceInk }
-                            Rectangle { width: 10; height: 18; y: 3; radius: 2; color: Theme.knobArc; border.width: 2; border.color: "#000"
+                            Rectangle { width: 10; height: 18; y: 3; radius: 2; color: Theme.knobArc; border.width: Theme.buttonBorder; border.color: Theme.line
                                         x: (parent.width - 10) * (st.t.pan === undefined ? 50 : st.t.pan) / 100 }
                             MouseArea {
                                 anchors.fill: parent; preventStealing: true

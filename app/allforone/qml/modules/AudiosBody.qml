@@ -32,7 +32,7 @@ Column {
         Rectangle {
             width: parent.width; height: parent.height - 10
             color: root.dropOver ? "#fff" : (Theme.dark ? Qt.rgba(1, 1, 1, 0.06) : Qt.rgba(1, 1, 1, 0.45))
-            Rectangle { anchors.fill: parent; anchors.margins: 3; color: "transparent"; border.width: 2
+            Rectangle { anchors.fill: parent; anchors.margins: 3; color: "transparent"; border.width: Theme.buttonBorder
                         border.color: Theme.dark ? Qt.rgba(1, 1, 1, 0.1) : Qt.rgba(1, 1, 1, 0.33) }
             Shape {
                 anchors.fill: parent
@@ -69,8 +69,8 @@ Column {
     Rectangle {                                 // .afo-stems
         width: root.width
         height: Math.min(260, list.height + 6)
-        color: "#16130e"; border.width: 3; border.color: "#000"
-        Rectangle { anchors.fill: parent; anchors.margins: 3; color: "transparent"; border.width: 2; border.color: "#4a4030"; z: 2 }
+        color: "#16130e"; border.width: Theme.border; border.color: Theme.line
+        Rectangle { anchors.fill: parent; anchors.margins: 3; color: "transparent"; border.width: Theme.buttonBorder; border.color: "#4a4030"; z: 2 }
         Flickable {
             x: 3; y: 3; width: parent.width - 6; height: parent.height - 6
             contentHeight: list.height; clip: true
@@ -87,7 +87,7 @@ Column {
                         width: list.width; height: 34
                         color: "#2b2720"
                         Rectangle { width: 8; height: parent.height; color: MD.kindColor(stem.modelData.kind) }
-                        Rectangle { y: parent.height - 2; width: parent.width; height: 2; color: "#000" }
+                        Rectangle { y: parent.height - 2; width: parent.width; height: 2; color: Theme.line }
                         Row {
                             x: 14; width: parent.width - 20; height: parent.height - 2
                             spacing: 6

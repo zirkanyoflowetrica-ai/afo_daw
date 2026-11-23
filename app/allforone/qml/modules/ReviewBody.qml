@@ -76,7 +76,7 @@ Column {
                 id: scr
                 required property var modelData
                 width: (root.width - 6) / 2; height: 150
-                color: "#16130e"; border.width: 3; border.color: "#000"
+                color: "#16130e"; border.width: Theme.border; border.color: Theme.line
                 Canvas {
                     x: 3; y: 22; width: parent.width - 6; height: parent.height - 25
                     property var bands: root.scope ? root.scope[scr.modelData[1]] : []

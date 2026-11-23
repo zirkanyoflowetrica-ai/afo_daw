@@ -19,7 +19,7 @@ Column {
     // ---------------- pletina: dos carretes y la versión que suena ----------------
     Rectangle {
         width: root.width; height: 118
-        color: "#2b2720"; border.width: 3; border.color: "#000"
+        color: "#2b2720"; border.width: Theme.border; border.color: Theme.line
         Row {
             anchors.centerIn: parent; spacing: 18
             Reel { spinning: root.studio.playing && !!root.cur }
@@ -53,12 +53,12 @@ Column {
             readonly property bool on: root.mixer.versionSel === index
             width: root.width; height: 50
             color: on ? Theme.accent : Theme.button
-            border.width: 2; border.color: "#000"
+            border.width: Theme.buttonBorder; border.color: Theme.line
             MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor
                         onClicked: root.mixer.loadVersion(row.index) }
             Rectangle {                            // piloto
                 x: 10; anchors.verticalCenter: parent.verticalCenter
-                width: 12; height: 12; radius: 6; border.width: 2; border.color: "#000"
+                width: 12; height: 12; radius: 6; border.width: Theme.buttonBorder; border.color: Theme.line
                 color: row.on ? "#ff4d3d" : "#4a1d1a"
             }
             Column {
@@ -80,7 +80,7 @@ Column {
                 id: tag
                 anchors.right: del.left; anchors.rightMargin: 8; anchors.verticalCenter: parent.verticalCenter
                 width: tagText.implicitWidth + 12; height: 20
-                color: row.modelData.kind === "auto" ? "#ff9f45" : "#7ad6ff"; border.width: 2; border.color: "#000"
+                color: row.modelData.kind === "auto" ? "#ff9f45" : "#7ad6ff"; border.width: Theme.buttonBorder; border.color: Theme.line
                 Text { id: tagText; anchors.centerIn: parent; text: row.modelData.kind === "auto" ? "AUTO" : "MANUAL"; color: "#000"
                        font.family: Theme.font; font.pixelSize: 10; font.weight: 700 }
             }
@@ -104,7 +104,7 @@ Column {
     component Reel: Rectangle {
         property bool spinning: false
         width: 76; height: 76; radius: 38
-        color: "#f3e7c4"; border.width: 3; border.color: "#000"
+        color: "#f3e7c4"; border.width: Theme.border; border.color: Theme.line
         anchors.verticalCenter: parent ? parent.verticalCenter : undefined
         Item {
             anchors.fill: parent

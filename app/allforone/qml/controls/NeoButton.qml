@@ -87,7 +87,7 @@ Item {
         }
         Rectangle {
             anchors.fill: parent; anchors.margins: -5
-            color: "transparent"; border.width: 3; border.color: Theme.focus
+            color: "transparent"; border.width: Theme.border; border.color: Theme.focus
             visible: root.activeFocus
         }
     }

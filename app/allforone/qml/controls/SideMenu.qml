@@ -26,7 +26,7 @@ Rectangle {
                 readonly property bool on: root.tab === index
                 width: (root.width - 20 - 3 - 8) / 3; height: 30
                 color: on ? "#000" : Theme.button
-                border.width: 2; border.color: "#000"
+                border.width: Theme.buttonBorder; border.color: Theme.line
                 Text { anchors.centerIn: parent; text: parent.modelData; color: parent.on ? Theme.accent : Theme.ink
                        font.family: Theme.font; font.pixelSize: 10; font.weight: 700; font.letterSpacing: 0.4 }
                 MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.tab = parent.index }
@@ -58,11 +58,11 @@ Rectangle {
                     readonly property bool cur: root.studio.currentId === pid
                     readonly property var more: root.studio.addLabel(modelData.base)
                     width: content.width; height: 58
-                    Rectangle { x: 3; y: 3; width: parent.width - 3; height: parent.height - 3; color: "#000" }
+                    Rectangle { x: 3; y: 3; width: parent.width - 3; height: parent.height - 3; color: "#000"; visible: Theme.buttonShadow > 0 }
                     Rectangle {
                         width: parent.width - 3; height: parent.height - 3
                         color: entry.cur ? Theme.tint(Theme.pcOf(entry.pid)) : Theme.button
-                        border.width: 2; border.color: "#000"
+                        border.width: Theme.buttonBorder; border.color: Theme.line
                         MouseArea {
                             anchors.fill: parent; cursorShape: Qt.PointingHandCursor
                             onClicked: root.studio.goTo(entry.pid)
@@ -70,7 +70,7 @@ Rectangle {
                         Rectangle {                     // miniatura del módulo
                             id: thumbBox
                             x: 6; y: 6; width: 70; height: parent.height - 12
-                            color: Theme.pcOf(entry.pid); border.width: 2; border.color: "#000"; clip: true
+                            color: Theme.pcOf(entry.pid); border.width: Theme.buttonBorder; border.color: Theme.line; clip: true
                             ShaderEffectSource {
                                 id: thumb
                                 visible: !!entry.pnl && entry.shown
@@ -104,7 +104,7 @@ Rectangle {
                             }
                             Rectangle {
                                 visible: nmEdit.visible
-                                width: parent.width; height: 22; color: Theme.input; border.width: 2; border.color: "#000"
+                                width: parent.width; height: 22; color: Theme.input; border.width: Theme.buttonBorder; border.color: Theme.line
                                 TextInput {
                                     id: nmEdit
                                     visible: false
@@ -209,7 +209,7 @@ Rectangle {
             }
             Rectangle {
                 visible: root.tab === 2
-                width: content.width; height: 30; color: Theme.input; border.width: 2; border.color: "#000"
+                width: content.width; height: 30; color: Theme.input; border.width: Theme.buttonBorder; border.color: Theme.line
                 TextInput {
                     id: search
                     x: 8; width: parent.width - 16; anchors.verticalCenter: parent.verticalCenter
@@ -291,11 +291,11 @@ Rectangle {
         signal clicked()
         width: content.width; height: compact ? 38 : 44
         opacity: enabled ? 1 : 0.5
-        Rectangle { x: 2; y: 2; width: parent.width - 2; height: parent.height - 2; color: "#000"; visible: en.enabled }
+        Rectangle { x: 2; y: 2; width: parent.width - 2; height: parent.height - 2; color: "#000"; visible: Theme.buttonShadow > 0 && (en.enabled) }
         Rectangle {
             width: parent.width - 2; height: parent.height - 2
             color: em.containsMouse && en.enabled ? Theme.pn2 : Theme.button
-            border.width: 2; border.color: "#000"
+            border.width: Theme.buttonBorder; border.color: Theme.line
             Rectangle { x: 2; y: 2; width: 6; height: parent.height - 4; color: en.color2 }
             Column {
                 x: 14; anchors.verticalCenter: parent.verticalCenter; width: parent.width - 40
@@ -318,7 +318,7 @@ Rectangle {
         signal clicked()
         width: 24; height: 24
         color: sbm.containsMouse ? Theme.accent : sb.accent ? Theme.pc.mezcla : Theme.button
-        border.width: 2; border.color: "#000"
+        border.width: Theme.buttonBorder; border.color: Theme.line
         Text { anchors.centerIn: parent; text: sb.glyph; color: sb.accent ? "#000" : Theme.ink
                font.family: "Segoe UI Symbol"; font.pixelSize: 14; font.weight: 700 }
         MouseArea { id: sbm; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: sb.clicked() }

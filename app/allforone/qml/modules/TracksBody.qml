@@ -199,8 +199,8 @@ Column {
         width: root.width
         height: content.height + 6
         color: "#16130e"
-        border.width: 3; border.color: "#000"
-        Rectangle { anchors.fill: parent; anchors.margins: 3; color: "transparent"; border.width: 2; border.color: "#4a4030" }
+        border.width: Theme.border; border.color: Theme.line
+        Rectangle { anchors.fill: parent; anchors.margins: 3; color: "transparent"; border.width: Theme.buttonBorder; border.color: "#4a4030" }
         Flickable {
             id: hflick
             x: 3; y: 3
@@ -237,7 +237,7 @@ Column {
                         MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor
                                     onClicked: function (m) { root.seekTo(m.x / root.pps) } }
                     }
-                    Rectangle { y: parent.height - 2; width: parent.width; height: 2; color: "#000" }
+                    Rectangle { y: parent.height - 2; width: parent.width; height: 2; color: Theme.line }
                 }
                 Repeater {
                     id: rows
@@ -290,7 +290,7 @@ Column {
                                     width: parent.width; spacing: 4; topPadding: 2
                                     Rectangle {
                                         width: parent.width - 58 - 4; height: 14; anchors.verticalCenter: parent.verticalCenter
-                                        color: MD.kindColor(trole.item ? trole.item.kind : ""); border.width: 2; border.color: "#000"
+                                        color: MD.kindColor(trole.item ? trole.item.kind : ""); border.width: Theme.buttonBorder; border.color: Theme.line
                                         Text { x: 4; width: parent.width - 8; anchors.verticalCenter: parent.verticalCenter; elide: Text.ElideRight
                                                text: MD.kindShort(trole.item ? trole.item.kind : ""); color: "#000"
                                                font.family: Theme.font; font.pixelSize: 9; font.weight: 700 }
@@ -326,9 +326,9 @@ Column {
                                     required property var modelData
                                     x: lane.w16 * modelData[0] / 100; y: 5
                                     width: lane.w16 * modelData[1] / 100; height: lane.height - 10
-                                    color: root.colorOf(row.modelData); border.width: 2; border.color: "#000"
+                                    color: root.colorOf(row.modelData); border.width: Theme.buttonBorder; border.color: Theme.line
                                     opacity: row.modelData.mute ? 0.3 : 1                      // .muted .clip
-                                    Rectangle { x: 2; y: 2; z: -1; width: parent.width; height: parent.height; color: "#000" }
+                                    Rectangle { x: 2; y: 2; z: -1; width: parent.width; height: parent.height; color: "#000"; visible: Theme.buttonShadow > 0 }
                                 }
                             }
                             Canvas {                 // .mn: notas del piano roll / golpes del patrón en cada compás del clip
@@ -392,7 +392,7 @@ Column {
                                         if (live.start === modelData.start && live.length === modelData.length && live.offset === modelData.offset) return
                                         root.edit(row.modelData.uid, { op: "range", clip: modelData.id, start: live.start, length: live.length, offset: live.offset })
                                     }
-                                    Rectangle { x: 2; y: 2; width: parent.width; height: parent.height; color: "#000" }
+                                    Rectangle { x: 2; y: 2; width: parent.width; height: parent.height; color: "#000"; visible: Theme.buttonShadow > 0 }
                                     Rectangle {
                                         id: body
                                         anchors.fill: parent
@@ -461,7 +461,7 @@ Column {
                                         visible: ac.picked && ac.width > 60
                                         x: (parent.width - width) / 2; y: 16
                                         width: gainTxt.implicitWidth + 12; height: 16; radius: 8
-                                        color: gm.pressed ? Theme.accent : "#fff"; border.width: 2; border.color: "#000"
+                                        color: gm.pressed ? Theme.accent : "#fff"; border.width: Theme.buttonBorder; border.color: Theme.line
                                         Text { id: gainTxt; anchors.centerIn: parent; text: root.db(ac.v.gain_db); color: "#000"
                                                font.family: Theme.font; font.pixelSize: 9; font.weight: 700 }
                                         MouseArea {
@@ -483,7 +483,7 @@ Column {
                                             width: 10; height: 10
                                             x: isIn ? Math.min(ac.width - 10, ac.v.fade_in * root.pps) : Math.max(0, ac.width - 10 - ac.v.fade_out * root.pps)
                                             y: 14
-                                            color: fm.pressed ? Theme.accent : "#fff"; border.width: 2; border.color: "#000"
+                                            color: fm.pressed ? Theme.accent : "#fff"; border.width: Theme.buttonBorder; border.color: Theme.line
                                             MouseArea {
                                                 id: fm; anchors.fill: parent; anchors.margins: -4; preventStealing: true; cursorShape: Qt.SizeHorCursor
                                                 property real px0
@@ -529,7 +529,7 @@ Column {
                                 }
                             }
                         }
-                        Rectangle { y: row.height - 2; width: row.width; height: 2; color: "#000" }
+                        Rectangle { y: row.height - 2; width: row.width; height: 2; color: Theme.line }
                     }
                 }
                 DashedBox {

@@ -28,7 +28,7 @@ Column {
         Keys.onRightPressed: root.setValue(root.value + 5)
         Keys.onDownPressed: root.setValue(root.value - 5)
         Keys.onLeftPressed: root.setValue(root.value - 5)
-        Rectangle { x: 3; y: 3; width: 46; height: 46; radius: 23; color: "#000"; visible: Theme.knobStyle !== "arc" }
+        Rectangle { x: 3; y: 3; width: 46; height: 46; radius: 23; color: "#000"; visible: Theme.buttonShadow > 0 && (Theme.knobStyle !== "arc") }
         Shape {                                  // arco (temas tipo DAW): pista, valor y aguja
             visible: Theme.knobStyle === "arc"
             anchors.fill: parent
@@ -63,11 +63,11 @@ Column {
                     PathAngleArc { centerX: 23; centerY: 23; radiusX: 21.5; radiusY: 21.5; startAngle: 0; sweepAngle: 360 }
                 }
             }
-            Rectangle { x: 12; y: 12; width: 22; height: 22; radius: 11; color: "#222"; border.width: 2; border.color: "#000" }
-            Rectangle { x: 20.5; y: 5; width: 5; height: 13; radius: 2; color: "#ff4d3d"; border.width: 1; border.color: "#000" }
+            Rectangle { x: 12; y: 12; width: 22; height: 22; radius: 11; color: "#222"; border.width: Theme.buttonBorder; border.color: Theme.line }
+            Rectangle { x: 20.5; y: 5; width: 5; height: 13; radius: 2; color: "#ff4d3d"; border.width: 1; border.color: Theme.line }
         }
         Rectangle { anchors.fill: parent; anchors.margins: -5; radius: 28; color: "transparent"
-                    border.width: 3; border.color: Theme.focus; visible: dial.activeFocus }
+                    border.width: Theme.border; border.color: Theme.focus; visible: dial.activeFocus }
         MouseArea {
             id: drag
             anchors.fill: parent

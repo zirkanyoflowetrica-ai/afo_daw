@@ -8,7 +8,7 @@ Rectangle {
     width: 12
     height: 150
     color: "#120f0a"
-    border.width: 2; border.color: "#000"
+    border.width: Theme.buttonBorder; border.color: Theme.line
     clip: true
     Rectangle {
         x: 2; width: parent.width - 4

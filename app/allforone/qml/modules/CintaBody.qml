@@ -19,8 +19,8 @@ Column {
 
     Rectangle {                                 // .reels
         width: root.width; height: 92 + 28 + 6
-        color: "#16130e"; border.width: 3; border.color: "#000"
-        Rectangle { anchors.fill: parent; anchors.margins: 3; color: "transparent"; border.width: 2; border.color: "#4a4030" }
+        color: "#16130e"; border.width: Theme.border; border.color: Theme.line
+        Rectangle { anchors.fill: parent; anchors.margins: 3; color: "transparent"; border.width: Theme.buttonBorder; border.color: "#4a4030" }
         Row {
             anchors.centerIn: parent
             spacing: 34
@@ -91,7 +91,7 @@ Column {
 
     Rectangle {                                 // .tvu: nivel real de la entrada armada
         width: root.width; height: 12
-        color: "#120f0a"; border.width: 2; border.color: "#000"
+        color: "#120f0a"; border.width: Theme.buttonBorder; border.color: Theme.line
         Rectangle {
             x: 2; y: 2; height: parent.height - 4
             width: (parent.width - 4) * Math.min(1, root.rec ? MD.dbToPct(root.rec.db) / 100 : 0)

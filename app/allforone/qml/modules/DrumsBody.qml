@@ -85,12 +85,12 @@ Column {
                     required property int index
                     readonly property bool lit: root.flash === index || pm.pressed
                     width: pads.pw; height: 54
-                    Rectangle { x: 3; y: 3; width: parent.width; height: parent.height; color: "#000"; visible: !pad.lit }
+                    Rectangle { x: 3; y: 3; width: parent.width; height: parent.height; color: "#000"; visible: Theme.buttonShadow > 0 && (!pad.lit) }
                     Rectangle {
                         x: pad.lit ? 3 : 0; y: pad.lit ? 3 : 0
                         width: parent.width; height: parent.height
                         color: pad.lit ? root.groupColor[pad.index % 4] : "#2b2720"
-                        border.width: 2; border.color: "#000"
+                        border.width: Theme.buttonBorder; border.color: Theme.line
                         Rectangle { x: 4; y: 4; width: 8; height: 8; radius: 4; color: root.groupColor[pad.index % 4] }
                         Text { x: 18; y: 6; text: pad.modelData; color: pad.lit ? "#000" : "#f3e7c4"
                                font.family: Theme.font; font.pixelSize: 12; font.weight: 700 }
@@ -107,8 +107,8 @@ Column {
     Rectangle {                                 // .seq
         visible: !!root.t
         width: root.width; height: visible ? seqCol.height + 16 + 6 : 0
-        color: "#16130e"; border.width: 3; border.color: "#000"
-        Rectangle { anchors.fill: parent; anchors.margins: 3; color: "transparent"; border.width: 2; border.color: "#4a4030" }
+        color: "#16130e"; border.width: Theme.border; border.color: Theme.line
+        Rectangle { anchors.fill: parent; anchors.margins: 3; color: "transparent"; border.width: Theme.buttonBorder; border.color: "#4a4030" }
         Column {
             id: seqCol
             x: 11; y: 11; width: parent.width - 22; spacing: 6
@@ -136,11 +136,11 @@ Column {
                                 readonly property bool on: !!root.t && !!root.t.pat[lane.index + "-" + index]
                                 width: parent.cw; height: 26
                                 color: on ? root.groupColor[index >> 2] : (sm.containsMouse ? "#4d463a" : "#3a352b")
-                                border.width: 2; border.color: "#000"
+                                border.width: Theme.buttonBorder; border.color: Theme.line
                                 Rectangle {     // .st.cur
                                     visible: root.curStep === st.index
                                     anchors.fill: parent; anchors.margins: 4
-                                    color: "transparent"; border.width: 3; border.color: "#fff"
+                                    color: "transparent"; border.width: Theme.border; border.color: "#fff"
                                 }
                                 MouseArea { id: sm; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
                                             onClicked: root.seq.toggleStep(lane.index, st.index) }

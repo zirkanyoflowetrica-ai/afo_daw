@@ -58,7 +58,7 @@ Column {
     }
     Rectangle {                                   // .afo-prog
         width: root.width; height: 16
-        color: "#120f0a"; border.width: 3; border.color: "#000"
+        color: "#120f0a"; border.width: Theme.border; border.color: Theme.line
         Item {
             x: 3; y: 3; height: 10; clip: true
             width: (parent.width - 6) * Math.max(0, Math.min(100, root.mixer.progress)) / 100
@@ -101,7 +101,7 @@ Column {
         width: root.width
         height: console_.height + 6
         color: Theme.dark ? "#1b1822" : "#ffffff"
-        border.width: 3; border.color: "#000"
+        border.width: Theme.border; border.color: Theme.line
         Column {
             id: console_
             x: 3; y: 3; width: parent.width - 6
@@ -129,7 +129,7 @@ Column {
                         }
                     }
                 }
-                Rectangle { y: parent.height - 3; width: parent.width; height: 3; color: "#000" }
+                Rectangle { y: parent.height - 3; width: parent.width; height: 3; color: Theme.line }
             }
             Flickable {                              // tiras (desplazamiento horizontal)
                 width: parent.width
@@ -155,15 +155,15 @@ Column {
                     Item {                           // tira del master
                         id: ms
                         width: 96; height: stripH
-                        Rectangle { x: 3; y: 3; width: parent.width; height: parent.height; color: "#000" }
+                        Rectangle { x: 3; y: 3; width: parent.width; height: parent.height; color: "#000"; visible: Theme.buttonShadow > 0 }
                         Rectangle {
                             anchors.fill: parent
-                            color: Theme.dark ? "#26222e" : "#ffffff"; border.width: 2; border.color: "#000"
+                            color: Theme.dark ? "#26222e" : "#ffffff"; border.width: Theme.buttonBorder; border.color: Theme.line
                             Rectangle {
                                 x: 2; y: 2; width: parent.width - 4; height: 30; color: Theme.pc.mezcla
                                 Text { anchors.centerIn: parent; text: "MASTER"; color: "#000"
                                        font.family: Theme.font; font.pixelSize: 12; font.weight: 700 }
-                                Rectangle { y: parent.height; width: parent.width; height: 2; color: "#000" }
+                                Rectangle { y: parent.height; width: parent.width; height: 2; color: Theme.line }
                             }
                             Column {
                                 x: 6; y: 40; width: parent.width - 12; spacing: 6
@@ -217,22 +217,22 @@ Column {
         Rectangle {                              // brillo de «trabajando» (mezcla automática)
             visible: strip.working
             anchors.fill: parent; anchors.margins: -5
-            color: "transparent"; border.width: 3; border.color: "#ff9f45"
+            color: "transparent"; border.width: Theme.border; border.color: "#ff9f45"
             SequentialAnimation on opacity { running: strip.working; loops: Animation.Infinite
                 NumberAnimation { from: 1; to: 0.45; duration: 700 } NumberAnimation { from: 0.45; to: 1; duration: 700 } }
         }
-        Rectangle { x: 3; y: 3; width: parent.width; height: parent.height; color: "#000" }
+        Rectangle { x: 3; y: 3; width: parent.width; height: parent.height; color: "#000"; visible: Theme.buttonShadow > 0 }
         Rectangle {
             anchors.fill: parent
             color: strip.racked ? (Theme.dark ? "#4a3d1c" : "#ffe7a6") : (Theme.dark ? "#26222e" : "#ffffff")
-            border.width: strip.racked ? 3 : 2; border.color: "#000"
+            border.width: strip.racked ? 3 : 2; border.color: Theme.line
             Rectangle {                          // cabecera con el nombre
                 x: 2; y: 2; width: parent.width - 4; height: 30; color: strip.cc
                 Text { x: 4; width: parent.width - 8; anchors.verticalCenter: parent.verticalCenter
                        horizontalAlignment: Text.AlignHCenter; elide: Text.ElideRight
                        text: strip.track.name.toUpperCase(); color: "#000"
                        font.family: Theme.font; font.pixelSize: 11; font.weight: 700 }
-                Rectangle { y: parent.height; width: parent.width; height: 2; color: "#000" }
+                Rectangle { y: parent.height; width: parent.width; height: 2; color: Theme.line }
                 MouseArea { anchors.fill: parent; enabled: strip.tid > 0; cursorShape: Qt.PointingHandCursor
                             onClicked: root.studio.rackTrack = strip.tid }
                 ToolTipLite { text: "Clic: ver el rack de " + strip.track.name + " en Efectos"; show: false }
@@ -253,7 +253,7 @@ Column {
                         spacing: 3
                         Rectangle {
                             width: parent.parent.width - 44 - 3; height: 18
-                            color: MD.kindColor(strip.item ? strip.item.kind : ""); border.width: 2; border.color: "#000"
+                            color: MD.kindColor(strip.item ? strip.item.kind : ""); border.width: Theme.buttonBorder; border.color: Theme.line
                             Text { x: 3; width: parent.width - 6; anchors.verticalCenter: parent.verticalCenter; elide: Text.ElideRight
                                    text: MD.kindShort(strip.item ? strip.item.kind : ""); color: "#000"
                                    font.family: Theme.font; font.pixelSize: 9; font.weight: 700 }
@@ -309,7 +309,7 @@ Column {
         property real r: 0
         property color color2: "#5ee0b0"
         width: 22; height: 150
-        color: "#120f0a"; border.width: 2; border.color: "#000"
+        color: "#120f0a"; border.width: Theme.buttonBorder; border.color: Theme.line
         Repeater {
             model: [sm.l, sm.r]
             Rectangle {
@@ -333,7 +333,7 @@ Column {
         property color fill: "#ffffff"
         signal clicked()
         width: Math.max(26, ct.implicitWidth + 16); height: 24
-        color: fill; border.width: 2; border.color: "#000"
+        color: fill; border.width: Theme.buttonBorder; border.color: Theme.line
         Text { id: ct; anchors.centerIn: parent; text: ch.text; color: Qt.colorEqual(ch.fill, "#2a2533") ? "#efe9ff" : "#000"
                font.family: Theme.font; font.pixelSize: 11; font.weight: 700 }
         MouseArea { id: chm; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: ch.clicked() }

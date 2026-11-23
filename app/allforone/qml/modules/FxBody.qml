@@ -26,6 +26,7 @@ Column {
     property var catalog: []
     property int target: 0                      // pista del motor (0 = master)
     property var chain: []
+    property int cardNeed: 0                    // alto que piden las tarjetas (perillas en dos filas)
     property int sel: -1                        // id del efecto abierto en el editor
     property int family: 1                      // «Efectos de audio»
     property var meters: []
@@ -234,7 +235,7 @@ Column {
     // ---------------- cadena de dispositivos (como un DAW: en fila, en orden de señal) ----------------
     Rectangle {
         id: chainBox
-        width: root.width; height: 300
+        width: root.width; height: Math.max(300, root.cardNeed + 12)
         color: Theme.chain; radius: Theme.radius
         border.width: 1; border.color: Theme.line
         Flickable {
@@ -260,6 +261,8 @@ Column {
                         readonly property int cols: Math.max(2, Math.ceil(knobs.length / 2))
                         readonly property bool isFolded: !!root.folded[modelData.id]
                         width: isFolded ? 36 : modelData.key === "vst3" ? 200 : Math.max(200, cols * 64 + 16)
+                        readonly property int needH: isFolded ? 0 : devHead.height + 6 + cardBody.implicitHeight + 10
+                        onNeedHChanged: if (needH > root.cardNeed) root.cardNeed = needH
                         clip: true
                         height: devRow.height
                         color: Theme.device; radius: Theme.radius
@@ -336,6 +339,7 @@ Column {
                             }
                         }
                         Column {
+                            id: cardBody
                             visible: !card.isFolded
                             x: 8; y: devHead.height + 6; width: parent.width - 16; spacing: 6
                             opacity: card.modelData.enabled ? 1 : 0.55
@@ -471,7 +475,7 @@ Column {
                             spacing: 6
                             Text { width: 48; text: modelData[0]; color: Theme.deviceInk; font.family: Theme.font; font.pixelSize: 10; font.weight: 600 }
                             Rectangle {
-                                width: 70; height: 9; color: "#120f0a"; border.width: 1; border.color: "#000"
+                                width: 70; height: 9; color: "#120f0a"; border.width: 1; border.color: Theme.line
                                 anchors.verticalCenter: parent.verticalCenter
                                 Rectangle { x: 1; y: 1; height: 7; color: (root.meters[modelData[1]] || -100) > -1 ? "#ff4d3d" : "#5ee0b0"
                                             width: 68 * Math.max(0, Math.min(1, ((root.meters[modelData[1]] === undefined ? -100 : root.meters[modelData[1]]) + 60) / 60)) }
@@ -502,13 +506,13 @@ Column {
                     onPicked: function (v) { if (v) root.applyPreset(v) }
                 }
                 Rectangle {
-                    width: 150; height: 28; color: "#fff"; border.width: 2; border.color: "#000"
+                    width: 150; height: 28; color: Theme.input; border.width: Theme.buttonBorder; border.color: Theme.line
                     TextInput {
                         id: presetIn
                         x: 6; width: parent.width - 12; anchors.verticalCenter: parent.verticalCenter
-                        color: "#000"; font.family: Theme.font; font.pixelSize: 12; selectByMouse: true; clip: true
+                        color: Theme.ink; font.family: Theme.font; font.pixelSize: 12; selectByMouse: true; clip: true
                         onAccepted: if (text.trim()) { root.savePreset(text); text = "" }
-                        Text { visible: !presetIn.text && !presetIn.activeFocus; text: "nombre del preset"; color: "#888"
+                        Text { visible: !presetIn.text && !presetIn.activeFocus; text: "nombre del preset"; color: Theme.ink
                                font: presetIn.font; anchors.verticalCenter: parent.verticalCenter }
                     }
                 }

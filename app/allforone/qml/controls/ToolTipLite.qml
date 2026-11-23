@@ -15,7 +15,7 @@ Item {
         visible: false
         x: 0; y: parent.height + 6
         width: Math.min(360, t.implicitWidth + 12); height: t.implicitHeight + 8
-        color: "#ffffe8"; border.color: "#000"; border.width: 1
+        color: "#ffffe8"; border.color: Theme.line; border.width: 1
         Text {
             id: t; x: 6; y: 4; width: Math.min(348, implicitWidth)
             text: root.text; wrapMode: Text.Wrap

@@ -61,7 +61,7 @@ Column {
         Rectangle {
             visible: !!root.mai.engineOk && (!root.mai.model.done || root.seq.midiDownloading)
             width: root.width; height: mdl.implicitHeight + 20
-            color: "transparent"; border.width: 2; border.color: Theme.line; radius: Theme.radius
+            color: "transparent"; border.width: Theme.buttonBorder; border.color: Theme.line; radius: Theme.radius
             Column {
                 id: mdl
                 x: 10; y: 10; width: parent.width - 20; spacing: 8
@@ -172,7 +172,7 @@ Column {
     Rectangle {
         visible: !!root.ai.engineOk && (!root.ai.installed || root.seq.downloading)
         width: root.width; height: dl.implicitHeight + 20
-        color: "transparent"; border.width: 2; border.color: Theme.line; radius: Theme.radius
+        color: "transparent"; border.width: Theme.buttonBorder; border.color: Theme.line; radius: Theme.radius
         Column {
             id: dl
             x: 10; y: 10; width: parent.width - 20; spacing: 8
@@ -337,7 +337,7 @@ Column {
     // Barra de avance del color del módulo
     component Bar: Rectangle {
         property real value: 0
-        height: 10; color: "transparent"; border.width: 2; border.color: Theme.line; radius: Theme.radius
+        height: 10; color: "transparent"; border.width: Theme.buttonBorder; border.color: Theme.line; radius: Theme.radius
         Rectangle { x: 2; y: 2; height: parent.height - 4; width: Math.max(0, (parent.width - 4) * Math.min(1, parent.value))
                     color: Theme.pcOf("ia"); radius: Math.max(0, Theme.radius - 2) }
     }
@@ -349,7 +349,7 @@ Column {
         property int lines: 3
         signal edited(string v)
         height: lines * 19 + 20
-        color: "#08170f"; border.width: 3; border.color: "#000"; radius: Theme.radius
+        color: "#08170f"; border.width: Theme.border; border.color: Theme.line; radius: Theme.radius
         TextEdit {
             id: te
             x: 10; y: 9; width: parent.width - 20; height: parent.height - 18

@@ -188,7 +188,7 @@ Item {
             y: side.indexOf("n") >= 0 ? -7 : side.indexOf("s") >= 0 ? root.height - 7 : root.height / 2 - 7
             z: 9
             color: gm.containsMouse || gm.pressed ? Theme.accent : Theme.grip
-            border.width: 2; border.color: Theme.line
+            border.width: Theme.buttonBorder; border.color: Theme.line
             MouseArea {
                 id: gm
                 anchors.fill: parent

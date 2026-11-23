@@ -23,11 +23,11 @@ Column {
     Item {                                      // .ytop
         visible: !!root.t
         width: root.width; height: visible ? ytop.height + 3 + 10 : 0
-        Rectangle { x: 3; y: 3; width: ytop.width; height: ytop.height; color: "#000" }
+        Rectangle { x: 3; y: 3; width: ytop.width; height: ytop.height; color: "#000"; visible: Theme.buttonShadow > 0 }
         Rectangle {
             id: ytop
             width: parent.width; height: Math.max(lcd.height, ybtn.height) + 22
-            border.width: 3; border.color: "#000"
+            border.width: Theme.border; border.color: Theme.line
             gradient: Gradient {
                 GradientStop { position: 0; color: Theme.dark ? "#3a3644" : "#ececf0" }
                 GradientStop { position: 1; color: Theme.dark ? "#24212c" : "#b4b4be" }
@@ -36,8 +36,8 @@ Column {
                 id: lcd
                 x: 11; anchors.verticalCenter: parent.verticalCenter
                 width: Math.max(190, lcdCol.width + 26); height: lcdCol.height + 18
-                color: "#0b2547"; border.width: 3; border.color: "#000"
-                Rectangle { anchors.fill: parent; anchors.margins: 3; color: "transparent"; border.width: 2; border.color: "#1d4a85" }
+                color: "#0b2547"; border.width: Theme.border; border.color: Theme.line
+                Rectangle { anchors.fill: parent; anchors.margins: 3; color: "transparent"; border.width: Theme.buttonBorder; border.color: "#1d4a85" }
                 Column {
                     id: lcdCol
                     x: 13; anchors.verticalCenter: parent.verticalCenter
@@ -71,8 +71,8 @@ Column {
     Rectangle {                                 // .roll: 44 px de teclas + 16 pasos
         visible: !!root.t
         width: Math.max(root.width, 480); height: visible ? 13 * 20 + 6 : 0
-        color: "#16130e"; border.width: 3; border.color: "#000"
-        Rectangle { anchors.fill: parent; anchors.margins: 3; color: "transparent"; border.width: 2; border.color: "#4a4030"; z: 3 }
+        color: "#16130e"; border.width: Theme.border; border.color: Theme.line
+        Rectangle { anchors.fill: parent; anchors.margins: 3; color: "transparent"; border.width: Theme.buttonBorder; border.color: "#4a4030"; z: 3 }
         Column {
             x: 3; y: 3
             Repeater {
@@ -96,7 +96,7 @@ Column {
                             readonly property bool on: !!root.t && !!root.t.roll[noteRow.index + "-" + index]
                             width: (Math.max(root.width, 480) - 6 - 44) / 16; height: 20
                             color: on ? "#b79bff" : (cm.containsMouse ? Qt.rgba(1, 1, 1, 0.15) : "transparent")
-                            border.width: on ? 2 : 0; border.color: "#000"
+                            border.width: on ? 2 : 0; border.color: Theme.line
                             Rectangle { width: 1; height: parent.height; color: cell.index === 0 ? Qt.rgba(1, 1, 1, 0.4) : Qt.rgba(1, 1, 1, 0.1); visible: !cell.on }
                             Rectangle { y: 19; width: parent.width; height: 1; color: Qt.rgba(1, 1, 1, 0.1); visible: !cell.on }
                             MouseArea { id: cm; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
@@ -116,7 +116,7 @@ Column {
         readonly property var whiteNames: ["C", "D", "E", "F", "G", "A", "B"]
         Rectangle {
             y: 12; width: parent.width; height: 130
-            color: "#000"; border.width: 3; border.color: "#000"
+            color: "#000"; border.width: Theme.border; border.color: Theme.line
             Row {
                 x: 3; y: 3
                 Repeater {
@@ -128,12 +128,12 @@ Column {
                         readonly property int note: 12 * (oct + 1) + kb.whiteSemis[index % 7]
                         width: (kb.width - 6) / 14; height: 124
                         radius: 4
-                        border.width: 1; border.color: "#000"
+                        border.width: 1; border.color: Theme.line
                         gradient: Gradient {
                             GradientStop { position: 0; color: wm.pressed ? "#cfc7ff" : "#fff" }
                             GradientStop { position: 1; color: wm.pressed ? "#cfc7ff" : "#e6e6e6" }
                         }
-                        Rectangle { width: parent.width; height: 6; color: wm.pressed ? "#cfc7ff" : "#fff"; border.width: 1; border.color: "#000" }
+                        Rectangle { width: parent.width; height: 6; color: wm.pressed ? "#cfc7ff" : "#fff"; border.width: 1; border.color: Theme.line }
                         Text { anchors.horizontalCenter: parent.horizontalCenter; anchors.bottom: parent.bottom; anchors.bottomMargin: 2
                                text: wk.index % 7 ? "" : "C" + wk.oct; color: "#555"; font.family: Theme.font; font.pixelSize: 10 }
                         MouseArea { id: wm; anchors.fill: parent
@@ -152,7 +152,7 @@ Column {
                     x: 3 + (kb.width - 6) * ((index + 1) / 14 - 0.022); y: 3
                     width: (kb.width - 6) * 0.044; height: 124 * 0.62
                     radius: 3
-                    color: bm.pressed ? "#666" : "#111"; border.width: 1; border.color: "#000"
+                    color: bm.pressed ? "#666" : "#111"; border.width: 1; border.color: Theme.line
                     MouseArea { id: bm; anchors.fill: parent; onPressed: root.seq.previewMidi(root.t.cfg, bk.note, 0.6) }
                 }
             }

@@ -7,13 +7,13 @@ Item {
     id: root
     property real vu: 0                        // VU del motor (0..100)
     width: 260; height: vuBox.height + 16
-    Rectangle { x: 5; y: 5; width: vuBox.width; height: vuBox.height; color: "#000" }
+    Rectangle { x: 5; y: 5; width: vuBox.width; height: vuBox.height; color: "#000"; visible: Theme.buttonShadow > 0 }
     Rectangle {
         id: vuBox
         width: parent.width; height: Math.round((width - 6) * 115 / 200) + 6
         color: Theme.dark ? "#231e12" : "#f4e3a3"
-        border.width: 3; border.color: "#000"
-        Rectangle { anchors.fill: parent; anchors.margins: 3; color: "transparent"; border.width: 3
+        border.width: Theme.border; border.color: Theme.line
+        Rectangle { anchors.fill: parent; anchors.margins: 3; color: "transparent"; border.width: Theme.border
                     border.color: Theme.dark ? "#4a3d1c" : "#d9c47a" }
         Item {
             x: 3; y: 3; width: 200; height: 115

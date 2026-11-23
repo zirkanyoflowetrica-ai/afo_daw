@@ -23,10 +23,10 @@ Item {
         id: thumb
         x: 1; width: 30; height: 18
         y: root.travel * (1 - root.value / 100)
-        Rectangle { x: 3; y: 3; width: 30; height: 18; color: "#000" }
+        Rectangle { x: 3; y: 3; width: 30; height: 18; color: "#000"; visible: Theme.buttonShadow > 0 }
         Rectangle {
-            width: 30; height: 18; color: "#eeeeee"; border.width: 3; border.color: "#000"
-            Rectangle { x: 3; y: 7.5; width: 24; height: 3; color: "#000" }
+            width: 30; height: 18; color: "#eeeeee"; border.width: Theme.border; border.color: Theme.line
+            Rectangle { x: 3; y: 7.5; width: 24; height: 3; color: Theme.line }
         }
     }
     MouseArea {
