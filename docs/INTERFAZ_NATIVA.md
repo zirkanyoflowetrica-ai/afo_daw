@@ -80,11 +80,18 @@ no muestra (fase 3).
 
 ## Fase 2: cómo se hizo
 
-- `TuneBody.qml` (Afinador): pantalla CONFIRMADO / SIN CONFIRMAR con tonalidad y BPM, modos
-  Automático / Asistido / Manual, Tónica, Escala, BPM, Analizar música, ✔ Confirmar, estado,
-  Intensidad, voces a afinar (P, L, R, _B) y la lista de tiras conectadas. Con intensidad > 0 % sale
-  **un cable a la tira exacta** de cada voz con ese rol; los cables siguen a las tiras al desplazar
-  la consola. La curva de tono antes/después sigue pendiente y el módulo lo dice.
+- `TuneBody.qml` (Afinador, rehecho el 23-11-2026 como plugin de afinación): maneja el efecto nativo
+  **AF-60 «tune»** de la pista elegida (lo inserta el primero de su cadena, lo puentea o lo quita con
+  confirmación en el sitio). Pantalla con la **nota que se canta**, aguja de **±50 cents** frente a la
+  nota destino y barra de **corrección aplicada**; **gráfica de tono** de los últimos 8 s (blanco: lo
+  que se canta; color: la nota de la escala, filas claras = notas de la escala); **teclado** de 12 notas
+  que marca la escala y enciende la nota destino (clic = tónica); Tónica, Escala, Voz (rango) y las
+  perillas Velocidad, Naturalidad, Intensidad y Mezcla (automatizables en Touch / Latch / Write).
+  «Detectar tonalidad» analiza la música y «Usar …» lleva la tonalidad analizada al efecto (al
+  insertarlo se aplica sola si ya estaba confirmada). Los medidores salen de `fxMeters` (~30 Hz solo
+  mientras suena). Abajo queda, dicho tal cual, la afinación **sin conexión** de la Mezcla IA (PSOLA
+  por archivo, voces P / L / R / _B e intensidad). Con intensidad > 0 % sale **un cable a la tira
+  exacta** de cada voz con ese rol.
 - `MasteringBody.qml` (Master IA) y `ReviewBody.qml` (Antes / Después) se rehicieron para la
   mezcla en vivo: ver «Mezcla y master en vivo» más abajo (ya no hay WAVs, ZIP ni escucha de archivos).
 - `Mixer.qml` añade el estado del afinador (la confirmación se anula si cambian los audios, los

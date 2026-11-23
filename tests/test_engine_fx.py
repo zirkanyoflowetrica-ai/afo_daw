@@ -79,8 +79,8 @@ def with_fx(eng, path, key, **params):
 def test_catalogo():
     cat = afo_audio.effect_catalog()
     keys = [c["key"] for c in cat]
-    assert keys == ["gain", "strip", "eq", "compressor", "limiter", "gate", "deesser", "saturator", "delay", "space", "analyzer"]
-    assert {c["af"] for c in cat} == {"AF-01", "AF-02", "AF-07", "AF-13", "AF-14", "AF-18", "AF-20", "AF-26", "AF-41", "AF-35", "AF-76"}
+    assert keys == ["gain", "strip", "eq", "compressor", "limiter", "gate", "deesser", "saturator", "delay", "space", "analyzer", "tune"]
+    assert {c["af"] for c in cat} == {"AF-01", "AF-02", "AF-07", "AF-13", "AF-14", "AF-18", "AF-20", "AF-26", "AF-41", "AF-35", "AF-76", "AF-60"}
     for c in cat:
         assert c["params"], c["key"]
         for p in c["params"]:
@@ -367,6 +367,46 @@ def test_deesser_baja_solo_la_sibilancia(host, tmp_path):
     eng.set_effect_param(fx, "threshold", -30)
     y = render(eng, tmp_path, "lo_out.wav")[SR:2 * SR, 0]
     assert db(rms(y)) == pytest.approx(-12 - 3.01, abs=0.2)
+
+
+def freq_of(y):
+    """Frecuencia dominante (FFT con relleno de ceros e interpolación parabólica)."""
+    n = 1 << 20
+    spec = np.abs(np.fft.rfft(y * np.hanning(len(y)), n))
+    k = int(np.argmax(spec))
+    a, b, c = np.log(spec[k - 1:k + 2] + 1e-12)
+    return (k + 0.5 * (a - c) / (a - 2 * b + c)) * SR / n
+
+
+def tune_on(eng, path, **params):
+    tid = eng.add_audio_track(path, "voz")["id"]
+    fx = eng.add_effect(tid, "tune")["id"]
+    for k, v in params.items():
+        assert eng.set_effect_param(fx, k, float(v)), k
+    return tid, fx
+
+
+def test_afinador_lleva_la_nota_a_la_escala(host, tmp_path):
+    """AF-60: un La desafinado +45 cents (451,6 Hz) sale en 440 Hz con velocidad 0; uno afinado no cambia."""
+    eng = host.engine
+    tid, fx = tune_on(eng, tone(tmp_path, 440 * 2 ** (0.45 / 12), -12, 2.0, "sharp.wav"),
+                      key=9, scale=0, speed=0, humanize=0, amount=100, mix=100)
+    y = render(eng, tmp_path, "tuned.wav")[int(0.6 * SR): int(1.8 * SR), 0]
+    assert freq_of(y) == pytest.approx(440.0, abs=1.5)
+    assert db(rms(y)) == pytest.approx(-12 - 3.01, abs=1.5)   # dos lecturas que se cruzan: hasta ~1 dB menos
+    m = eng.effect_meters(fx)
+    assert len(m) == 5            # entrada, salida, nota detectada, destino, corrección (tras el render: silencio = 0)
+    eng.remove_track(tid)
+    # Mayor de Do: Do# (277,2 Hz) no está en la escala; un poco por encima va a Re (293,7 Hz)
+    tid, fx = tune_on(eng, tone(tmp_path, 440 * 2 ** (-7.4 / 12), -12, 2.0, "csharp.wav"),
+                      key=0, scale=1, speed=0, amount=100)
+    y = render(eng, tmp_path, "tuned2.wav")[int(0.6 * SR): int(1.8 * SR), 0]
+    assert freq_of(y) == pytest.approx(440 * 2 ** (-7 / 12), abs=1.5)
+    eng.remove_track(tid)
+    tid, fx = tune_on(eng, tone(tmp_path, 440, -12, 2.0, "a.wav"), key=9, scale=0, speed=0)
+    y = render(eng, tmp_path, "same.wav")[int(0.6 * SR): int(1.8 * SR), 0]
+    assert freq_of(y) == pytest.approx(440.0, abs=0.5)
+    assert db(rms(y)) == pytest.approx(-12 - 3.01, abs=0.3)
 
 
 def test_antes_y_despues_de_la_cadena(host, tmp_path):

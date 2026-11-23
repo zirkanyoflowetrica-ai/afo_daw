@@ -47,8 +47,10 @@ menos en la primera hora de trabajo va primero.
     como «ducking del bajo con el bombo»).
 11. **Bounce / consolidar / congelar** pistas (freeze) para ahorrar CPU, y exportar stems por pista.
 12. **Time-stretch y edición de tempo** (Elastic Audio): ajustar audio al tempo y cuantizar audio.
-13. **Edición de voces a fondo**: Melodyne-like nota a nota (hoy el Afinador es automático y por
-    fuerza), clip gain dibujado, crossfades automáticos al cortar.
+13. **Edición de voces a fondo**: Melodyne-like nota a nota, clip gain dibujado, crossfades
+    automáticos al cortar. **Hecho (23-11-2026):** afinación **en tiempo real** como un plugin de
+    afinación (AF-60: YIN + desplazador de tono en el motor, escala y tónica, velocidad, naturalidad,
+    rango de voz; pantalla de nota y cents, gráfica de tono y teclado de escala).
 14. **Rendimiento comprobado**: pruebas con 64–128 pistas y docenas de plugins, medidor de CPU / disco
     a la vista y aviso de dropouts.
 

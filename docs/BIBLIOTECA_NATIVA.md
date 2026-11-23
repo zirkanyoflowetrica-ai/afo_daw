@@ -56,6 +56,7 @@ fader** de la pista (o del master) y Tracktion compensa la latencia que informan
 | AF-26 | Saturator | Tubo / Cinta / Recorte con sobremuestreo ×4, tono, bias, mezcla | 3.er armónico presente; aliasing < −70 dB; mezcla 0 = referencia |
 | AF-35 | Space | Sala / Hall / Placa / Cámara: predelay, reflexiones, FDN de 8 líneas, amortiguación, anchura | RT60 ≈ 2 s medido por integración de Schroeder |
 | AF-41 | Digital Delay | Libre o sincronizado al tempo, realimentación con saturación, ping-pong, filtros, ducking | Eco a 250 ms; negra a 120 BPM = 500 ms |
+| AF-60 | Pitch Correct (Tune) | Afinación en tiempo real: detección YIN (rango de voz), escala y tónica, velocidad, naturalidad en notas largas, intensidad, mezcla; desplazador de tono de dos lecturas sobre 30 ms, latencia compensada. Medidores: nota, destino y corrección en cents | +45 cents → 440 Hz ±1,5; en Do mayor −7,4 semitonos → Re 293,7 Hz; un La afinado sale intacto |
 | AF-76 | Spectrum Analyzer | FFT de 4096 con ventana de Hann en bandas logarítmicas 20 Hz – 20 kHz | Ve 440 Hz a ≈ −12 dB |
 
 También se comprueba: orden de la cadena, mover, quitar, bypass, insertar en el master, y que un
@@ -114,7 +115,7 @@ cada efecto. `--selftest` repite el ciclo desde la interfaz con todas las pistas
 |---|---|
 | 2 · Instrumentales y MIDI | Sampler Pro, Drum Rack, Drum Synth, 808 Lab, Wavetable/Analog Synth, Step Sequencer, Arpeggiator, Transient Designer, Glue |
 | 3 · Diseño sonoro | Texture Verb, Shimmer, Infinity, MultiTap, Trance Gate, Granular FX, Spectral FX, FX Lab |
-| 4 · Voz profesional | Tune, Pitch Editor, Vocal Align, Harmonizer, Doubler, Dynamic EQ, Noise Reducer (De-Esser ya está, AF-20) |
+| 4 · Voz profesional | Pitch Editor, Vocal Align, Harmonizer, Doubler, Dynamic EQ, Noise Reducer (De-Esser ya está, AF-20; **Tune ya está, AF-60**) |
 | 5 · Mastering | True Peak Limiter validado, Loudness, Master Dynamics, Match EQ, Linear EQ, Master Imager, Dither y el resto |
 
 ## Añadir un módulo

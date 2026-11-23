@@ -414,6 +414,21 @@ inline const FxDesc& deesserDesc()
     return d;
 }
 
+inline const FxDesc& tuneDesc()
+{
+    static const FxDesc d { "tune", "AF-60", "AFO Pitch Correct", "Voz profesional",
+        "Afinación en tiempo real: detecta la nota que se canta (YIN) y la lleva a la escala elegida con la velocidad que marques.",
+        { { "key", "Tónica", 0, 11, 0, "", 0, "Do|Do#|Re|Re#|Mi|Fa|Fa#|Sol|Sol#|La|La#|Si", "Nota base de la escala de la canción" },
+          { "scale", "Escala", 0, 5, 1, "", 0, "Cromática|Mayor|Menor|Menor armónica|Pentatónica mayor|Pentatónica menor", "Notas permitidas (Cromática = las 12)" },
+          { "speed", "Velocidad", 0, 400, 25, "ms", 60, nullptr, "Cuánto tarda en llegar a la nota: 0 = efecto robot, 50–150 = natural" },
+          { "humanize", "Naturalidad", 0, 100, 30, "%", 0, nullptr, "En notas largas corrige más despacio y deja respirar el vibrato" },
+          { "amount", "Intensidad", 0, 100, 100, "%", 0, nullptr, "Qué parte de la desafinación corrige (100 % = toda)" },
+          { "range", "Voz", 0, 2, 1, "", 0, "Aguda (soprano / alto)|Media (tenor)|Grave (barítono / bajo)", "Rango en el que busca la nota (evita errores de octava)" },
+          { "mix", "Mezcla", 0, 100, 100, "%", 0, nullptr, "Voz corregida frente a la original" } },
+        "nota|destino|corrección cents" };
+    return d;
+}
+
 //==============================================================================
 class GainFx : public FxBase
 {
@@ -909,6 +924,166 @@ private:
 };
 
 //==============================================================================
+// Afinador en tiempo real. Detección: YIN sobre la señal mono pasada a ~24 kHz, cada ~5 ms.
+// Corrección: desplazador de tono de dos lecturas con ventanas sin² (sumadas = 1) sobre una línea de
+// retardo de 30 ms; la desviación hasta la nota de la escala se alcanza con la constante de tiempo
+// «Velocidad». Latencia fija de media ventana (Tracktion la compensa).
+class TuneFx : public FxBase
+{
+public:
+    TuneFx (te::PluginCreationInfo i) : FxBase (i, tuneDesc()) {}
+    AFO_FX_TYPE ("afoFxTune", tuneDesc)
+    double getLatencySeconds() override { return 0.5 * win / sampleRate; }
+    std::vector<float> extraMeters() override { return { detMidi.load(), tgtMidi.load(), shiftCents.load() }; }
+
+    // Nota permitida más cercana a `midi` (float) en la escala de tónica `key`
+    static int nearestInScale (float midi, int key, int scale)
+    {
+        static constexpr int masks[6] = { 0xFFF, 0xAB5, 0x5AD, 0x9AD, 0x295, 0x4A9 };   // bit k = semitono k
+        const int mask = masks[juce::jlimit (0, 5, scale)];
+        const int base = (int) std::floor (midi);
+        int best = base; float bd = 1e9f;
+        for (int n = base - 6; n <= base + 7; ++n)
+        {
+            const int rel = ((n - key) % 12 + 12) % 12;
+            if (! (mask >> rel & 1)) continue;
+            const float d = std::abs ((float) n - midi);
+            if (d < bd) { bd = d; best = n; }
+        }
+        return best;
+    }
+
+protected:
+    void prepareFx (double sr) override
+    {
+        win = juce::jmax (256, (int) std::round (0.030 * sr));
+        line[0].prepare (win + 8); line[1].prepare (win + 8);
+        dec = juce::jmax (1, (int) std::round (sr / 24000.0));
+        dsr = sr / dec;
+        aa.set (Biquad::Type::lowpass, juce::jmin (5000.0, 0.4 * dsr), 0.7071, 0, sr);
+        resetFx();
+    }
+    void resetFx() override
+    {
+        line[0].clear(); line[1].clear(); aa.reset();
+        std::fill (ring.begin(), ring.end(), 0.0f);
+        rw = 0; decCount = 0; hopCount = 0; phase = 0.5f; shift = 0.0f; want = 0.0f;
+        curNote = -1; held = 0; voiced = false;
+        detMidi.store (0.0f); tgtMidi.store (0.0f); shiftCents.store (0.0f);
+    }
+
+    void processFx (float* l, float* r, int n) override
+    {
+        const int key = choice (0), scale = choice (1), range = choice (5);
+        const float speed = p (2), human = p (3) / 100.0f, amount = p (4) / 100.0f, mix = p (6) / 100.0f;
+        static constexpr float fLo[3] = { 140.0f, 85.0f, 60.0f }, fHi[3] = { 1100.0f, 700.0f, 420.0f };
+        const int rg = juce::jlimit (0, 2, range);
+        for (int i = 0; i < n; ++i)
+        {
+            // --- detección (mono, diezmada) ---
+            const float m = aa.process (0.5f * (l[i] + r[i]), 0);
+            if (++decCount >= dec)
+            {
+                decCount = 0;
+                ring[(size_t) rw] = m; rw = (rw + 1) & (ringSize - 1);
+                if (++hopCount >= hop) { hopCount = 0; detect (fLo[rg], fHi[rg], key, scale, amount); }
+            }
+            // --- corrección: la desviación sigue a la deseada con la constante de tiempo elegida ---
+            float tc = voiced ? speed * (held > holdSamples ? 1.0f + 3.0f * human : 1.0f) : 30.0f;
+            const float c = tc <= 0.5f ? 1.0f : onePole (tc, sampleRate);
+            shift += c * (want - shift);
+            ++held;
+            const float ratio = std::exp2 (shift / 12.0f);
+            if (std::abs (shift) < 0.005f)        // en reposo: una sola lectura a media ventana (sin filtro peine)
+            {
+                const float to = phase < 0.25f || phase >= 0.75f ? (phase < 0.5f ? 0.0f : 1.0f) : 0.5f;
+                phase += juce::jlimit (-0.0002f, 0.0002f, to - phase);
+            }
+            else
+                phase += (1.0f - ratio) / (float) win;
+            phase -= std::floor (phase);
+            const float ph2 = phase + 0.5f - std::floor (phase + 0.5f);
+            const float w1 = std::sin (juce::MathConstants<float>::pi * phase), g1 = w1 * w1, g2 = 1.0f - g1;
+            const float d1 = 1.0f + phase * (float) win, d2 = 1.0f + ph2 * (float) win, dd = 1.0f + 0.5f * (float) win;
+            for (int ch = 0; ch < 2; ++ch)
+            {
+                float* x = ch == 0 ? l : r;
+                auto& ln = line[(size_t) ch];
+                ln.push (x[i]);
+                const float wet = g1 * ln.read (d1) + g2 * ln.read (d2);
+                x[i] = mix * wet + (1.0f - mix) * ln.read (dd);
+            }
+        }
+        shiftCents.store (shift * 100.0f);
+    }
+
+private:
+    void detect (float fLo, float fHi, int key, int scale, float amount)
+    {
+        const int tauMin = juce::jmax (2, (int) std::floor (dsr / fHi)), tauMax = juce::jmin (maxTau, (int) std::ceil (dsr / fLo));
+        const int w = yinWin;
+        std::array<float, yinWin + maxTau + 2> x {};
+        const int len = w + tauMax + 1;
+        double energy = 0.0;
+        for (int j = 0; j < len; ++j)
+        {
+            x[(size_t) j] = ring[(size_t) ((rw - len + j + 4 * ringSize) & (ringSize - 1))];
+            if (j < w) energy += (double) x[(size_t) j] * x[(size_t) j];
+        }
+        const float rmsDb = gainToDb ((float) std::sqrt (energy / w) * 1.41421356f);
+        float tauF = -1.0f;
+        if (rmsDb > -45.0f)
+        {
+            std::array<float, maxTau + 2> d {};
+            double run = 0.0;
+            for (int tau = 1; tau <= tauMax; ++tau)
+            {
+                double s = 0.0;
+                for (int j = 0; j < w; ++j) { const float e = x[(size_t) j] - x[(size_t) (j + tau)]; s += (double) e * e; }
+                run += s;
+                d[(size_t) tau] = run > 0.0 ? (float) (s * tau / run) : 1.0f;     // diferencia normalizada acumulada
+            }
+            for (int tau = tauMin; tau < tauMax; ++tau)
+                if (d[(size_t) tau] < 0.15f)
+                {
+                    while (tau + 1 < tauMax && d[(size_t) (tau + 1)] < d[(size_t) tau]) ++tau;
+                    const float a = d[(size_t) (tau - 1)], b = d[(size_t) tau], c = d[(size_t) (tau + 1)];
+                    const float den = a - 2.0f * b + c;
+                    tauF = (float) tau + (std::abs (den) > 1e-9f ? 0.5f * (a - c) / den : 0.0f);
+                    break;
+                }
+        }
+        if (tauF <= 0.0f)
+        {
+            voiced = false; want = 0.0f; curNote = -1;
+            detMidi.store (0.0f); tgtMidi.store (0.0f);
+            return;
+        }
+        const float f = (float) dsr / tauF;
+        const float midi = 69.0f + 12.0f * std::log2 (f / 440.0f);
+        int note = nearestInScale (midi, key, scale);
+        if (curNote >= 0 && std::abs (midi - (float) curNote) < 0.65f && nearestInScale ((float) curNote, key, scale) == curNote)
+            note = curNote;                        // histéresis: no salta de nota en la frontera
+        if (note != curNote) { curNote = note; held = 0; }
+        voiced = true;
+        want = juce::jlimit (-12.0f, 12.0f, ((float) note - midi) * amount);
+        detMidi.store (midi); tgtMidi.store ((float) note);
+    }
+
+    static constexpr int ringSize = 2048, yinWin = 512, maxTau = 420, hop = 128;
+    std::array<DelayLine, 2> line;
+    Biquad aa;
+    std::array<float, ringSize> ring {};
+    int win = 1440, dec = 2, rw = 0, decCount = 0, hopCount = 0, curNote = -1;
+    int64_t held = 0;
+    double dsr = 24000.0;
+    float phase = 0.5f, shift = 0.0f, want = 0.0f;
+    bool voiced = false;
+    static constexpr int64_t holdSamples = 6000;   // ~125 ms: a partir de aquí es una nota larga
+    std::atomic<float> detMidi { 0.0f }, tgtMidi { 0.0f }, shiftCents { 0.0f };
+};
+
+//==============================================================================
 // Registro y creación por clave
 struct FxType { const FxDesc& (*desc)(); const char* xml; };
 inline const std::vector<FxType>& fxTypes()
@@ -917,7 +1092,8 @@ inline const std::vector<FxType>& fxTypes()
         { gainDesc, GainFx::xmlTypeName }, { stripDesc, StripFx::xmlTypeName }, { eqDesc, EqFx::xmlTypeName },
         { compDesc, CompressorFx::xmlTypeName }, { limiterDesc, LimiterFx::xmlTypeName }, { gateDesc, GateFx::xmlTypeName }, { deesserDesc, DeEsserFx::xmlTypeName },
         { satDesc, SaturatorFx::xmlTypeName },
-        { delayDesc, DelayFx::xmlTypeName }, { spaceDesc, SpaceFx::xmlTypeName }, { analyzerDesc, AnalyzerFx::xmlTypeName } };
+        { delayDesc, DelayFx::xmlTypeName }, { spaceDesc, SpaceFx::xmlTypeName }, { analyzerDesc, AnalyzerFx::xmlTypeName },
+        { tuneDesc, TuneFx::xmlTypeName } };
     return t;
 }
 
@@ -926,7 +1102,7 @@ inline void registerFx (te::PluginManager& pm)
     pm.createBuiltInType<GainFx>();      pm.createBuiltInType<StripFx>();   pm.createBuiltInType<EqFx>();
     pm.createBuiltInType<CompressorFx>(); pm.createBuiltInType<GateFx>();   pm.createBuiltInType<SaturatorFx>();
     pm.createBuiltInType<DelayFx>();     pm.createBuiltInType<SpaceFx>();   pm.createBuiltInType<AnalyzerFx>();
-    pm.createBuiltInType<DeEsserFx>();  pm.createBuiltInType<LimiterFx>();
+    pm.createBuiltInType<DeEsserFx>();  pm.createBuiltInType<LimiterFx>();  pm.createBuiltInType<TuneFx>();
 }
 
 inline const char* xmlTypeFor (const std::string& key)

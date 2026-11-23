@@ -967,7 +967,7 @@ Las entradas van a la izquierda y las salidas a la derecha. Arrastra para moverl
                     id: cable
                     required property var modelData
                     visible: !win.maxId
-                    readonly property color c: Theme.pc[modelData.f]
+                    readonly property color c: Theme.pc[modelData.f] || Theme.line
                     readonly property var geo: {
                         win.geomRev; win.portRev
                         var a = win.anchorOf(modelData, "from"), b = win.anchorOf(modelData, "to")
@@ -1158,7 +1158,7 @@ Las entradas van a la izquierda y las salidas a la derecha. Arrastra para moverl
                     required property var modelData
                     readonly property var pnl: win.panelItems[modelData.pid]
                     readonly property var a: { win.geomRev; win.portRev; return win.anchorOf(modelData.link, modelData.end) }
-                    readonly property color c: Theme.pc[modelData.link.f]
+                    readonly property color c: Theme.pc[modelData.link.f] || Theme.line
                     visible: !!pnl && pnl.visible && !win.maxId
                     x: a.x - 13; y: a.y - 13
                     z: pnl ? pnl.z + 0.5 : 0

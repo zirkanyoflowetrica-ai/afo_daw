@@ -63,6 +63,13 @@ FACTORY: dict[str, dict[str, dict[str, float]]] = {
         "Suave": {"freq": 6500, "q": 1.0, "threshold": -28, "range": -3},
         "Fuerte (ancha)": {"freq": 6500, "q": 1.2, "threshold": -36, "range": -10, "mode": 1},
     },
+    "tune": {
+        "Natural (balada)": {"speed": 90, "humanize": 45, "amount": 90, "range": 1},
+        "Pop moderno": {"speed": 25, "humanize": 30, "amount": 100, "range": 1},
+        "Robot (trap)": {"speed": 0, "humanize": 0, "amount": 100, "range": 1},
+        "Voz aguda suave": {"speed": 60, "humanize": 40, "amount": 85, "range": 0},
+        "Voz grave suave": {"speed": 60, "humanize": 40, "amount": 85, "range": 2},
+    },
     "saturator": {
         "Tubo cálido": {"drive": 9, "character": 0, "tone": -10, "mix": 100},
         "Cinta": {"drive": 12, "character": 1, "tone": -20, "bias": 10, "mix": 100},

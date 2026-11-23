@@ -5,7 +5,7 @@ function clamp(v, a, b) { return Math.max(a, Math.min(b, v)) }
 
 // Versión del lienzo: sube cuando cambian los módulos o su colocación de fábrica (el diseño guardado
 // de otra versión no se aplica)
-var VERSION = 5
+var VERSION = 6
 
 // Módulos: [id, nombre, modelo, [x, y, ancho], alto]. Tamaño fijo: solo cambia si lo cambias tú.
 // De izquierda a derecha sigue el camino del sonido: fuentes → Piano → Pistas → (Afinador) → Mezcla →
@@ -22,7 +22,7 @@ var PANELS = [
     ["pistas", "Pistas", "Mesa MT-8", [1692, 0, 960], 860],
     ["mezcla", "Mezcla", "Consola 6C", [2888, 0, 900], 900],
     ["antes", "Antes / Después", "A/B Comp", [6992, 690, 440], 330],
-    ["afina", "Afinador", "PSOLA AT-1", [2222, 900, 430], 700],
+    ["afina", "Afinador", "Pitch AT-60", [2012, 900, 640], 760],
     ["fx", "Efectos", "Rack FX-96", [4024, 0, 900], 760],
     ["mastia", "Mastering", "Master M-4", [5160, 0, 460], 900],
     ["fxm", "Efectos master", "Rack FX-M", [5856, 0, 900], 760],

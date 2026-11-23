@@ -121,7 +121,7 @@ def _native_fx_checks(rep, app, host, window, bridge, track_id: int) -> None:
         return v.toVariant() if hasattr(v, "toVariant") else v
 
     st = fx("target", track_id)
-    rep.check("Efectos: catálogo del motor (11 módulos)", st and st["catalog"] == 11, st and st["catalog"])
+    rep.check("Efectos: catálogo del motor (12 módulos)", st and st["catalog"] == 12, st and st["catalog"])
     fx("add", "eq")
     st = fx("add", "analyzer")
     rep.check("Efectos: insertar EQ y Analizador en la pista", [e["key"] for e in st["chain"]] == ["eq", "analyzer"],
@@ -483,6 +483,29 @@ def _native_mixer_checks(rep, app, host, window, bridge, prop) -> None:
     call("tuneCommand", "confirm", "")
     tune = snap()["tune"]
     rep.check("confirmar tonalidad y BPM (modo manual)", bool(tune.get("confirmed")), tune.get("status"))
+    # Afinador en tiempo real (efecto nativo AF-60): el módulo lo inserta en la voz, lleva la tonalidad
+    # analizada a sus parámetros y lo quita
+    def _items(it):
+        yield it
+        for c in it.childItems():
+            yield from _items(c)
+    tb = next((i for i in _items(window.contentItem()) if i.property("histLen") == 240), None)
+    tfx, tvals = None, None
+    if tb is not None:
+        tb.setProperty("trackId", voz)
+        QMetaObject.invokeMethod(tb, "insert")
+        _wait(app, lambda: False, 0.2, host)
+        chain = json.loads(bridge.fxList(voz)).get("chain", [])
+        tfx = chain[0] if chain and chain[0]["key"] == "tune" else None
+        if tfx:
+            QMetaObject.invokeMethod(tb, "setP", Q_ARG("QVariant", "key"), Q_ARG("QVariant", 9))
+            tvals = json.loads(bridge.fxList(voz))["chain"][0]["values"]
+            QMetaObject.invokeMethod(tb, "remove")
+            _wait(app, lambda: False, 0.2, host)
+    left = [e["key"] for e in json.loads(bridge.fxList(voz)).get("chain", [])]
+    rep.check("Afinador en tiempo real: se inserta el primero en la voz, cambia la tónica y se quita",
+              tfx is not None and tvals is not None and round(tvals[0]) == 9 and "tune" not in left,
+              {"módulo": tb is not None, "efecto": tfx and tfx["key"], "valores": tvals, "queda": left})
     call("mixNow", True)                          # REMEZCLAR con afinación al 60 %
     done = _wait(app, lambda: (snap()["runs"] >= 2 and not snap()["mastering"]) or "Error" in snap()["status"], 240, host)
     st = snap()
