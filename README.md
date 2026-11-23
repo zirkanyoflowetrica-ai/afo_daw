@@ -20,7 +20,8 @@ Todo lo que AllForOne escribe (datos, registros, cachés, temporales) queda dent
 ## Uso rápido
 
 La ventana abre en la vista **Arreglo** (tema oscuro de fábrica): pistas con sus clips, curvas de
-automatización y consola con los inserts de cada canal, como en Studio One o Ableton. **Módulos** (F6)
+automatización y consola con los inserts y los **envíos a buses Aux** de cada canal (una reverb
+compartida: «+ Aux», y en cada tira el nivel del envío y PRE), como en Studio One o Ableton. **Módulos** (F6)
 muestra el lienzo con los aparatos y sus cables; «Tema» cambia a AllForOne (claro) o Professional.
 
 1. Arrastra tus audios al módulo **Audios**. Cada uno crea **su pista** y, con ella, **su tira en

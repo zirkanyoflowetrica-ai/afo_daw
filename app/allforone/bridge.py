@@ -332,6 +332,33 @@ class Bridge(QObject):
         except Exception as exc:
             return _err(f"No se pudo crear la pista de voz: {exc}")
 
+    # --- buses Aux y envíos (como en una consola: una reverb compartida por envío) -------------
+    @Slot(str, result=str)
+    @_safe
+    def auxCreate(self, name: str) -> str:
+        if (g := self._guard()):
+            return g
+        try:
+            return _ok(track=self.host.add_aux(name or "Aux"))
+        except Exception as exc:
+            return _err(f"No se pudo crear el bus Aux: {exc}")
+
+    @Slot(int, int, float, bool, result=str)
+    @_safe
+    def sendSet(self, track_id: int, aux_id: int, db: float, pre: bool) -> str:
+        """Nivel del envío de una pista a un bus Aux (db <= -100 lo quita); pre = antes del fader."""
+        if (g := self._guard()):
+            return g
+        self.host.engine.set_send(int(track_id), int(aux_id), float(db), bool(pre))
+        return _ok(sends=self.host.engine.sends(int(track_id)))
+
+    @Slot(int, result=str)
+    @_safe
+    def sendList(self, track_id: int) -> str:
+        if (g := self._guard()):
+            return g
+        return _ok(sends=self.host.engine.sends(int(track_id)))
+
     @Slot(int, str, bool, result=str)
     @_safe
     def recArm(self, track_id: int, input_name: str, monitor: bool) -> str:
@@ -604,17 +631,22 @@ class Bridge(QObject):
                 desc = cat.get(e["key"], {})
                 params = desc.get("params", [])
                 autom = list(e.get("automated", []))
-                inserts.append({"id": e["id"], "key": e["key"], "label": e["label"], "enabled": bool(e["enabled"]),
+                label = e["label"] or desc.get("name") or e["key"]          # añadido a mano: nombre del catálogo
+                inserts.append({"id": e["id"], "key": e["key"], "label": label, "enabled": bool(e["enabled"]),
                                 "auto": e["auto"], "automated": len(autom)})
                 for pid in autom:
                     pts = eng.effect_automation(e["id"], pid)
                     if not pts:
                         continue
                     p = next((q for q in params if q["id"] == pid), {})
-                    lanes.append({"effect": e["id"], "fx": e["label"], "param": pid, "name": p.get("name", pid),
+                    lanes.append({"effect": e["id"], "fx": label, "param": pid, "name": p.get("name", pid),
                                   "unit": p.get("unit", ""), "min": p.get("min", 0.0), "max": p.get("max", 1.0), "centre": p.get("centre"),
                                   "points": [[round(t, 3), round(v, 4)] for t, v in pts]})
-            out[str(tid)] = {"inserts": inserts, "lanes": lanes}
+            try:
+                sends = eng.sends(tid) if tid > 0 else []
+            except Exception:
+                sends = []
+            out[str(tid)] = {"inserts": inserts, "lanes": lanes, "sends": sends}
         return _ok(tracks=out)
 
     @Slot(int, str, result=str)
@@ -1175,7 +1207,7 @@ class Bridge(QObject):
     def _mx_fromtracks(self, d):
         if not self.host.ok:
             return {"ok": False, "error": self.host.error}
-        files = [t["source_path"] for t in self.host.engine.tracks()]
+        files = [t["source_path"] for t in self.host.engine.tracks() if t["source_path"]]
         if not files:
             return {"ok": False, "error": "No hay pistas de audio en el motor. Importa audio en Pistas o arrastra archivos aquí."}
         return {"ok": True, "stems": self.mixsvc.describe_paths(files)}

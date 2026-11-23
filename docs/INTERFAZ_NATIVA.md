@@ -199,6 +199,14 @@ poder ver qué hizo la mezcla.
   Doble clic abre ese efecto en el módulo Efectos.
 - **Consola** (botón «Consola»): una tira por pista con sus inserts (punto verde activo, tachado si está
   puenteado, ∿ si tiene parámetros automatizados), paneo, fader, medidores L/R y pico; y la tira master.
+- **Buses Aux y envíos** («+ Aux» en la barra de Arreglo o en Pistas): un bus es una pista del motor con
+  el *Aux Return* de Tracktion al principio y sus propios efectos, fader y paneo (doble clic en el nombre
+  de su tira abre sus efectos). Cada tira gana la sección **ENVÍOS**: una fila por bus con el nivel
+  (arrastrar; −48…+6 dB, doble clic = apagado) y **PRE** (antes del fader: no sigue al volumen de la
+  pista). El bus sigue sonando cuando otra pista está en solo (*solo seguro*); quitar un bus quita los
+  envíos que le llegaban. Motor: `addAuxTrack`, `setSend`, `sends` (`AuxSendPlugin` antes o después del
+  fader); puente: `auxCreate`, `sendSet`, `sendList` y `sends` en `dawLanes`; el proyecto guarda los
+  envíos de cada pista con el uid del bus.
 - Datos: el slot `dawLanes(ids)` del puente devuelve en una llamada, por pista, los inserts y las curvas
   (`effect_automation`) con nombre, unidad, mínimo, máximo y centro del catálogo. Se refresca al cambiar
   una cadena (`fxRev`), las pistas, al mostrar la vista y cada 2 s.

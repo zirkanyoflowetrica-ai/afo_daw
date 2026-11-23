@@ -139,6 +139,7 @@ Column {
             NeoButton { text: "+ " + modelData[1]; onClicked: root.addType(modelData[0]) }
         }
         NeoButton { text: "+ Voz"; tip: "Pista que graba la entrada del dispositivo (Grabador de cintas)"; onClicked: root.addType("voz") }
+        NeoButton { text: "+ Aux"; tip: "Bus Aux: una reverb o un eco compartido. Las pistas le mandan señal con sus envíos (consola de la vista Arreglo)"; onClicked: root.addType("aux") }
     }
 
     // ---------------- barra de edición ----------------

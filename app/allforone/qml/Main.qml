@@ -318,7 +318,14 @@ Las entradas van a la izquierda y las salidas a la derecha. Arrastra para moverl
         }
         if (what === "view") { if (a) view = a
                                return { view: view, lanes: arrange.laneCount, inserts: arrange.insertCount, rows: arrange.rows.length,
-                                        visible: arrange.visible, modules: viewport.visible } }
+                                        visible: arrange.visible, modules: viewport.visible,
+                                        auxes: arrange.auxes.length, sends: arrange.sendCount, sendsH: arrange.sendsH } }
+        // Bus Aux desde la consola (autoprueba): a = [nombre del bus, id de la pista que envía, dB]
+        if (what === "aux") { var at = arrange.addAux()
+                              if (!at || at.id < 0) return { ok: false }
+                              arrange.setSend(a[1], at.id, a[2], false)
+                              return { ok: true, id: at.id, sends: arrange.sendCount, uid: at.uid } }
+        if (what === "auxRemove") { var ai = sq.indexOf(a); if (ai >= 0) removeTrackAt(ai); return ai >= 0 }
         if (what === "heights") { var hs = {}; for (var hid in panelItems) hs[hid] = panelItems[hid].height; return hs }
         if (what === "theme") { var ok = setTheme(a, true); return { ok: ok, name: Theme.name, frame: Theme.frame, knob: Theme.knobStyle,
                                                                    themes: loadThemes().map(function (t) { return t.name }) } }

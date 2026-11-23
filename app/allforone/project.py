@@ -88,11 +88,19 @@ def collect(doc: dict, engine, catalog: list[dict], sources: dict[int, str], lab
     out["version"] = VERSION
     out["saved"] = datetime.now().isoformat(timespec="seconds")
     tracks = []
+    uid_of = {int(t.get("id", -1)): t.get("uid", "") for t in doc.get("tracks", [])}
     for t in doc.get("tracks", []):
         t = dict(t)
         tid = int(t.get("id", -1))
         if tid >= 0:
             t["fx"] = chain_of(engine, catalog, tid, labels, auto.get(tid, ()))
+            try:                             # envíos a buses Aux: el bus se guarda por su uid (los id cambian al abrir)
+                sends = [{"to": uid_of.get(int(s["aux"]), ""), "db": round(float(s["db"]), 2), "pre": bool(s["pre"])}
+                         for s in engine.sends(tid)]
+                if sends:
+                    t["sends"] = [s for s in sends if s["to"]]
+            except Exception:                # motor sin buses Aux
+                pass
             if t.get("type") == "inst" and (t.get("cfg") or {}).get("plugin"):
                 try:                         # estado del instrumento VST3 (sonido elegido en su ventana)
                     t["cfg"] = {**t["cfg"], "pluginState": engine.track_instrument_state(tid)}

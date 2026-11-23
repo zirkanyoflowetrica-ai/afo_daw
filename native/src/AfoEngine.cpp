@@ -49,6 +49,7 @@ struct TrackSlot
     te::Plugin::Ptr instrument;              // instrumento VST3 externo (sustituye al sintetizador)
     std::string instrumentId;
     AfoMeterPlugin* loud = nullptr;          // medidor de sonoridad tras el fader
+    int auxBus = -1;                         // pista Aux: bus que recibe (su Aux Return va primero)
 };
 
 // Configuración de Tracktion dentro de la carpeta de datos de AllForOne (nada fuera de ella)
@@ -223,7 +224,8 @@ struct Engine::Impl
         juce::BigInteger audible;
         for (auto& [id, s] : slots)
         {
-            const bool hear = anySolo ? s->track->isSolo (false) : ! s->track->isMuted (false);
+            const bool hear = anySolo ? (s->track->isSolo (false) || s->track->isSoloIsolate (false)) && ! s->track->isMuted (false)
+                                      : ! s->track->isMuted (false);
             const int index = all.indexOf (s->track.get());
             if (hear && index >= 0)
                 audible.setBit (index);
@@ -270,7 +272,23 @@ struct Engine::Impl
     te::Plugin* anchor (int trackId) const
     {
         if (trackId == 0) return master;
-        return slot (trackId).track->getVolumePlugin();
+        auto& s = slot (trackId);
+        auto* vol = s.track->getVolumePlugin();
+        // Los envíos pre-fader van justo antes del fader: los efectos se insertan delante de ellos
+        auto& list = s.track->pluginList;
+        const int volAt = list.indexOf (vol);
+        for (int i = 0; i < volAt; ++i)
+            if (dynamic_cast<te::AuxSendPlugin*> (list[i]) != nullptr)
+                return list[i];
+        return vol;
+    }
+
+    te::AuxSendPlugin* findSend (int trackId, int bus) const
+    {
+        for (auto* p : slot (trackId).track->pluginList)
+            if (auto* a = dynamic_cast<te::AuxSendPlugin*> (p); a != nullptr && a->getBusNumber() == bus)
+                return a;
+        return nullptr;
     }
 
     FxSlot& fxSlot (int id)
@@ -547,6 +565,85 @@ double Engine::setSynthMidi (int id, const std::vector<std::tuple<double, double
     return slot.info.lengthSeconds;
 }
 
+TrackInfo Engine::addAuxTrack (const std::string& name)
+{
+    requireMessageThread();
+    std::array<bool, 16> used {};
+    for (auto& [id, s] : impl->slots)
+        if (s->auxBus >= 0 && s->auxBus < 16) used[(size_t) s->auxBus] = true;
+    int bus = 0;
+    while (bus < 16 && used[(size_t) bus]) ++bus;
+    if (bus >= 16)
+        throw std::runtime_error ("afo_audio: ya hay 16 buses Aux");
+    auto info = addRecordTrack (name);
+    auto& s = impl->slot (info.id);
+    auto& edit = *impl->edit;
+    auto plugin = edit.getPluginCache().createNewPlugin (te::AuxReturnPlugin::xmlTypeName, {});
+    auto* ret = dynamic_cast<te::AuxReturnPlugin*> (plugin.get());
+    if (ret == nullptr)
+        throw std::runtime_error ("afo_audio: no se pudo crear el retorno Aux");
+    ret->busNumber = bus;
+    s.track->pluginList.insertPlugin (plugin, 0, nullptr);
+    s.track->setSoloIsolate (true);            // el bus sigue sonando cuando se pone otra pista en solo
+    edit.setAuxBusName (bus, juce::String::fromUTF8 (name.c_str()));
+    s.auxBus = bus;
+    s.info.auxBus = bus;
+    edit.getTransport().ensureContextAllocated();
+    return s.info;
+}
+
+bool Engine::setSend (int trackId, int auxTrackId, float db, bool pre)
+{
+    requireMessageThread();
+    auto& aux = impl->slot (auxTrackId);
+    if (aux.auxBus < 0)
+        throw std::invalid_argument ("afo_audio: la pista destino no es un bus Aux");
+    auto& s = impl->slot (trackId);
+    if (s.auxBus >= 0)
+        throw std::invalid_argument ("afo_audio: un bus Aux no envía a otro bus");
+    auto& list = s.track->pluginList;
+    auto* send = impl->findSend (trackId, aux.auxBus);
+    if (db <= -100.0f)
+    {
+        if (send != nullptr)
+            send->deleteFromParent();
+        return true;
+    }
+    auto* vol = s.track->getVolumePlugin();
+    const bool isPre = send != nullptr && list.indexOf (send) < list.indexOf (vol);
+    if (send == nullptr || isPre != pre)
+    {
+        if (send != nullptr)
+            send->deleteFromParent();
+        auto v = te::AuxSendPlugin::create();
+        v.setProperty (te::IDs::busNum, aux.auxBus, nullptr);
+        auto plugin = impl->edit->getPluginCache().createNewPlugin (v);
+        send = dynamic_cast<te::AuxSendPlugin*> (plugin.get());
+        if (send == nullptr)
+            throw std::runtime_error ("afo_audio: no se pudo crear el envío");
+        const int volAt = list.indexOf (vol);
+        list.insertPlugin (plugin, pre ? volAt : volAt + 1, nullptr);
+    }
+    send->setGainDb (juce::jlimit (-100.0f, 6.0f, db));
+    impl->edit->getTransport().ensureContextAllocated();
+    return true;
+}
+
+std::vector<SendInfo> Engine::sends (int trackId) const
+{
+    requireMessageThread();
+    std::vector<SendInfo> r;
+    auto& s = impl->slot (trackId);
+    auto& list = s.track->pluginList;
+    const int volAt = list.indexOf (s.track->getVolumePlugin());
+    for (int i = 0; i < list.size(); ++i)
+        if (auto* a = dynamic_cast<te::AuxSendPlugin*> (list[i]))
+            for (auto& [id, t] : impl->slots)
+                if (t->auxBus == a->getBusNumber())
+                    r.push_back ({ id, a->getGainDb(), i < volAt });
+    return r;
+}
+
 bool Engine::removeTrack (int id)
 {
     requireMessageThread();
@@ -554,6 +651,11 @@ bool Engine::removeTrack (int id)
     if (it == impl->slots.end())
         return false;
     auto& s = *it->second;
+    if (s.auxBus >= 0)                          // quitar un bus quita los envíos que le llegaban
+        for (auto& [oid, o] : impl->slots)
+            if (oid != id)
+                if (auto* a = impl->findSend (oid, s.auxBus))
+                    a->deleteFromParent();
     if (auto* lm = s.track->getLevelMeterPlugin())
         lm->measurer.removeClient (s.meter);
     if (impl->armedTrack == id)

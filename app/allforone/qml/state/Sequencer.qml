@@ -41,7 +41,7 @@ QtObject {
     property string armedUid: ""
 
     readonly property var src: ({ inst: "inst", drum: "drums", ia: "ia", voz: "cinta", audio: "pistas" })
-    readonly property var tn: ({ inst: "Instrumento", drum: "Batería", ia: "IA", voz: "Voz", audio: "Audio" })
+    readonly property var tn: ({ inst: "Instrumento", drum: "Batería", ia: "IA", voz: "Voz", audio: "Audio", aux: "Aux" })
     readonly property var insts: [["Piano de cola", "Teclas"], ["Bajo sintético", "Graves"], ["Batería acústica", "Percusión"],
         ["Guitarra eléctrica", "Cuerdas"], ["Pad ambiental", "Sintetizador"], ["Cuerdas de orquesta", "Cuerdas"],
         ["Voz coral", "Voces"], ["Campanas", "Percusión"]]
@@ -64,6 +64,7 @@ QtObject {
         if (t.type === "inst") return "síntesis · " + insts[t.cfg.v][0]
         if (t.type === "drum") return "síntesis · 16 pasos"
         if (t.type === "voz") return t.len > 0 ? "toma " + L.fmt(t.len) + " · motor nativo" : "sin toma · graba en Grabador de cintas"
+        if (t.type === "aux") return "bus Aux · recibe los envíos de la consola"
         return ""
     }
     function replace(uid, changes) {
@@ -95,6 +96,7 @@ QtObject {
     function push(t) {
         if (isSynth(t)) t.id = engineTrack(t)
         if (t.type === "voz") t.id = recTrack(t)
+        if (t.type === "aux") t.id = auxTrack(t)
         var a = studio.tracks.slice(); a.push(t); studio.tracks = a
         var c = Object.assign({}, act); c[t.type] = t.uid; act = c
         studio.selected = a.length - 1
@@ -111,6 +113,12 @@ QtObject {
     function recTrack(t) {
         if (!studio.engineOk) return -1
         var r = studio.call("recCreate", t.name)
+        if (!r.ok) { studio.toast(r.error); return -1 }
+        return r.track.id
+    }
+    function auxTrack(t) {
+        if (!studio.engineOk) return -1
+        var r = studio.call("auxCreate", t.name)
         if (!r.ok) { studio.toast(r.error); return -1 }
         return r.track.id
     }
@@ -149,7 +157,7 @@ QtObject {
     }
     function forget(t) {
         if (t.type === "voz" && t.uid === armedUid) { if (recording) stopTake(true); armedUid = "" }
-        if ((isSynth(t) || t.type === "voz") && t.id >= 0) studio.call("removeTrack", t.id)
+        if ((isSynth(t) || t.type === "voz" || t.type === "aux") && t.id >= 0) studio.call("removeTrack", t.id)
         var c = Object.assign({}, act)
         for (var k in c) if (c[k] === t.uid) {
             var other = studio.tracks.filter(function (x) { return x.type === k && x.uid !== t.uid })[0]

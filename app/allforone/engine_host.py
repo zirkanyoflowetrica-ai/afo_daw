@@ -225,6 +225,13 @@ class EngineHost:
         self.tracks[info["id"]] = info
         return info
 
+    # --- buses Aux y envíos -------------------------------------------------------------
+    def add_aux(self, name: str) -> dict:
+        info = dict(self.engine.add_aux_track(name))
+        info.update(peaks=[], originalPath="", note="")
+        self.tracks[info["id"]] = info
+        return info
+
     def finish_take(self, discard: bool = False, buckets: int = 600) -> dict:
         info = dict(self.engine.stop_recording(discard))
         info["peaks"] = [round(v, 4) for v in self.engine.track_peaks(info["id"], buckets)] if info["source_path"] else []

@@ -407,9 +407,28 @@ def _native_mixer_checks(rep, app, host, window, bridge, prop) -> None:
               lv["visible"] and not lv["modules"] and lv["inserts"] == n_ins > 0 and lv["lanes"] == n_auto > 0
               and all(len(l["points"]) >= 2 and l["max"] > l["min"] for v in lanes["tracks"].values() for l in v["lanes"]),
               {"inserts": lv["inserts"], "curvas": lv["lanes"], "filas": lv["rows"]})
+    # Bus Aux desde la consola: un envío de la voz principal llega al bus y la consola lo muestra
+    voz = next(i["trackId"] for i in st["items"] if i["name"] == "Voz_Principal")
+    ax = QMetaObject.invokeMethod(window, "layoutCommand", Q_RETURN_ARG("QVariant"), Q_ARG("QVariant", "aux"),
+                                  Q_ARG("QVariant", ["Reverb", voz, -12.0]), Q_ARG("QVariant", None))
+    ax = ax.toVariant() if hasattr(ax, "toVariant") else ax
+    _wait(app, lambda: False, 0.3, host)
+    sends = json.loads(bridge.sendList(voz)).get("sends", [])
+    lv2 = QMetaObject.invokeMethod(window, "layoutCommand", Q_RETURN_ARG("QVariant"), Q_ARG("QVariant", "view"),
+                                   Q_ARG("QVariant", None), Q_ARG("QVariant", None))
+    lv2 = lv2.toVariant() if hasattr(lv2, "toVariant") else lv2
+    rep.check("bus Aux: «+ Aux» crea el bus y el envío de la voz llega al motor y a la consola",
+              ax.get("ok") and len(sends) == 1 and sends[0]["aux"] == ax["id"] and abs(sends[0]["db"] + 12) < 0.1
+              and lv2["auxes"] == 1 and lv2["sends"] == 1 and lv2["sendsH"] > 0, {"aux": ax, "envíos": sends})
     shot = paths.logs_dir() / "selftest_arreglo.png"
     window.grabWindow().save(str(shot))
     rep.add("captura de la vista Arreglo", "info", str(shot))
+    if ax.get("ok"):                               # el resto de la autoprueba cuenta las pistas de la mezcla
+        QMetaObject.invokeMethod(window, "layoutCommand", Q_RETURN_ARG("QVariant"), Q_ARG("QVariant", "auxRemove"),
+                                 Q_ARG("QVariant", ax["uid"]), Q_ARG("QVariant", None))
+        _wait(app, lambda: False, 0.2, host)
+        rep.check("bus Aux: quitarlo quita sus envíos", json.loads(bridge.sendList(voz)).get("sends") == [],
+                  json.loads(bridge.sendList(voz)))
     window.setProperty("view", "modules")
     _wait(app, lambda: False, 0.2, host)
     stems_ids = {i["trackId"] for i in st["items"]}

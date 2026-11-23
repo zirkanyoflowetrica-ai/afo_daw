@@ -122,6 +122,39 @@ def test_proyecto_recupera_efectos_y_automatizacion(bridge, tmp_path):
     assert np.allclose(before, after, atol=0.05), (before, after)
 
 
+def test_bus_aux_envios_y_proyecto(bridge, tmp_path):
+    """Bus Aux con una ganancia propia: el envío suma en el render, pre/post fader funciona, se guarda en
+    el proyecto por uid y dawLanes lo devuelve para la consola."""
+    b = bridge
+    eng = b.host.engine
+    tid = b.host.add_audio(tone(tmp_path / "v.wav"), "Voz")["id"]
+    solo = levels(eng, tmp_path, "solo.wav")[1]
+    aux = call(b, "auxCreate", "Reverb")["track"]
+    assert aux["aux_bus"] == 0
+    g = call(b, "fxAdd", aux["id"], "gain", -1)["effect"]["id"]       # los efectos del bus van tras su retorno
+    call(b, "fxParam", g, "output", -6.0)
+    sends = call(b, "sendSet", tid, aux["id"], 0.0, False)["sends"]
+    assert sends == [{"aux": aux["id"], "db": pytest.approx(0.0, abs=0.05), "pre": False}]
+    mixed = levels(eng, tmp_path, "aux.wav")[1]
+    want = 20 * np.log10(1 + 10 ** (-6 / 20))                          # pista + envío a −6 dB, en fase
+    assert mixed - solo == pytest.approx(want, abs=0.15)
+    lanes = call(b, "dawLanes", json.dumps([tid, aux["id"]]))["tracks"]
+    assert lanes[str(tid)]["sends"][0]["aux"] == aux["id"]
+    assert [i["key"] for i in lanes[str(aux["id"])]["inserts"]] == ["gain"]
+    call(b, "sendSet", tid, aux["id"], -3.0, True)
+    assert call(b, "sendList", tid)["sends"][0]["pre"] is True
+
+    ui = {"bpm": 96, "tracks": [{"uid": "a1", "id": tid, "type": "audio", "name": "Voz"},
+                                {"uid": "s7", "id": aux["id"], "type": "aux", "name": "Reverb"}]}
+    doc = project.load(call(b, "projectSave", json.dumps(ui), str(tmp_path / "aux"))["path"])
+    assert doc["tracks"][0]["sends"] == [{"to": "s7", "db": pytest.approx(-3.0, abs=0.05), "pre": True}]
+    assert "sends" not in doc["tracks"][1] and [f["key"] for f in doc["tracks"][1]["fx"]] == ["gain"]
+
+    b.host.remove(aux["id"])                                           # quitar el bus quita sus envíos
+    assert call(b, "sendList", tid)["sends"] == []
+    assert levels(eng, tmp_path, "sin.wav")[1] == pytest.approx(solo, abs=0.05)
+
+
 def test_proyecto_rutas_relativas(tmp_path):
     """Si se mueve la carpeta del proyecto con sus audios, se encuentran por la ruta relativa."""
     d = tmp_path / "p"

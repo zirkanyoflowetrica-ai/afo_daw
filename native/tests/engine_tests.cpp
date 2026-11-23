@@ -103,6 +103,35 @@ int main (int argc, char** argv)
         engine.setTrackMute (t.id, true);
         engine.setTrackMute (t2.id, true);
         CHECK (! engine.renderToWav ((out / "render_muted.wav").string()), "todo silenciado: no se exporta nada");
+        engine.setTrackMute (t2.id, false);
+
+        // Bus Aux: la pista 1 (muda) no suena; la pista 2 (-20 dB) envía post-fader a 0 dB al bus,
+        // así que el render suma la pista 2 y su envío: +6 dB sobre la pista sola
+        auto aux = engine.addAuxTrack ("Reverb");
+        CHECK (aux.auxBus == 0, "crea un bus Aux (bus 0)");
+        CHECK (engine.setSend (t2.id, aux.id, 0.0f, false), "envío post-fader de la pista 2 al bus");
+        auto snd = engine.sends (t2.id);
+        CHECK (snd.size() == 1 && snd[0].auxTrackId == aux.id && ! snd[0].pre && std::abs (snd[0].db) < 0.05f, "el envío se lee con su nivel");
+        const auto auxWav = (out / "render_aux.wav").string();
+        CHECK (engine.renderToWav (auxWav), "render con envío Aux");
+        auto [ap, ar] = afo::measureFile (auxWav);
+        std::printf ("       render (pista 2 + envío Aux): pico %.2f dBFS\n", ap);
+        CHECK (std::abs (ap - (tonePeak - 20.0f + 6.02f)) < 0.3f, "el bus Aux suma la señal enviada (+6 dB)");
+        engine.setSend (t2.id, aux.id, 0.0f, true);
+        snd = engine.sends (t2.id);
+        CHECK (snd.size() == 1 && snd[0].pre, "el envío pasa a pre-fader");
+        engine.setTrackGainDb (t2.id, -100.0f);
+        CHECK (engine.renderToWav (auxWav), "render con fader bajado y envío pre");
+        auto [pp, pr] = afo::measureFile (auxWav);
+        std::printf ("       render (fader -100, envío pre 0 dB): pico %.2f dBFS\n", pp);
+        CHECK (std::abs (pp - tonePeak) < 0.3f, "el envío pre-fader no sigue al fader de la pista");
+        engine.setTrackGainDb (t2.id, -20.0f);
+        engine.setTrackSolo (t2.id, true);
+        CHECK (engine.renderToWav (auxWav) && afo::measureFile (auxWav).first > tonePeak - 1.0f, "el bus Aux sigue sonando con otra pista en solo");
+        engine.setTrackSolo (t2.id, false);
+        CHECK (engine.setSend (t2.id, aux.id, -100.0f, false) && engine.sends (t2.id).empty(), "quitar el envío");
+        engine.setSend (t2.id, aux.id, -6.0f, false);
+        CHECK (engine.removeTrack (aux.id) && engine.sends (t2.id).empty(), "quitar el bus quita sus envíos");
         CHECK (engine.removeTrack (t2.id), "elimina pista 2");
 
         CHECK (engine.previewPlay (tone, 0.5) || ! dev.open, "previsualización acepta el archivo");

@@ -72,6 +72,7 @@ QtObject {
         if (doc.oct) sq.oct = doc.oct
         var h = doc.hidden || {}
         for (var k in h) if (s.panelItems[k]) s.setHidden(k, !!h[k])
+        var idOf = {}                                      // uid guardado → id nuevo del motor (envíos a buses Aux)
         ;(doc.tracks || []).forEach(function (d) {
             var id = -1, uid = ""
             if (d.type === "audio") {
@@ -109,6 +110,14 @@ QtObject {
                 var f = s.call("fxRestore", id, JSON.stringify(d.fx))
                 if (!f.ok) s.toast(f.error)
             }
+            if (id >= 0 && d.uid) idOf[d.uid] = id
+        })
+        ;(doc.tracks || []).forEach(function (d) {          // envíos: cuando ya existen todos los buses
+            ;(d.sends || []).forEach(function (e) {
+                if (idOf[d.uid] === undefined || idOf[e.to] === undefined) return
+                var r = s.call("sendSet", idOf[d.uid], idOf[e.to], e.db, !!e.pre)
+                if (!r.ok) s.toast(r.error)
+            })
         })
         var mf = s.call("fxRestore", 0, JSON.stringify(doc.master_fx || []))
         if (!mf.ok) s.toast(mf.error)

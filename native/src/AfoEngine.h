@@ -108,6 +108,15 @@ struct TrackInfo
     double lengthSeconds = 0.0;
     double sampleRate = 0.0;
     int numChannels = 0;
+    int auxBus = -1;                           // bus Aux que recibe esta pista (-1 = pista normal)
+};
+
+// Envío de una pista a un bus Aux (como en una consola: pre o post fader)
+struct SendInfo
+{
+    int auxTrackId = 0;                        // pista Aux que lo recibe
+    float db = 0.0f;                           // nivel del envío
+    bool pre = false;                          // true = antes del fader (no sigue al volumen de la pista)
 };
 
 // Un clip de audio de una pista (edición como en un DAW). Tiempos en segundos.
@@ -208,6 +217,13 @@ public:
     void setTrackPan (int id, float pan);              // -1..1
     void setTrackMute (int id, bool muted);
     void setTrackSolo (int id, bool solo);
+
+    // Buses Aux: pista que recibe los envíos (Aux Return de Tracktion) y lleva sus propios efectos,
+    // fader y panorama; suena aunque otra pista esté en solo (solo seguro). Hasta 16 buses.
+    TrackInfo addAuxTrack (const std::string& name);
+    // Envío de trackId al bus de auxTrackId: db <= -100 lo quita. pre = antes del fader de la pista.
+    bool setSend (int trackId, int auxTrackId, float db, bool pre);
+    std::vector<SendInfo> sends (int trackId) const;
 
     // Clips de audio: mover, recortar (start/length/offset), dividir, duplicar, borrar, volumen y fundidos.
     // Todos los clips de una pista usan el audio de la pista. setClips sustituye todos (deshacer, abrir).

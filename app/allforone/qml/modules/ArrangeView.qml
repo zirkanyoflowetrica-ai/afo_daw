@@ -40,17 +40,56 @@ Rectangle {
     }
     readonly property int laneCount: { var n = 0; for (var k in lanes) n += (lanes[k].lanes || []).length; return n }
     readonly property int insertCount: { var n = 0; for (var k in lanes) n += (lanes[k].inserts || []).length; return n }
+    // Buses Aux y envíos (pista → [{aux, db, pre}]); se leen del motor con los carriles
+    property var sends: ({})
+    readonly property var auxes: (studio ? studio.tracks : []).filter(function (t) { return t.type === "aux" && t.id >= 0 })
+    readonly property int sendRows: Math.min(4, auxes.length)
+    readonly property int sendsH: auxes.length ? 22 + sendRows * 28 : 0
+    readonly property int sendCount: { var n = 0; for (var k in sends) n += (sends[k] || []).length; return n }
 
     function refresh() {
         if (!studio || !studio.engineOk || !visible) return
         var ids = studio.tracks.filter(function (t) { return t.id >= 0 }).map(function (t) { return t.id })
         ids.push(0)
         var r = studio.call("dawLanes", JSON.stringify(ids))
-        if (r.ok) lanes = r.tracks
+        if (!r.ok) return
+        lanes = r.tracks
+        var s = {}
+        for (var k in r.tracks) s[k] = r.tracks[k].sends || []
+        sends = s
+    }
+    // Envío de una pista a un bus: −∞ (db <= −100) lo quita
+    function sendOf(tid, auxId) {
+        var a = sends[String(tid)] || []
+        for (var i = 0; i < a.length; i++) if (a[i].aux === auxId) return a[i]
+        return null
+    }
+    function setSend(tid, auxId, db, pre) {
+        var r = studio.call("sendSet", tid, auxId, db, pre)
+        if (!r.ok) { studio.toast(r.error); return }
+        var c = Object.assign({}, sends); c[String(tid)] = r.sends; sends = c
+        studio.dirty = true
+    }
+    // Posición 0..1 del nivel de envío ↔ dB (0 = apagado; resto de −48 a +6 dB)
+    function sendDb(pos) { return pos <= 0.02 ? -100 : -48 + 54 * pos }
+    function sendPos(db) { return db <= -99 ? 0 : Math.max(0.03, Math.min(1, (db + 48) / 54)) }
+    function sendsTo(auxId) {
+        var n = 0
+        for (var k in sends) (sends[k] || []).forEach(function (e) { if (e.aux === auxId) n++ })
+        return n
+    }
+    function addAux() {
+        var t = studio.seq.addTrack("aux")
+        if (t && t.id >= 0) {
+            showConsole = true
+            studio.toast("Bus «" + t.name + "» creado: ponle una reverb o un eco (doble clic en el nombre de su tira) y súbele los envíos en la consola")
+        }
+        return t
     }
     function info(id) { return lanes[String(id)] || { inserts: [], lanes: [] } }
     function colorOf(t) {
         if (t.type === "master") return Theme.pc.master
+        if (t.type === "aux") return Theme.pc.fx || Theme.pc.pistas
         return Theme.pc[studio.seq.src[t.type]] || Theme.pc.pistas
     }
     function kindOf(t) {
@@ -130,11 +169,14 @@ Rectangle {
                 anchors.verticalCenter: parent.verticalCenter
                 color: Theme.deviceInk; font.family: Theme.font; font.pixelSize: 13; font.weight: 500
                 text: root.studio.tracks.length + " pistas · " + root.insertCount + " inserts · "
+                      + (root.auxes.length ? root.auxes.length + " Aux · " + root.sendCount + " envíos · " : "")
                       + root.laneCount + " curvas de automatización · " + root.fmtTime(root.songLen)
             }
         }
         Row {
             anchors.right: parent.right; anchors.rightMargin: 12; anchors.verticalCenter: parent.verticalCenter; spacing: 6
+            NeoButton { text: "+ Aux"; tip: "Nuevo bus Aux (reverb o eco compartidos): las pistas le mandan señal con sus envíos"
+                        enabled: root.studio.engineOk; onClicked: root.addAux() }
             NeoButton { text: "Curvas: todas"; tip: "Desplegar los carriles de automatización de todas las pistas"
                         onClicked: root.setAllOpen(true) }
             NeoButton { text: "ninguna"; tip: "Plegar todos los carriles de automatización"; onClicked: root.setAllOpen(false) }
@@ -444,11 +486,12 @@ Rectangle {
     Rectangle {
         id: consoleBox
         anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
-        height: root.showConsole ? Math.min(400, Math.max(320, root.height * 0.42)) : 0
+        height: root.showConsole ? Math.min(Math.max(320, root.height * 0.65), Math.min(400, Math.max(320, root.height * 0.42)) + root.sendsH) : 0
         visible: root.showConsole
         color: Theme.deviceHead
         Rectangle { width: parent.width; height: 3; color: Theme.deviceBorder }
         Text { x: 12; y: 8; text: "CONSOLA · inserts en orden de la señal (∿ = automatizado) · doble clic en un insert: abrirlo en Efectos"
+                                  + (root.auxes.length ? " · envíos: arrastra el nivel, doble clic lo apaga" : "")
                color: Theme.deviceInk; font.family: Theme.font; font.pixelSize: 12; font.weight: 700 }
         Flickable {
             id: strips
@@ -470,14 +513,17 @@ Rectangle {
                         readonly property color c: root.colorOf(t)
                         readonly property real fv: master ? root.studio.masterPos : (t.vol === undefined ? 70 : t.vol)
                         readonly property var lr: master ? root.studio.masterDb : root.studio.trackLR(t.id)
+                        readonly property bool isAux: t.type === "aux"
                         width: master ? 150 : 132; height: strips.height
                         color: Theme.device; border.width: Theme.buttonBorder; border.color: st.master ? st.c : Theme.deviceBorder
                         Rectangle { width: parent.width; height: 26; color: st.c
                             Text { x: 6; width: parent.width - 12; anchors.verticalCenter: parent.verticalCenter; elide: Text.ElideRight
-                                   text: st.t.name; color: "#000"; font.family: Theme.font; font.pixelSize: 12; font.weight: 800 } }
+                                   text: st.t.name; color: "#000"; font.family: Theme.font; font.pixelSize: 12; font.weight: 800 }
+                            MouseArea { id: hma; anchors.fill: parent; hoverEnabled: true; onDoubleClicked: root.openInFx(st.t.id) }
+                            ToolTipLite { show: hma.containsMouse; text: "Doble clic: abrir los efectos de " + st.t.name } }
                         Flickable {                      // inserts (se desplazan si no caben)
                             id: insF
-                            x: 4; y: 30; width: parent.width - 8; height: parent.height - 30 - 194
+                            x: 4; y: 30; width: parent.width - 8; height: parent.height - 30 - 194 - root.sendsH
                             contentHeight: insCol.height; clip: true
                             boundsBehavior: Flickable.StopAtBounds
                             flickableDirection: Flickable.VerticalFlick
@@ -516,6 +562,76 @@ Rectangle {
                             x: 6; y: insF.y + insF.height + 2
                             text: "+" + Math.max(0, st.inf.inserts.length - Math.floor((insF.height + 2) / 26)) + " más ↓ (rueda)"
                             color: Theme.deviceInk; font.family: Theme.font; font.pixelSize: 11; font.weight: 700
+                        }
+                        // envíos a los buses Aux (pre = antes del fader)
+                        Item {
+                            visible: root.sendsH > 0 && !st.master
+                            x: 4; y: parent.height - 168 - root.sendsH; width: parent.width - 8; height: root.sendsH - 4
+                            Text { x: 2; y: 2; text: st.isAux ? "RETORNO" : "ENVÍOS"; color: Theme.deviceInk
+                                   font.family: Theme.font; font.pixelSize: 11; font.weight: 800 }
+                            Text { visible: st.isAux; x: 2; y: 22; width: parent.width - 4; wrapMode: Text.Wrap
+                                   text: { var n = root.sendsTo(st.t.id); return n ? "Recibe " + n + (n === 1 ? " envío" : " envíos") : "Sin envíos: súbelos en las otras tiras" }
+                                   color: Theme.deviceInk; font.family: Theme.font; font.pixelSize: 11; font.weight: 600 }
+                            Flickable {
+                                visible: !st.isAux
+                                y: 20; width: parent.width; height: parent.height - 20
+                                contentHeight: sendCol.height; clip: true
+                                boundsBehavior: Flickable.StopAtBounds; flickableDirection: Flickable.VerticalFlick
+                                Column {
+                                    id: sendCol
+                                    width: parent.width; spacing: 4
+                                    Repeater {
+                                        model: root.auxes
+                                        Item {
+                                            id: sr
+                                            required property var modelData
+                                            readonly property var snd: root.sendOf(st.t.id, modelData.id)
+                                            readonly property real pos: snd ? root.sendPos(snd.db) : 0
+                                            readonly property bool pre: !!(snd && snd.pre)
+                                            width: parent.width; height: 24
+                                            Rectangle {                  // nivel del envío
+                                                id: lvl
+                                                width: parent.width - 38; height: 24; radius: 3
+                                                color: Theme.input; border.width: 1; border.color: Theme.deviceBorder
+                                                Rectangle { x: 1; y: 1; height: parent.height - 2; radius: 2
+                                                            width: Math.max(0, (parent.width - 2) * sr.pos)
+                                                            color: Qt.tint(Theme.input, Qt.rgba(Qt.color(root.colorOf(sr.modelData)).r, Qt.color(root.colorOf(sr.modelData)).g, Qt.color(root.colorOf(sr.modelData)).b, 0.45)) }
+                                                Text { x: 5; width: parent.width - 10 - sdb.width - 4; anchors.verticalCenter: parent.verticalCenter; elide: Text.ElideRight
+                                                       text: sr.modelData.name
+                                                       color: Theme.ink; font.family: Theme.font; font.pixelSize: 11; font.weight: 600 }
+                                                Text { id: sdb; anchors.right: parent.right; anchors.rightMargin: 5; anchors.verticalCenter: parent.verticalCenter
+                                                       text: sr.snd ? (sr.snd.db > 0.05 ? "+" : "") + sr.snd.db.toFixed(1) : "−∞"
+                                                       color: Theme.ink; font.family: Theme.font; font.pixelSize: 11; font.weight: 800 }
+                                                MouseArea {
+                                                    id: sma
+                                                    anchors.fill: parent; hoverEnabled: true; preventStealing: true
+                                                    function at(mx) { root.setSend(st.t.id, sr.modelData.id, root.sendDb(Math.max(0, Math.min(1, mx / width))), sr.pre) }
+                                                    onPressed: function (m) { at(m.x) }
+                                                    onPositionChanged: function (m) { if (pressed) at(m.x) }
+                                                    onDoubleClicked: root.setSend(st.t.id, sr.modelData.id, -100, sr.pre)
+                                                }
+                                                ToolTipLite { show: sma.containsMouse && !sma.pressed
+                                                              text: "Envío de " + st.t.name + " al bus «" + sr.modelData.name + "» ("
+                                                                    + (sr.pre ? "pre-fader: no sigue al volumen de la pista" : "post-fader: sigue al volumen de la pista")
+                                                                    + "). Arrastra para el nivel; doble clic lo apaga." }
+                                            }
+                                            Rectangle {                  // pre / post fader
+                                                id: preB
+                                                x: parent.width - 34; width: 34; height: 24; radius: 3
+                                                color: sr.pre ? Theme.pressedBg : Theme.button
+                                                border.width: 1; border.color: Theme.deviceBorder
+                                                Text { anchors.centerIn: parent; text: "PRE"; color: sr.pre ? Theme.pressedInk : Theme.ink
+                                                       font.family: Theme.font; font.pixelSize: 11; font.weight: 800 }
+                                                MouseArea { id: pma; anchors.fill: parent; hoverEnabled: true
+                                                            onClicked: root.setSend(st.t.id, sr.modelData.id, sr.snd ? sr.snd.db : -12, !sr.pre) }
+                                                ToolTipLite { show: pma.containsMouse
+                                                              text: sr.pre ? "Pre-fader (activo): el envío no depende del fader. Clic: post-fader"
+                                                                           : "Post-fader: el envío sigue al fader. Clic: pre-fader (para cascos o efectos que no deben bajar con la pista)" }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
                         }
                         // paneo
                         Item {

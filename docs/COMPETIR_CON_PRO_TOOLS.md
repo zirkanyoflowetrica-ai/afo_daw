@@ -14,12 +14,13 @@ menos en la primera hora de trabajo va primero.
 | Medición | pico, RMS, LUFS momentáneo / corto / integrado por pista y en el master |
 | IA local | canciones con voz (ACE-Step) y composición MIDI (MIDI-LLM) sin nube; Pro Tools no tiene nada igual |
 | Vista | Arreglo con curvas de automatización y consola con inserts (desde esta revisión) |
+| Envíos y buses Aux | hasta 16 buses con sus efectos; envío por pista pre o post fader, solo seguro, guardado en el proyecto (23-11-2026) |
 
 ## Lo que falta (prioridad 1: imprescindible en un estudio)
 
-1. **Envíos y buses auxiliares.** No hay envíos (pre/post fader) ni pistas Aux. Hoy cada pista lleva
-   su reverb como insert; en Pro Tools una reverb compartida por envío es lo básico. Motor: pistas de
-   bus de Tracktion (`AuxSendPlugin` / `AuxReturnPlugin`); interfaz: fila de envíos en cada tira.
+1. ~~**Envíos y buses auxiliares.**~~ **Hecho (23-11-2026):** «+ Aux», envíos pre/post fader en cada
+   tira de la consola, solo seguro y proyecto. Queda: automatizar el nivel del envío, envíos desde el
+   módulo Mezcla y que la mezcla automática use una reverb compartida en vez de una por pista.
 2. **Automatización escrita en vivo.** Las curvas se dibujan o las pone la mezcla automática; faltan
    los modos **Read / Touch / Latch / Write** al mover un fader o una perilla mientras suena, y editar
    puntos en el carril de la vista Arreglo (hoy solo se ven).
@@ -69,7 +70,7 @@ menos en la primera hora de trabajo va primero.
 
 ## Orden de trabajo propuesto
 
-1. Envíos + buses Aux (motor y consola).
+1. ~~Envíos + buses Aux (motor y consola).~~ Hecho.
 2. Automatización Touch / Latch y edición de puntos en Arreglo.
 3. Metrónomo, bucle, marcadores y rejilla en Arreglo.
 4. Entrada MIDI + piano roll libre.

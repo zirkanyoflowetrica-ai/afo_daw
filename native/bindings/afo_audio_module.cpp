@@ -20,6 +20,7 @@ py::dict toDict (const afo::TrackInfo& t)
     d["length_seconds"] = t.lengthSeconds;
     d["sample_rate"] = t.sampleRate;
     d["num_channels"] = t.numChannels;
+    d["aux_bus"] = t.auxBus;
     return d;
 }
 
@@ -218,6 +219,19 @@ PYBIND11_MODULE (afo_audio, m)
         .def ("set_track_pan", &afo::Engine::setTrackPan)
         .def ("set_track_mute", &afo::Engine::setTrackMute)
         .def ("set_track_solo", &afo::Engine::setTrackSolo)
+        .def ("add_aux_track", [] (afo::Engine& e, const std::string& name) { return toDict (e.addAuxTrack (name)); }, py::arg ("name"))
+        .def ("set_send", &afo::Engine::setSend, py::arg ("track"), py::arg ("aux"), py::arg ("db"), py::arg ("pre") = false)
+        .def ("sends", [] (const afo::Engine& e, int track)
+        {
+            py::list r;
+            for (auto& s : e.sends (track))
+            {
+                py::dict d;
+                d["aux"] = s.auxTrackId; d["db"] = s.db; d["pre"] = s.pre;
+                r.append (d);
+            }
+            return r;
+        }, py::arg ("track"))
         // clips de audio (editar en Pistas)
         .def ("clips", [] (afo::Engine& e, int t) { return toList (e.clips (t)); }, py::arg ("track_id"))
         .def ("set_clip_range", [] (afo::Engine& e, long long id, double start, double length, double offset)
