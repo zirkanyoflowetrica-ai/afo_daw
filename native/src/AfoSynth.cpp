@@ -83,6 +83,25 @@ void Voice::startNote (const Params& p, int midiNote, double seconds, double sam
     useFilter = true;
 }
 
+void Voice::startHeldNote (const Params& p, int midiNote, float velocity, double sampleRate, int delaySamples)
+{
+    startNote (p, midiNote, 60.0, sampleRate, delaySamples);       // tope de seguridad: un minuto
+    // Sostén y release por preset: piano, bajo, batería (no se usa), guitarra, pad, cuerdas, coro, campanas
+    static constexpr double sus[8] = { 0.25, 0.6, 0.3, 0.35, 0.9, 0.85, 0.9, 0.08 };
+    static constexpr double rel[8] = { 0.15, 0.08, 0.1, 0.12, 0.45, 0.35, 0.4, 0.6 };
+    static constexpr double att[8] = { 0.004, 0.004, 0.004, 0.004, 0.06, 0.04, 0.05, 0.002 };
+    const int k = std::clamp (p.wave, 0, 7);
+    gated = true; note = midiNote;
+    sustain = sus[k]; releaseSec = p.sus ? rel[k] * 3 : rel[k]; attack = att[k];
+    g0 *= std::clamp (velocity / 100.0, 0.05, 1.27);
+}
+
+void Voice::noteOff (int atSample) noexcept
+{
+    if (offAt >= 0 || released) return;
+    offAt = delay > 0 ? std::max (1, atSample - delay) : t + std::max (0, atSample);
+}
+
 void Voice::startDrum (const Params& p, int drumLane, double sampleRate, int delaySamples)
 {
     *this = Voice();
@@ -139,6 +158,20 @@ float Voice::next() noexcept
     }
     if (useFilter) x = filter.process (x);
     ++t;
+    if (gated)
+    {
+        if (! released && offAt >= 0 && t >= offAt) { released = true; relLevel = lastEnv; relSec = sec; }
+        double e;
+        if (released)
+        {
+            const double r = (sec - relSec) / releaseSec;
+            if (r >= 1.0) { active = false; return 0.0f; }
+            e = relLevel * std::pow (0.001, r);
+        }
+        else
+            e = lastEnv = g0 * std::min (1.0, sec / attack) * (sustain + (1 - sustain) * std::exp (-sec / 0.6));
+        return x * (float) e;
+    }
     return x * (float) envelope (g0, decay, sec);
 }
 

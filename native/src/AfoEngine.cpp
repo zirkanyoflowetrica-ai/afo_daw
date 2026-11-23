@@ -497,6 +497,7 @@ double Engine::setSynthNotes (int id, const std::vector<std::pair<double, int>>&
     auto& slot = impl->slot (id);
     if (slot.synth == nullptr)
         throw std::invalid_argument ("afo_audio: la pista no es de síntesis");
+    slot.synth->heldNotes = false;
     auto& edit = *impl->edit;
     for (auto* c : slot.track->getClips())          // el patrón se rehace entero: es pequeño
         c->removeFromParent();
@@ -512,6 +513,35 @@ double Engine::setSynthNotes (int id, const std::vector<std::pair<double, int>>&
     auto& seq = clip->getSequence();
     for (auto& [beat, note] : notes)
         seq.addNote (juce::jlimit (0, 127, note), te::BeatPosition::fromBeats (beat), te::BeatDuration::fromBeats (0.25), 100, 0, nullptr);
+    slot.info.lengthSeconds = end.inSeconds();
+    edit.getTransport().ensureContextAllocated();
+    return slot.info.lengthSeconds;
+}
+
+double Engine::setSynthMidi (int id, const std::vector<std::tuple<double, double, int, int>>& notes, double lengthBeats)
+{
+    requireMessageThread();
+    auto& slot = impl->slot (id);
+    if (slot.synth == nullptr)
+        throw std::invalid_argument ("afo_audio: la pista no es de síntesis");
+    slot.synth->heldNotes = true;
+    auto& edit = *impl->edit;
+    for (auto* c : slot.track->getClips())
+        c->removeFromParent();
+    slot.info.lengthSeconds = 0.0;
+    if (notes.empty())
+        return 0.0;
+    double last = 1.0;
+    for (auto& [beat, dur, note, vel] : notes)
+        last = juce::jmax (last, beat + dur);
+    const auto end = edit.tempoSequence.toTime (te::BeatPosition::fromBeats (juce::jmax (last, lengthBeats)));
+    auto clip = slot.track->insertMIDIClip (slot.track->getName(), { te::TimePosition(), end }, nullptr);
+    if (clip == nullptr)
+        throw std::runtime_error ("afo_audio: Tracktion no pudo crear el clip MIDI");
+    auto& seq = clip->getSequence();
+    for (auto& [beat, dur, note, vel] : notes)
+        seq.addNote (juce::jlimit (0, 127, note), te::BeatPosition::fromBeats (juce::jmax (0.0, beat)),
+                     te::BeatDuration::fromBeats (juce::jlimit (1.0 / 64.0, 64.0, dur)), juce::jlimit (1, 127, vel), 0, nullptr);
     slot.info.lengthSeconds = end.inSeconds();
     edit.getTransport().ensureContextAllocated();
     return slot.info.lengthSeconds;

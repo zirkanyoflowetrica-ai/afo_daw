@@ -107,6 +107,8 @@ class Bridge(QObject):
         app = QCoreApplication.instance()
         if app is not None:
             app.aboutToQuit.connect(self.ai.shutdown)   # no dejar procesos del motor de IA huérfanos
+            app.aboutToQuit.connect(self._midi_shutdown)
+        self._midi = None
         self._mixer_timer = QTimer(self)
         self._mixer_timer.setInterval(50)
         self._mixer_timer.timeout.connect(self._drain_mixer_events)
@@ -921,6 +923,73 @@ class Bridge(QObject):
     def aiCancel(self) -> str:
         self.ai.cancel()
         return _ok()
+
+    # --- IA local: composición MIDI con MIDI-LLM (midi_ai.py) --------------------------
+    @property
+    def midi(self):
+        if self._midi is None:
+            from .midi_ai import MidiAi
+            self._midi = MidiAi(self._mixer_events.put)
+        return self._midi
+
+    def _midi_shutdown(self) -> None:
+        if self._midi is not None:
+            self._midi.shutdown()           # cierra llama-server
+
+    @Slot(result=str)
+    @_safe
+    def midiStatus(self) -> str:
+        """Motor llama-server, modelo MIDI y composiciones guardadas."""
+        return _ok(**self.midi.status())
+
+    @Slot(result=str)
+    @_safe
+    def midiDownload(self) -> str:
+        try:
+            self.midi.download()
+        except Exception as exc:
+            return _err(str(exc))
+        return _ok(started=True)
+
+    @Slot(result=str)
+    @_safe
+    def midiCancelDownload(self) -> str:
+        self.midi.cancel_download()
+        return _ok()
+
+    @Slot(str, result=str)
+    @_safe
+    def midiGenerate(self, payload: str) -> str:
+        """Compone en otro proceso; las pistas (notas por instrumento) llegan por `aiEvent` (aiMidi)."""
+        try:
+            return _ok(**self.midi.generate(json.loads(payload or "{}")))
+        except Exception as exc:
+            return _err(str(exc))
+
+    @Slot(result=str)
+    @_safe
+    def midiCancel(self) -> str:
+        self.midi.cancel()
+        return _ok()
+
+    @Slot(str, float, result=str)
+    @_safe
+    def midiOpen(self, path: str, bpm: float) -> str:
+        """Lee un .mid (una composición guardada o, con ruta vacía, uno que elige el usuario) y lo
+        devuelve como pistas de Instrumento y Batería."""
+        from .midi_ai import read_mid, split_tracks
+        if not path:
+            path, _ = QFileDialog.getOpenFileName(self.parent_widget, "Importar MIDI", str(Path.home()),
+                                                  "MIDI (*.mid *.midi)")
+            if not path:
+                return _err("", cancelled=True)
+        try:
+            notes = read_mid(Path(path[8:] if path.startswith("file:///") else path))
+        except Exception as exc:
+            return _err(f"No se pudo leer el MIDI: {exc}")
+        if not notes:
+            return _err("El archivo MIDI no tiene notas.")
+        return _ok(tracks=split_tracks(notes, bpm, "MIDI"), notes=len(notes), path=str(path), title=Path(path[8:] if path.startswith("file:///") else path).stem)
 
     # --- plugins VST3 externos ------------------------------------------------------
     @Slot(result=str)

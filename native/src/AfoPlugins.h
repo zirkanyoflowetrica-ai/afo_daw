@@ -60,14 +60,29 @@ public:
         {
             if (midi->isAllNotesOff)
                 for (auto& v : voices) v.active = false;
+            const bool held = heldNotes.load();
             for (auto& m : *midi)
+            {
+                const int at = juce::jlimit (0, juce::jmax (0, n - 1), juce::roundToInt (m.getTimeStamp() * sampleRate));
                 if (m.isNoteOn())
                 {
-                    const int at = juce::jlimit (0, juce::jmax (0, n - 1), juce::roundToInt (m.getTimeStamp() * sampleRate));
                     auto& v = freeVoice();
-                    if (p.mode == 0) v.startNote (p, m.getNoteNumber(), synth::noteSeconds (p), sampleRate, at);
-                    else             v.startDrum (p, m.getNoteNumber() - synth::firstDrumNote, sampleRate, at);
+                    if (p.mode == 1)  v.startDrum (p, m.getNoteNumber() - synth::firstDrumNote, sampleRate, at);
+                    else if (held)    v.startHeldNote (p, m.getNoteNumber(), (float) m.getVelocity(), sampleRate, at);
+                    else              v.startNote (p, m.getNoteNumber(), synth::noteSeconds (p), sampleRate, at);
+                    if (p.mode == 1 && held)
+                        v.g0 *= juce::jlimit (0.05, 1.27, m.getVelocity() / 100.0);
                 }
+                else if (m.isNoteOff() && held)
+                {
+                    synth::Voice* best = nullptr;           // la más antigua de esa nota aún pulsada
+                    for (auto& v : voices)
+                        if (v.active && v.gated && ! v.released && v.offAt < 0 && v.note == m.getNoteNumber()
+                            && (best == nullptr || v.t > best->t))
+                            best = &v;
+                    if (best != nullptr) best->noteOff (at);
+                }
+            }
         }
 
         auto* l = buf.getWritePointer (0, start);
@@ -93,6 +108,8 @@ public:
     }
 
     synth::AtomicParams params;
+    // true: el clip trae duraciones y velocidades propias (setSynthMidi); false: rejilla de 16 pasos
+    std::atomic<bool> heldNotes { false };
 
 private:
     synth::Voice& freeVoice()

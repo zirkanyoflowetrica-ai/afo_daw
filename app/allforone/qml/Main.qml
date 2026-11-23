@@ -243,7 +243,8 @@ Las entradas van a la izquierda y las salidas a la derecha. Arrastra para moverl
                  masterLoud: masterLoud,
                  tracks: tracks.map(function (t) { return { uid: t.uid, id: t.id, type: t.type, name: t.name, vol: t.vol, pan: t.pan,
                                                              len: t.len || 0, peaks: (t.peaks || []).length,
-                                                             notes: Object.keys(t.roll || {}).length + Object.keys(t.pat || {}).length } }),
+                                                             notes: Object.keys(t.roll || {}).length + Object.keys(t.pat || {}).length,
+                                                             midi: (t.midi || []).length, sub: sq.sub(t) } }),
                  act: sq.act, voice: sq.active("inst") ? sq.active("inst").cfg.v : -1 }
     }
     // Para la autoprueba: acciones del secuenciador
@@ -256,6 +257,9 @@ Las entradas van a la izquierda y las salidas a la derecha. Arrastra para moverl
         else if (what === "hide") setHidden(a, b)
         else if (what === "record") sq.startTake()
         else if (what === "recstop") sq.stopTake(false)
+        else if (what === "midi") { sq.iaMode = "midi"; sq.openMidi(a, b) }
+        else if (what === "song") sq.iaMode = "song"
+        else if (what === "drop") removeTrackAt(tracks.length - 1)
     }
     function mixNow(remix) { mx.mix(!!remix) }
     function setTuneStrength(v) { mx.tuneStrength = v }

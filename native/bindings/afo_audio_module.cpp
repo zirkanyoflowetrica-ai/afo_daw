@@ -202,6 +202,8 @@ PYBIND11_MODULE (afo_audio, m)
               py::arg ("track_id"), py::arg ("mode") = 0, py::arg ("wave") = 0, py::arg ("vel") = 70.0f, py::arg ("bri") = 50.0f,
               py::arg ("sus") = false, py::arg ("vol") = 80.0f, py::arg ("tun") = 50.0f, py::arg ("rev") = 0.0f)
         .def ("set_synth_notes", &afo::Engine::setSynthNotes, py::arg ("track_id"), py::arg ("notes"), py::arg ("length_beats") = 64.0)
+        .def ("set_synth_midi", &afo::Engine::setSynthMidi, py::arg ("track_id"), py::arg ("notes"), py::arg ("length_beats") = 0.0,
+              "Notas (inicio, duración en negras, nota, velocidad) de un MIDI importado o compuesto por la IA")
         .def ("audition_synth", [] (afo::Engine& e, int note, double seconds, int mode, int wave, float vel, float bri, bool sus, float vol, float tun, float rev)
               { return e.auditionSynth (settings (mode, wave, vel, bri, sus, vol, tun, rev), note, seconds); },
               py::arg ("note"), py::arg ("seconds") = 0.4, py::arg ("mode") = 0, py::arg ("wave") = 0, py::arg ("vel") = 70.0f,

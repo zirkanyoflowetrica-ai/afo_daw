@@ -342,6 +342,18 @@ Column {
                                     if (!visible) return
                                     var drum = t.type === "drum", keys = Object.keys(drum ? t.pat : t.roll)
                                     var w = Math.max(1, width * 0.0034)
+                                    if (t.midi && t.midi.length) {          // MIDI: cada nota en su tiempo (64 negras = el ancho)
+                                        var lo = 127, hi = 0
+                                        t.midi.forEach(function (n) { lo = Math.min(lo, n[2]); hi = Math.max(hi, n[2]) })
+                                        var span = Math.max(12, hi - lo), hgt = height - 14
+                                        ctx.fillStyle = "#000"
+                                        t.midi.forEach(function (n) {
+                                            if (n[0] >= 64) return
+                                            var y = drum ? 6 + (n[2] - 36) * 6 : 6 + (hi - n[2]) / span * hgt
+                                            ctx.fillRect(width * n[0] / 64, y, Math.max(w, width * Math.min(n[1], 64 - n[0]) / 64), drum ? 3 : 2)
+                                        })
+                                        return
+                                    }
                                     for (var c = 0; c < t.clips.length; c++) {
                                         var b0 = Math.round(t.clips[c][0] / 6.25), b1 = Math.round((t.clips[c][0] + t.clips[c][1]) / 6.25)
                                         for (var b = b0; b < b1; b++)

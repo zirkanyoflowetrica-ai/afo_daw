@@ -1,6 +1,16 @@
-# IA local: instrumentales con ACE-Step dentro de AllForOne
+# IA local: canciones (audio) y composiciones MIDI dentro de AllForOne
 
-El módulo **Pistas con IA** (Cerebro AI-1) compone y sintetiza instrumentales de verdad en tu equipo,
+El módulo **Pistas con IA** tiene dos modos, que se eligen arriba del módulo y no se mezclan:
+
+- **Canción (audio)**: ACE-Step genera una canción entera, instrumental o **con voz cantando tu letra**,
+  como un WAV (las secciones de abajo).
+- **Solo MIDI**: MIDI-LLM compone **solo las notas**. Cada instrumento entra como su propia pista de
+  Instrumento o Batería, editable, que suena con el sintetizador del motor o con el VST3 que elijas
+  (sección «Composición MIDI» al final). También importa archivos `.mid`.
+
+## Canción en audio (ACE-Step)
+
+El modo **Canción (audio)** (Cerebro AI-1) compone y sintetiza canciones de verdad en tu equipo,
 sin internet (salvo para bajar los modelos una vez) y sin programas aparte. El resultado es un WAV
 estéreo de 48 kHz que entra como **pista de audio** en Pistas: se mezcla, se le ponen efectos y se
 masteriza como cualquier otra.
@@ -61,8 +71,40 @@ comprueba WAV estéreo de 48 kHz, duración, que no es silencio, avance siempre 
 compositor respetó tempo y tonalidad. `--selftest` comprueba que el estado se lee y que «+ IA» lleva
 al generador sin crear pistas vacías.
 
+## Composición MIDI (MIDI-LLM)
+
+| Pieza | Dónde | Qué hace |
+|---|---|---|
+| Motor | `motores\llama\llama-server.exe` + DLL de GGML (Vulkan) | llama.cpp v1.0.0 (MIT), compilado con `tools\build_llama.bat`; proceso aparte que solo escucha en 127.0.0.1 |
+| Modelo | `modelos\midi\MIDI-LLM_Llama-3.2-1B.Q8_0.gguf` (1,84 GB) | Llama 3.2 1B con 55 030 fichas de notas (vocabulario de Anticipatory Music Transformer); se descarga desde el módulo, reanudable |
+| `app/allforone/midi_ai.py` | | arranca el servidor con la primera composición (y lo cierra al salir), pide las fichas en tandas para avisar del avance y poder cancelar, las decodifica y guarda el `.mid` |
+
+- **Qué se le pide**: la frase de MIDI-LLM («You are a world-class composer…» + tu descripción) y la
+  ficha de inicio de música; muestreo con temperatura 0,7–1,2 según «Creatividad» y top-p 0,98. Entiende
+  mejor descripciones en inglés.
+- **Qué devuelve**: tríos (tiempo en centésimas de segundo, duración, instrumento·128 + nota). Se
+  descartan las fichas sueltas, se quitan notas repetidas y, si sale algo roto (más de 64 notas a la
+  vez, como en el MIDI-LLM original), se vuelve a intentar con otra semilla.
+- **En el DAW**: una pista por instrumento General MIDI. Las familias van al sonido más cercano del
+  sintetizador (pianos → Piano de cola, bajos → Bajo sintético, cuerdas y metales → Cuerdas, coros →
+  Voz coral…) y la percusión del canal 10 a los 8 carriles de la Batería (bombo, caja, hi-hats…).
+  Los segundos se conservan al tempo del proyecto. Las notas llevan **duración y velocidad propias**:
+  el motor tiene `set_synth_midi` y el sintetizador sostiene la nota hasta el note-off (con el release
+  de cada sonido); las pistas de la rejilla de 16 pasos siguen sonando como siempre.
+- **Edición**: una pista con MIDI no se edita en la rejilla de 16 pasos (lo avisa); se le puede poner
+  cualquier VST3 como instrumento, mezclar y automatizar como las demás. El proyecto guarda las notas.
+- Las composiciones quedan en `datos\media\ia\*.mid` (con un `.mid.json` al lado) y «+ Pistas» las
+  vuelve a añadir.
+
+Pruebas: `tests/test_midi_ai.py` (vocabulario, decodificación, reparto en pistas, `.mid` de ida y
+vuelta, render del motor con notas largas, release y velocidad, y el puente) y `--selftest`
+(importar un `.mid` crea una pista por instrumento).
+
 ## Pendiente
 
 - Separar una instrumental en pistas (batería, bajo…) con el modo `extract` de ACE-Step: necesita el
   modelo DiT *base* (2,4 GB más).
 - Rehacer un fragmento (`repaint`) o hacer una versión de un audio (`cover`) desde Pistas.
+- Un editor de piano roll libre (notas de cualquier duración) para las pistas MIDI: hoy se ven en
+  Pistas y suenan, pero se cambian con un VST3 o regenerando.
+- MIDI-LLM no sabe de tempo ni de compases: sus notas no caen en la rejilla del proyecto.

@@ -196,6 +196,9 @@ class EngineHost:
         self.engine.set_synth_settings(track_id, **synth_settings(track))
         if track.get("settingsOnly"):            # perillas: no hace falta rehacer el clip
             return -1.0
+        if track.get("midi"):                    # MIDI importado o compuesto por la IA: notas con duración
+            notes = [(float(n[0]), float(n[1]), int(n[2]), int(n[3])) for n in track["midi"]]
+            return self.engine.set_synth_midi(track_id, notes, 0.0)
         return self.engine.set_synth_notes(track_id, pattern_notes(track), float(STEPS) / 4)
 
     def audition(self, data: dict) -> bool:

@@ -6,7 +6,8 @@
     EXE\AllForOne.exe            programa (+ DLL de Qt Quick, interfaz QML, mezclador, afo_audio.pyd)
     EXE\datos\                   tus datos (mezclas, ajustes, registros); se conservan al actualizar
     EXE\motores\acestep\         motor de IA local (ACE-Step con Vulkan, tools\build_acestep.bat)
-    EXE\modelos\acestep\         modelos de IA que descargas desde el programa; se conservan al actualizar
+    EXE\motores\llama\           motor de composicion MIDI (llama-server con Vulkan, tools\build_llama.bat)
+    EXE\modelos\acestep\ y midi\ modelos de IA que descargas desde el programa; se conservan al actualizar
     AllForOne.lnk                acceso directo en la raiz del proyecto
     release\AllForOne-<version>-win64.zip   para publicar (sin tus datos)
   Todo queda dentro de la carpeta del proyecto: caches y temporales en .cache\.
@@ -130,9 +131,20 @@ foreach ($f in @('ace-lm.exe', 'ace-synth.exe', 'ggml.dll', 'ggml-base.dll', 'gg
     Copy-Item (Join-Path $Ace $f) $AceOut
 }
 Copy-Item (Join-Path $Cache 'acestep.cpp\LICENSE') (Join-Path $AceOut 'LICENSE-acestep.cpp.txt')
+# Composicion MIDI con IA: llama-server de llama.cpp (Vulkan) en motores\llama; el modelo MIDI-LLM se
+# descarga desde el programa a modelos\midi.
+$Llama = Join-Path $Cache 'llama.cpp\build-vk\bin'
+if (-not (Test-Path (Join-Path $Llama 'llama-server.exe'))) {
+    Step "Compilando el motor de composicion MIDI (tools\build_llama.bat)"
+    if ((Run-Native 'cmd.exe' @('/c', (Join-Path $PSScriptRoot 'build_llama.bat'))) -ne 0) { Fail "No se pudo compilar llama.cpp" }
+}
+$LlamaOut = Join-Path $Out 'motores\llama'
+New-Item -ItemType Directory -Force -Path $LlamaOut | Out-Null
+Get-ChildItem $Llama | Where-Object { $_.Name -eq 'llama-server.exe' -or $_.Extension -eq '.dll' } | Copy-Item -Destination $LlamaOut
+Copy-Item (Join-Path $Cache 'llama.cpp\LICENSE') (Join-Path $LlamaOut 'LICENSE-llama.cpp.txt')
 
 Step "Comprobaciones de la distribucion"
-foreach ($rel in @('AllForOne.exe', 'motores\acestep\ace-synth.exe', 'motores\acestep\ggml-vulkan.dll', 'allforone\qml\Main.qml', 'allforone\qml\modules\FxBody.qml', 'allforone\qml\theme\qmldir', 'allforone\qml\assets\fonts\SpaceGrotesk-Bold.ttf', 'allforone\qml\assets\icon.ico', 'templates\Professional\theme.json')) {
+foreach ($rel in @('AllForOne.exe', 'motores\acestep\ace-synth.exe', 'motores\acestep\ggml-vulkan.dll', 'motores\llama\llama-server.exe', 'motores\llama\ggml-vulkan.dll', 'allforone\qml\Main.qml', 'allforone\qml\modules\FxBody.qml', 'allforone\qml\theme\qmldir', 'allforone\qml\assets\fonts\SpaceGrotesk-Bold.ttf', 'allforone\qml\assets\icon.ico', 'templates\Professional\theme.json')) {
     if (-not (Test-Path (Join-Path $Out $rel))) { Fail "Falta $rel en la distribucion" }
 }
 if (Get-ChildItem $Out -Recurse -Filter 'QtWebEngineProcess.exe') { Fail "La distribucion lleva Qt WebEngine (Chromium) y ya no lo usa" }

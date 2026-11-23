@@ -57,9 +57,17 @@ struct Voice
     uint32_t noise = 22222;
     Biquad filter;
     bool useFilter = false;
+    // Notas con duración propia (MIDI importado o de la IA): suenan mientras están pulsadas
+    bool gated = false, released = false;
+    int note = -1;
+    int64_t offAt = -1;                     // muestra (en t) en que llega el note-off
+    double attack = 0.004, sustain = 0.3, releaseSec = 0.12, lastEnv = 0, relLevel = 0, relSec = 0;
 
     void startNote (const Params&, int midiNote, double seconds, double sampleRate, int delaySamples);
+    // Nota que sigue al note-off: ataque, caída hasta el nivel de sostén del preset y release
+    void startHeldNote (const Params&, int midiNote, float velocity, double sampleRate, int delaySamples);
     void startDrum (const Params&, int lane, double sampleRate, int delaySamples);
+    void noteOff (int atSample) noexcept;   // posición dentro del bloque
     float next() noexcept;  // una muestra (0 antes de empezar o al acabar)
 };
 

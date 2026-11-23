@@ -496,6 +496,22 @@ def _native_sequencer_checks(rep, app, host, window, prop) -> None:
     rep.check("+ IA abre el generador y no crea pistas vacías", len(snap()["tracks"]) == n and
               not [t for t in snap()["tracks"] if t["type"] == "ia"], f"{n} pistas")
 
+    # IA en modo «Solo MIDI»: un .mid entra como una pista por instrumento (notas con duración propia)
+    from .midi_ai import write_mid
+    mid = Path(tempfile.mkdtemp(prefix="afo_midi_")) / "prueba.mid"
+    write_mid(mid, [(0.0, 1.0, 60, 0), (1.0, 0.5, 64, 0), (0.0, 0.5, 40, 33), (0.0, 0.1, 36, 128), (0.5, 0.1, 38, 128)], 120)
+    n = len(snap()["tracks"])
+    cmd("midi", str(mid), "Prueba MIDI")
+    _wait(app, lambda: False, 0.2, host)
+    new = snap()["tracks"][n:]
+    rep.check("importar un MIDI crea una pista por instrumento con sus notas",
+              [(t["type"], t["midi"]) for t in new] == [("inst", 2), ("inst", 1), ("drum", 2)] and all(t["id"] >= 0 for t in new),
+              [(t["name"], t["sub"]) for t in new])
+    for _ in new:
+        cmd("drop")
+    cmd("song")
+    rep.check("quitar las pistas MIDI deja el proyecto como estaba", len(snap()["tracks"]) == n)
+
     # Grabador de cintas: la pista de voz es del motor y la toma la escribe Tracktion
     cmd("add", "voz")
     voz = snap()["tracks"][-1]

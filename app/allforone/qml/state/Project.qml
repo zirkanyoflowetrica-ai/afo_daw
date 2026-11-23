@@ -20,6 +20,7 @@ QtObject {
                 var it = t.id >= 0 ? mx.itemOfTrack(t.id) : null
                 return { uid: t.uid, id: t.id, type: t.type, name: t.name, vol: t.vol, pan: t.pan, mute: t.mute, solo: t.solo,
                          cfg: t.cfg || {}, roll: t.roll || {}, pat: t.pat || {}, clips: t.clips || [], start: t.start || 0,
+                         midi: t.midi || undefined, midiSrc: t.midiSrc || undefined,
                          stem: !!it, mix: it ? { kind: it.kind, role: it.role } : null }
             })
         }
@@ -82,7 +83,7 @@ QtObject {
                 return                                     // pistas de la antigua demostración: no tenían audio
             } else {
                 var t = sq.mk(d.type, d.name)
-                ;["cfg", "roll", "pat", "clips"].forEach(function (f) { if (d[f] !== undefined) t[f] = d[f] })
+                ;["cfg", "roll", "pat", "clips", "midi", "midiSrc"].forEach(function (f) { if (d[f] !== undefined) t[f] = d[f] })
                 t.mute = !!d.mute; t.solo = !!d.solo
                 sq.push(t)
                 id = t.id; uid = t.uid

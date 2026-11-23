@@ -11,6 +11,7 @@
 #include <memory>
 #include <functional>
 #include <string>
+#include <tuple>
 #include <vector>
 
 namespace afo
@@ -239,6 +240,9 @@ public:
     void setSynthSettings (int id, const SynthSettings&);
     // (tiempo en negras, nota MIDI); batería: nota 36 + carril. Devuelve la duración del clip en segundos.
     double setSynthNotes (int id, const std::vector<std::pair<double, int>>& notes, double lengthBeats);
+    // Notas con duración y velocidad propias (MIDI importado o compuesto por la IA):
+    // (inicio en negras, duración en negras, nota 0..127, velocidad 1..127)
+    double setSynthMidi (int id, const std::vector<std::tuple<double, double, int, int>>& notes, double lengthBeats);
     // Escucha de una nota o golpe suelto por el reproductor de escucha (no toca el transporte)
     bool auditionSynth (const SynthSettings&, int midiNote, double seconds);
 

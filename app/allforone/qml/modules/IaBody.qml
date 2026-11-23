@@ -2,8 +2,12 @@ import QtQuick
 import "../theme"
 import "../controls"
 
-// Módulo Pistas con IA (Cerebro AI-1): genera instrumentales reales con ACE-Step 1.5 en este equipo
-// (acestep.cpp con Vulkan, en otro proceso: ai_music.py). El WAV entra como pista de audio en Pistas.
+// Módulo Pistas con IA (Cerebro AI-1), con dos modos que no se mezclan:
+//  * «Canción (audio)»: canción completa (instrumental o con voz y letra) con ACE-Step 1.5 en este
+//    equipo (acestep.cpp con Vulkan, en otro proceso: ai_music.py). El WAV entra como pista de audio.
+//  * «Solo MIDI»: compone solo las notas con MIDI-LLM (llama-server con Vulkan: midi_ai.py). Cada
+//    instrumento entra como pista de Instrumento o Batería editable que suena con el sintetizador del
+//    motor o con el VST3 que elijas; también importa archivos .mid.
 // Si faltan el motor o los modelos, el módulo lo dice y ofrece descargarlos aquí mismo.
 Column {
     id: root
@@ -15,12 +19,140 @@ Column {
     readonly property color accent: Theme.pcOf("ia")
     width: parent ? parent.width : 420
     spacing: 10
-    Component.onCompleted: seq.aiRefresh()
+    readonly property bool midiMode: seq.iaMode === "midi"
+    readonly property var mai: seq.midiAi
+    readonly property var mc: seq.draftMidi
+    readonly property bool midiReady: !!mai.engineOk && !!(mai.model && mai.model.done)
+    Component.onCompleted: { seq.aiRefresh(); seq.midiRefresh() }
 
     function gb(b) { return (b / 1073741824).toFixed(1).replace(".", ",") + " GB" }
     function set(k, v) { seq.setCfg("ia", k, v) }
     function packName(id) { for (var i = 0; i < ai.packs.length; i++) if (ai.packs[i].id === id) return ai.packs[i].name; return id }
 
+    // ---------------- modo: canción en audio o solo MIDI ----------------
+    Row {
+        width: root.width; spacing: 6
+        NeoButton { text: "Canción (audio)"; pressedState: !root.midiMode
+                    color: !root.midiMode ? Theme.pressedBg : Theme.button; textColor: !root.midiMode ? Theme.pressedInk : Theme.ink
+                    tip: "Canción completa en WAV: instrumental o con voz y tu letra (ACE-Step)"
+                    onClicked: root.seq.iaMode = "song" }
+        NeoButton { text: "Solo MIDI"; pressedState: root.midiMode
+                    color: root.midiMode ? Theme.pressedBg : Theme.button; textColor: root.midiMode ? Theme.pressedInk : Theme.ink
+                    tip: "Solo las notas: pistas de Instrumento y Batería editables, con tus sonidos (MIDI-LLM)"
+                    onClicked: { root.seq.iaMode = "midi"; root.seq.midiRefresh() } }
+    }
+
+    // ================= SOLO MIDI =================
+    Column {
+        visible: root.midiMode
+        width: root.width; spacing: 10
+        Row {
+            width: root.width; spacing: 10
+            Lcd { id: mchip; text: root.midiReady ? "MIDI" : "SIN IA"; anchors.verticalCenter: parent.verticalCenter }
+            Text {
+                width: root.width - mchip.width - 10; anchors.verticalCenter: parent.verticalCenter; wrapMode: Text.Wrap
+                color: Theme.ink; font.family: Theme.font; font.pixelSize: 12; font.weight: 500
+                text: !root.mai.ok && root.mai.error ? root.mai.error
+                    : !root.mai.engineOk ? "Falta el motor de composición (motores\\llama junto a AllForOne.exe)."
+                    : !root.mai.model.done ? "Motor listo. Falta el modelo MIDI: descárgalo abajo (una sola vez)."
+                    : "MIDI-LLM (Llama 3.2 1B) en tu equipo · compone notas, no audio"
+            }
+        }
+        Rectangle {
+            visible: !!root.mai.engineOk && (!root.mai.model.done || root.seq.midiDownloading)
+            width: root.width; height: mdl.implicitHeight + 20
+            color: "transparent"; border.width: 2; border.color: Theme.line; radius: Theme.radius
+            Column {
+                id: mdl
+                x: 10; y: 10; width: parent.width - 20; spacing: 8
+                Text { text: "Modelo MIDI · " + root.gb(root.mai.model.size || 0); color: Theme.ink; font.family: Theme.font; font.pixelSize: 13; font.weight: 700 }
+                Text {
+                    width: parent.width; wrapMode: Text.Wrap; color: Theme.ink; font.family: Theme.font; font.pixelSize: 12
+                    text: "Se descarga de Hugging Face (mradermacher/MIDI-LLM_Llama-3.2-1B-GGUF) a modelos\\midi junto al programa. "
+                          + "Si se corta, «Reanudar» sigue donde quedó."
+                }
+                Row {
+                    width: parent.width; spacing: 8
+                    NeoButton { visible: !root.seq.midiDownloading; color: root.accent
+                                text: root.mai.model.have > 0 ? "Reanudar (" + root.gb(root.mai.model.size - root.mai.model.have) + ")" : "Descargar"
+                                tip: "Un archivo GGUF de " + root.gb(root.mai.model.size || 0)
+                                onClicked: root.seq.midiDownload() }
+                    NeoButton { visible: root.seq.midiDownloading; text: "Pausar"; onClicked: root.seq.cancelMidiDownload() }
+                }
+                Bar { width: parent.width; value: root.seq.midiDlProgress; visible: root.seq.midiDownloading }
+                Text { visible: root.seq.midiDlMsg.length > 0; width: parent.width; wrapMode: Text.Wrap; text: root.seq.midiDlMsg
+                       color: Theme.ink; font.family: Theme.font; font.pixelSize: 12 }
+            }
+        }
+        Column {
+            width: root.width; spacing: 4
+            Text { text: "Describe la música (mejor en inglés)"; color: Theme.ink; font.family: Theme.font; font.pixelSize: 13; font.weight: 600 }
+            Field {
+                width: parent.width; lines: 3
+                text: root.mc.prompt || ""
+                placeholder: "A cheerful latin pop song with piano, acoustic guitar, bass and drums"
+                onEdited: function (v) { root.seq.setMidiCfg("prompt", v) }
+            }
+        }
+        Row {
+            width: root.width; spacing: 14
+            Knob { id: mcre; label: "Creatividad"; value: root.mc.cre; tip: "Baja: más predecible. Alta: más sorpresas."
+                   onMoved: function (v) { root.seq.setMidiCfg("cre", Math.round(v)) } }
+            Column {
+                width: root.width - mcre.width - 14; spacing: 4; anchors.verticalCenter: parent.verticalCenter
+                Text { text: "Largo"; color: Theme.ink; font.family: Theme.font; font.pixelSize: 13; font.weight: 600 }
+                Select { width: parent.width; options: [["1200", "Corto (unos 15 s)"], ["2046", "Medio (unos 25 s)"], ["3900", "Largo (unos 50 s)"]]
+                         current: String(root.mc.len); tip: "Segundos a 120 BPM; al tempo del proyecto se estiran o encogen"
+                         onPicked: function (v) { root.seq.setMidiCfg("len", Number(v)) } }
+            }
+        }
+        Row {
+            width: root.width; spacing: 8
+            NeoButton {
+                id: mgen
+                text: root.seq.composing ? "Componiendo…" : "Componer MIDI"
+                color: root.accent; textColor: "#000"; padX: 14; padY: 8; shadow: 4
+                enabled: root.midiReady && !root.seq.composing
+                opacity: enabled ? 1 : 0.55
+                tip: root.midiReady ? "Compone en tu tarjeta gráfica; cada instrumento entra como pista editable" : "Instala el modelo MIDI primero"
+                onClicked: root.seq.compose()
+            }
+            NeoButton { visible: root.seq.composing; text: "Cancelar"; anchors.verticalCenter: mgen.verticalCenter
+                        onClicked: root.seq.cancelCompose() }
+            NeoButton { text: "Importar .mid…"; anchors.verticalCenter: mgen.verticalCenter
+                        tip: "Un archivo MIDI tuyo entra igual: una pista por instrumento"
+                        onClicked: root.seq.openMidi("", "") }
+        }
+        Column {
+            visible: root.seq.composing || root.seq.midiMsg.length > 0
+            width: root.width; spacing: 4
+            Bar { width: parent.width; value: root.seq.midiProgress; visible: root.seq.composing }
+            Text { width: parent.width; wrapMode: Text.Wrap; text: root.seq.midiMsg
+                   color: Theme.ink; font.family: Theme.font; font.pixelSize: 12; font.weight: 500 }
+        }
+        Text { visible: (root.mai.compositions || []).length > 0; text: "Compuestas (en datos\\media\\ia, .mid)"
+               color: Theme.ink; font.family: Theme.font; font.pixelSize: 13; font.weight: 600 }
+        Repeater {
+            model: (root.mai.compositions || []).slice(0, 6)
+            Row {
+                width: root.width; spacing: 8
+                Column {
+                    width: parent.width - madd.width - 8; spacing: 1; anchors.verticalCenter: parent.verticalCenter
+                    Text { width: parent.width; elide: Text.ElideRight; text: modelData.title
+                           color: Theme.ink; font.family: Theme.font; font.pixelSize: 12; font.weight: 700 }
+                    Text { width: parent.width; elide: Text.ElideRight; text: modelData.notes + " notas · " + Math.round(modelData.seconds) + " s"
+                           color: Theme.ink; font.family: Theme.font; font.pixelSize: 11 }
+                }
+                NeoButton { id: madd; text: "+ Pistas"; tip: "Añadir otra vez al proyecto (una pista por instrumento)"
+                            onClicked: root.seq.openMidi(modelData.path, modelData.title) }
+            }
+        }
+    }
+
+    // ================= CANCIÓN EN AUDIO =================
+    Column {
+    visible: !root.midiMode
+    width: root.width; spacing: 10
     // ---------------- estado del motor ----------------
     Row {
         width: root.width; spacing: 10
@@ -158,7 +290,7 @@ Column {
         width: root.width; spacing: 8
         NeoButton {
             id: gen
-            text: root.seq.generating ? "Generando…" : "Generar instrumental"
+            text: root.seq.generating ? "Generando…" : root.c.inst ? "Generar instrumental" : "Generar canción"
             color: root.accent; textColor: "#000"; padX: 14; padY: 8; shadow: 4
             enabled: root.ready && !root.seq.generating
             opacity: enabled ? 1 : 0.55
@@ -198,6 +330,8 @@ Column {
             NeoButton { id: add; text: "+ Pista"; tip: "Añadir otra vez al proyecto como pista de audio"
                         onClicked: if (root.seq.addGenerated(modelData.path, modelData.title)) root.studio.toast("«" + modelData.title + "» añadida a Pistas") }
         }
+    }
+
     }
 
     // Barra de avance del color del módulo

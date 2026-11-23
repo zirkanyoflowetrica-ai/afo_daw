@@ -15,6 +15,16 @@ QtObject {
     property int oct: 4
     property bool sus: false
     property var draftIa: ({ prompt: "", style: "Trap", cre: 50, dur: 60, key: "Auto", inst: true, lyrics: "", bpmSync: true })
+    // IA en dos modos: «song» = canción completa en audio (ACE-Step) · «midi» = solo las notas (MIDI-LLM)
+    property string iaMode: "song"
+    property var draftMidi: ({ prompt: "", len: 2046, cre: 60 })
+    property var midiAi: ({ ok: false, engineOk: false, model: { done: false, have: 0, size: 0 }, compositions: [] })
+    property bool composing: false
+    property bool midiDownloading: false
+    property real midiProgress: 0
+    property string midiMsg: ""
+    property real midiDlProgress: 0
+    property string midiDlMsg: ""
     // IA local (ACE-Step): estado del motor y los modelos, avance de la generación y de la descarga
     property var ai: ({ ok: false, engineOk: false, installed: "", packs: [], generations: [], styles: [], keys: [] })
     property bool generating: false
@@ -50,6 +60,7 @@ QtObject {
     function cfgOf(type) { var t = active(type); return t ? t.cfg : (type === "ia" ? draftIa : {}) }
     function sub(t) {
         if (disconnected(t)) return "módulo desconectado"
+        if (t.midi && t.midi.length) return "MIDI · " + t.midi.length + (t.midi.length === 1 ? " nota" : " notas") + (t.type === "inst" ? " · " + insts[t.cfg.v][0] : "")
         if (t.type === "inst") return "síntesis · " + insts[t.cfg.v][0]
         if (t.type === "drum") return "síntesis · 16 pasos"
         if (t.type === "voz") return t.len > 0 ? "toma " + L.fmt(t.len) + " · motor nativo" : "sin toma · graba en Grabador de cintas"
@@ -210,7 +221,7 @@ QtObject {
         var t = trackOf(uid)
         if (!t || !isSynth(t) || t.id < 0) return
         var r = studio.call("synthUpdate", t.id, JSON.stringify({
-            type: t.type, cfg: t.cfg, clips: t.clips, roll: t.roll, pat: t.pat,
+            type: t.type, cfg: t.cfg, clips: t.clips, roll: t.roll, pat: t.pat, midi: t.midi || null,
             sus: t.type === "inst" && sus, settingsOnly: !!settingsOnly }))
         if (!r.ok) studio.toast(r.error)
         else if (r.length >= 0 && r.length !== t.len) replace(uid, { len: r.length })
@@ -243,8 +254,18 @@ QtObject {
         var t = active("inst"); if (!t) return
         setCfg("inst", "v", ((v % insts.length) + insts.length) % insts.length)
     }
+    // Una pista con MIDI (de la IA o importado) no se edita en la rejilla de 16 pasos
+    function midiLocked(t) {
+        if (!t || !t.midi || !t.midi.length) return false
+        studio.toast("«" + t.name + "» toca un MIDI de " + t.midi.length + " notas: la rejilla no lo edita. «Pasar a rejilla» lo vacía.")
+        return true
+    }
+    function dropMidi(type) {
+        var t = active(type); if (!t || !t.midi) return
+        replace(t.uid, { midi: null, midiSrc: "" }); update(t.uid); studio.markDirty()
+    }
     function toggleRoll(r, c) {
-        var t = active("inst"); if (!t) return
+        var t = active("inst"); if (!t || midiLocked(t)) return
         var roll = Object.assign({}, t.roll), k = r + "-" + c
         if (base[r] === undefined) return                  // fila fuera del teclado
         if (roll[k]) delete roll[k]; else { roll[k] = 1; previewNote(t.cfg, base[r]) }
@@ -256,7 +277,7 @@ QtObject {
 
     // ---------------- Batería ----------------
     function toggleStep(lane, s) {
-        var t = active("drum"); if (!t) return
+        var t = active("drum"); if (!t || midiLocked(t)) return
         var p = Object.assign({}, t.pat), k = lane + "-" + s
         if (p[k]) delete p[k]; else { p[k] = 1; previewDrum(t.cfg, lane) }
         replace(t.uid, { pat: p }); update(t.uid)
@@ -296,7 +317,69 @@ QtObject {
         studio.markDirty()
         return true
     }
+    // ---------------- Pistas con IA: composición MIDI local (midi_ai.py) ----------------
+    function midiRefresh() {
+        if (!studio) return
+        var r = studio.call("midiStatus")
+        if (r.ok) { midiAi = r; composing = r.generating; midiDownloading = r.downloading }
+        else midiAi = { ok: false, error: r.error, engineOk: false, model: { done: false, have: 0, size: 0 }, compositions: [] }
+    }
+    function compose() {
+        if (composing) return
+        var c = draftMidi
+        var r = studio.call("midiGenerate", JSON.stringify({ prompt: c.prompt, length: c.len, creativity: c.cre, bpm: studio.bpm, seed: -1 }))
+        if (!r.ok) { studio.toast(r.error); midiMsg = r.error; return }
+        composing = true; midiProgress = 0.01; midiMsg = "Preparando…"
+    }
+    function cancelCompose() { studio.call("midiCancel"); midiMsg = "Cancelando…" }
+    function midiDownload() {
+        var r = studio.call("midiDownload")
+        if (!r.ok) { studio.toast(r.error); return }
+        midiDownloading = true; midiDlMsg = "Conectando con Hugging Face…"
+    }
+    function cancelMidiDownload() { studio.call("midiCancelDownload"); midiDlMsg = "Pausando…" }
+    function setMidiCfg(k, v) { var d = Object.assign({}, draftMidi); d[k] = v; draftMidi = d }
+    // Cada instrumento de la composición entra como su propia pista de Instrumento o Batería
+    function addMidiTracks(tracks, title, src) {
+        if (!studio.engineOk) { studio.toast("Motor nativo no disponible"); return 0 }
+        var n = 0
+        tracks.forEach(function (tr) {
+            var t = mk(tr.type, tr.name)
+            t.midi = tr.midi; t.midiSrc = src || ""
+            t.clips = [[0, 100]]
+            if (tr.type === "inst") t.cfg.v = tr.voice
+            if (studio.hidden[src_(tr.type)]) studio.setHidden(src_(tr.type), false)
+            push(t); n++
+        })
+        if (n) studio.markDirty()
+        return n
+    }
+    function src_(type) { return src[type] }
+    function openMidi(path, title) {
+        var r = studio.call("midiOpen", path || "", studio.bpm)
+        if (!r.ok) { if (!r.cancelled) studio.toast(r.error); return }
+        var n = addMidiTracks(r.tracks, title || r.title, r.path)
+        studio.toast("«" + (title || r.title) + "»: " + r.notes + " notas en " + n + " pistas")
+    }
     function onAiEvent(ev) {
+        if (ev.type === "aiMidiDownload") {
+            if (ev.phase === "progress") { midiDownloading = true; midiDlProgress = ev.progress; midiDlMsg = ev.message + " · " + (ev.got / 1073741824).toFixed(2) + " de " + (ev.size / 1073741824).toFixed(2) + " GB" }
+            else { midiDownloading = false; midiDlMsg = ev.ok || ev.cancelled ? ev.message : ev.error; if (!ev.ok && !ev.cancelled) studio.toast(ev.error); midiRefresh() }
+            return
+        }
+        if (ev.type === "aiMidi") {
+            if (ev.phase === "progress") { composing = true; midiProgress = ev.progress; midiMsg = ev.message }
+            else {
+                composing = false; midiProgress = 0
+                if (ev.ok) {
+                    midiMsg = ev.message
+                    var n = addMidiTracks(ev.tracks, ev.title, ev.path)
+                    studio.toast("Composición MIDI: " + ev.message + " · " + n + " pistas nuevas en Pistas")
+                } else { midiMsg = ev.cancelled ? ev.message : ev.error; if (!ev.cancelled) studio.toast(ev.error) }
+                midiRefresh()
+            }
+            return
+        }
         if (ev.type === "aiDownload") {
             if (ev.phase === "progress") { downloading = true; dlProgress = ev.progress; dlMsg = ev.message + " · " + (ev.got / 1073741824).toFixed(2) + " de " + (ev.size / 1073741824).toFixed(2) + " GB" }
             else { downloading = false; dlMsg = ev.ok || ev.cancelled ? ev.message : ev.error; if (!ev.ok && !ev.cancelled) studio.toast(ev.error); aiRefresh() }
