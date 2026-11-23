@@ -15,7 +15,7 @@ import threading
 from datetime import datetime
 from pathlib import Path
 
-from PySide6.QtCore import QObject, QTimer, Signal, Slot
+from PySide6.QtCore import QCoreApplication, QObject, QTimer, Signal, Slot
 from PySide6.QtWidgets import QFileDialog, QWidget
 
 from . import audio_import, fx_presets, paths, project, themes
@@ -84,6 +84,7 @@ class Bridge(QObject):
     stateChanged = Signal(str)
     pluginScanEvent = Signal(str)   # búsqueda de VST3 en otro proceso: avance y resultado
     mixerEvent = Signal(str)   # progreso y resultados del Mezclador V4.2 (desde su hilo de trabajo)
+    aiEvent = Signal(str)      # IA local: avance de descargas de modelos y de generaciones
 
     def __init__(self, host: EngineHost, parent_widget: QWidget | None = None):
         super().__init__()
@@ -101,6 +102,11 @@ class Bridge(QObject):
         self._scanner = None
         self._mixer_events: queue.SimpleQueue = queue.SimpleQueue()
         self.mixsvc = MixerService(self._mixer_events.put)
+        from .ai_music import AiMusic
+        self.ai = AiMusic(self._mixer_events.put)
+        app = QCoreApplication.instance()
+        if app is not None:
+            app.aboutToQuit.connect(self.ai.shutdown)   # no dejar procesos del motor de IA huérfanos
         self._mixer_timer = QTimer(self)
         self._mixer_timer.setInterval(50)
         self._mixer_timer.timeout.connect(self._drain_mixer_events)
@@ -119,6 +125,9 @@ class Bridge(QObject):
                 return
             if ev.get("type") == "_converted":      # interno: la conversión terminó en su hilo
                 self._finish_import(ev)
+                continue
+            if str(ev.get("type", "")).startswith("ai"):   # IA local (ai_music.py)
+                self.aiEvent.emit(_json(ev))
                 continue
             if ev.get("type") == "_plan":           # interno: la mezcla decidida se aplica en el motor aquí
                 self._apply_plan(ev["plan"])
@@ -873,6 +882,45 @@ class Bridge(QObject):
             return _ok(length=self.host.update_synth(int(track_id), data))
         except Exception as exc:
             return _err(f"Sintetizador: {exc}")
+
+    # --- IA local: instrumentales con ACE-Step (ai_music.py) ------------------------
+    @Slot(result=str)
+    @_safe
+    def aiStatus(self) -> str:
+        """Motor, modelos instalados, tarjeta gráfica y generaciones guardadas."""
+        from .ai_music import list_generations
+        return _ok(**self.ai.status(), generations=list_generations())
+
+    @Slot(str, result=str)
+    @_safe
+    def aiDownload(self, pack: str) -> str:
+        """Descarga (o reanuda) los modelos de un paquete; el avance llega por `aiEvent`."""
+        try:
+            self.ai.download(pack)
+        except Exception as exc:
+            return _err(str(exc))
+        return _ok(started=True)
+
+    @Slot(result=str)
+    @_safe
+    def aiCancelDownload(self) -> str:
+        self.ai.cancel_download()
+        return _ok()
+
+    @Slot(str, result=str)
+    @_safe
+    def aiGenerate(self, payload: str) -> str:
+        """Genera una instrumental en otro proceso; el WAV llega por `aiEvent` y se carga con addAudioPath."""
+        try:
+            return _ok(**self.ai.generate(json.loads(payload or "{}")))
+        except Exception as exc:
+            return _err(str(exc))
+
+    @Slot(result=str)
+    @_safe
+    def aiCancel(self) -> str:
+        self.ai.cancel()
+        return _ok()
 
     # --- plugins VST3 externos ------------------------------------------------------
     @Slot(result=str)

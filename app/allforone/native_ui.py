@@ -155,6 +155,10 @@ def _native_daw_checks(rep, app, host, window, bridge, track_id) -> None:
 
     from .selftest import _wait
 
+    ai = json.loads(bridge.aiStatus())
+    rep.check("IA local: el estado del motor y de los modelos se lee sin fallar", ai.get("ok") is True,
+              f"motor {'sí' if ai.get('engineOk') else 'no'} · modelos {ai.get('installed') or 'no instalados'}")
+
     def call(fn, *args):
         v = QMetaObject.invokeMethod(window, fn, Q_RETURN_ARG("QVariant"), *[Q_ARG("QVariant", a) for a in args])
         return v.toVariant() if hasattr(v, "toVariant") else v
@@ -439,7 +443,7 @@ def _native_mixer_checks(rep, app, host, window, bridge, prop) -> None:
 
 
 def _native_sequencer_checks(rep, app, host, window, prop) -> None:
-    """Fase 3: Instrumento y Batería con el sintetizador del motor; IA como demostración sin audio."""
+    """Fase 3: Instrumento y Batería con el sintetizador del motor; + IA lleva al generador."""
     import tempfile
 
     import numpy as np
@@ -487,9 +491,10 @@ def _native_sequencer_checks(rep, app, host, window, prop) -> None:
     new = snap()["tracks"][-1]
     rep.check("+ Instrumento crea una pista con sintetizador", len(snap()["tracks"]) == n + 1 and new["type"] == "inst" and new["id"] >= 0,
               new["name"])
-    cmd("generate")
-    ia = snap()["tracks"][-1]
-    rep.check("Pistas con IA: demostración sin audio (no entra al motor)", ia["type"] == "ia" and ia["id"] == -1, ia["name"])
+    n = len(snap()["tracks"])
+    cmd("add", "ia")
+    rep.check("+ IA abre el generador y no crea pistas vacías", len(snap()["tracks"]) == n and
+              not [t for t in snap()["tracks"] if t["type"] == "ia"], f"{n} pistas")
 
     # Grabador de cintas: la pista de voz es del motor y la toma la escribe Tracktion
     cmd("add", "voz")

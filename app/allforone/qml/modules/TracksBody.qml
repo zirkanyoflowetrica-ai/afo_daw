@@ -6,7 +6,7 @@ import "../state/mixdata.js" as MD
 
 // Módulo Pistas: audio importado y tomas de voz como clips editables (mover, recortar los bordes,
 // dividir, duplicar, borrar, volumen, fundidos, normalizar, deshacer), Instrumento y Batería (clips
-// con sus notas, suenan con el sintetizador del motor) e IA (DEMO). Regla con compases y cursor del motor.
+// con sus notas, suenan con el sintetizador del motor) e IA (lleva al módulo, que genera audio real). Regla con compases y cursor del motor.
 Column {
     id: root
     property var tracks: []              // [{id, name, len, peaks, note, mute, solo, vol, pan, aclips}]

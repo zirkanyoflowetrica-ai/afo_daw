@@ -218,7 +218,7 @@ Window {
         else if (what === "roll") sq.toggleRoll(a, b)
         else if (what === "step") sq.toggleStep(a, b)
         else if (what === "voice") sq.setVoice(a)
-        else if (what === "generate") sq.finishGenerate()
+        else if (what === "aigen") { sq.setCfg("ia", "prompt", a); sq.setCfg("ia", "dur", b || 30); sq.generate() }
         else if (what === "hide") setHidden(a, b)
         else if (what === "record") sq.startTake()
         else if (what === "recstop") sq.stopTake(false)
@@ -461,7 +461,7 @@ Window {
     // Qué hace el «+» de cada módulo (null = solo existe uno)
     function addLabel(base) {
         return ({ piano: "Nueva pista de instrumento", inst: "Nueva pista de instrumento", drums: "Nueva pista de batería",
-                  ia: "Nueva pista con IA", cinta: "Nueva pista de voz para grabar", audios: "Importar audio…",
+                  ia: "Generar una instrumental con IA", cinta: "Nueva pista de voz para grabar", audios: "Importar audio…",
                   pistas: "Importar audio…", fx: "Otro rack de efectos (para ver otro canal a la vez)" })[base] || null
     }
     function addMore(base) {
@@ -631,6 +631,7 @@ Window {
     }
     Connections {
         target: afo
+        function onAiEvent(s) { try { sq.onAiEvent(JSON.parse(s)) } catch (e) { console.warn(e) } }
         function onPluginScanEvent(s) { try { win.onScanEvent(JSON.parse(s)) } catch (e) { console.warn(e) } }
         function onStateChanged(s) {
             var st; try { st = JSON.parse(s) } catch (e) { return }

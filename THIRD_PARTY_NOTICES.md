@@ -19,6 +19,8 @@ el repositorio y etiquetando cada versión.
 | NumPy | 2.5.4 | BSD-3-Clause | Verificación y análisis |
 | soundfile / libsndfile | 0.14.0 | BSD-3-Clause / LGPL-2.1 | Lectura de audio en Python |
 | Nuitka (runtime) | 4.3.4 | Apache-2.0 | Empaquetado del ejecutable |
+| acestep.cpp (motor de IA, `EXE\motores\acestep`) | commit `973517b` | MIT (`LICENSE-acestep.cpp.txt` junto al motor) | Instrumentales con ACE-Step 1.5 (GGML + Vulkan), en procesos aparte |
+| Modelos ACE-Step 1.5 (GGUF, no se distribuyen: se descargan desde el programa) | Serveurperso/ACE-Step-1.5-GGUF | MIT (ACE-Step 1.5) / Apache-2.0 (Qwen3-Embedding) | Compositor, sintetizador y VAE |
 | Space Grotesk | fontsource 5.2.10 | SIL OFL 1.1 (`app/allforone/qml/assets/fonts/OFL-SpaceGrotesk.txt`) | Tipografía de la interfaz |
 | VST3 SDK (incluido en JUCE) | — | GPLv3 / MIT según versión del SDK en JUCE | Hosting VST3 |
 | Steinberg ASIO SDK | 2.3.4 (2025-10-15) | Doble licencia: propietaria de Steinberg **o GPLv3** (`LICENSE.txt` del SDK); aquí se usa bajo **GPLv3**, compatible con la AGPLv3 de AllForOne | Drivers ASIO (ASIO4ALL, los de cada interfaz…). Se descarga al compilar (`cmake/deps.cmake`, SHA-256 fijado); no se guarda en el repositorio |

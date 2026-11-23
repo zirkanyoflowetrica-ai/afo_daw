@@ -31,6 +31,10 @@ Especificación completa: `docs/MASTER_PROMPT.md`. Resumen de lo que no se negoc
    objetivos ≥ 24 px, confirmación en el sitio para lo destructivo, atajos en los tooltips).
 8. **Fallos:** los slots del puente no lanzan (`@_safe` devuelve el error a la interfaz y lo registra);
    un cierre inesperado deja su traza en `logs/cierre.log` (`diagnostics.py`).
+9. **IA local** (`docs/IA_LOCAL.md`): la generación de música corre en el equipo con el motor
+   acestep.cpp (`motores/acestep`, procesos aparte, Vulkan) y modelos GGUF que se descargan desde la
+   app a `modelos/acestep`; nada de servicios en la nube ni programas externos. `package.ps1`
+   conserva `EXE\modelos`.
 
 ## Verificar
 

@@ -124,8 +124,8 @@ la consola una tira por pista con el color de su módulo. Arranca con las 3 pist
 
 **Lo que se dice tal cual:** el sonido es la síntesis básica de la plantilla, no instrumentos
 muestreados (el subtítulo lo pone: «síntesis»). Reverb y Swing no los usaba la plantilla y siguen
-sin cambiar el audio (lo avisan). Pistas con IA sigue siendo una DEMO: clips de ejemplo, sin audio,
-y lo indica en la pista, en la tira y en el módulo. Quitar Instrumentos o Batería del lienzo
+sin cambiar el audio (lo avisan). Pistas con IA ya no es una demo: genera instrumentales reales con
+ACE-Step en el equipo y las añade como pistas de audio (`docs/IA_LOCAL.md`). Quitar Instrumentos o Batería del lienzo
 desconecta sus pistas (no suenan), como en la plantilla.
 
 Comprobado: render real del motor (nota La a 440 Hz exactamente en su tiempo, silencio antes;

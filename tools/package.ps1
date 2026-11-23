@@ -5,6 +5,8 @@
   Resultado:
     EXE\AllForOne.exe            programa (+ DLL de Qt Quick, interfaz QML, mezclador, afo_audio.pyd)
     EXE\datos\                   tus datos (mezclas, ajustes, registros); se conservan al actualizar
+    EXE\motores\acestep\         motor de IA local (ACE-Step con Vulkan, tools\build_acestep.bat)
+    EXE\modelos\acestep\         modelos de IA que descargas desde el programa; se conservan al actualizar
     AllForOne.lnk                acceso directo en la raiz del proyecto
     release\AllForOne-<version>-win64.zip   para publicar (sin tus datos)
   Todo queda dentro de la carpeta del proyecto: caches y temporales en .cache\.
@@ -115,9 +117,22 @@ Copy-Item (Join-Path $Root 'LICENSE') $Out -ErrorAction SilentlyContinue
 Copy-Item (Join-Path $Root 'README.md') $Out -ErrorAction SilentlyContinue
 # Temas: cada carpeta de templates con un theme.json (copiar la carpeta = compartir el tema)
 Copy-Item (Join-Path $Root 'templates') (Join-Path $Out 'templates') -Recurse
+# IA local: motor de ACE-Step (acestep.cpp con Vulkan) en motores\acestep. Los modelos no van en el
+# paquete: se descargan desde el propio programa a modelos\acestep.
+$Ace = Join-Path $Cache 'acestep.cpp\build-vk'
+if (-not (Test-Path (Join-Path $Ace 'ace-synth.exe'))) {
+    Step "Compilando el motor de IA (tools\build_acestep.bat)"
+    if ((Run-Native 'cmd.exe' @('/c', (Join-Path $PSScriptRoot 'build_acestep.bat'))) -ne 0) { Fail "No se pudo compilar acestep.cpp" }
+}
+$AceOut = Join-Path $Out 'motores\acestep'
+New-Item -ItemType Directory -Force -Path $AceOut | Out-Null
+foreach ($f in @('ace-lm.exe', 'ace-synth.exe', 'ggml.dll', 'ggml-base.dll', 'ggml-cpu.dll', 'ggml-vulkan.dll')) {
+    Copy-Item (Join-Path $Ace $f) $AceOut
+}
+Copy-Item (Join-Path $Cache 'acestep.cpp\LICENSE') (Join-Path $AceOut 'LICENSE-acestep.cpp.txt')
 
 Step "Comprobaciones de la distribucion"
-foreach ($rel in @('AllForOne.exe', 'allforone\qml\Main.qml', 'allforone\qml\modules\FxBody.qml', 'allforone\qml\theme\qmldir', 'allforone\qml\assets\fonts\SpaceGrotesk-Bold.ttf', 'allforone\qml\assets\icon.ico', 'templates\Professional\theme.json')) {
+foreach ($rel in @('AllForOne.exe', 'motores\acestep\ace-synth.exe', 'motores\acestep\ggml-vulkan.dll', 'allforone\qml\Main.qml', 'allforone\qml\modules\FxBody.qml', 'allforone\qml\theme\qmldir', 'allforone\qml\assets\fonts\SpaceGrotesk-Bold.ttf', 'allforone\qml\assets\icon.ico', 'templates\Professional\theme.json')) {
     if (-not (Test-Path (Join-Path $Out $rel))) { Fail "Falta $rel en la distribucion" }
 }
 if (Get-ChildItem $Out -Recurse -Filter 'QtWebEngineProcess.exe') { Fail "La distribucion lleva Qt WebEngine (Chromium) y ya no lo usa" }
@@ -151,12 +166,16 @@ Step "Instalar en $Exe (se conservan tus datos de EXE\datos)"
 Stop-AllForOne
 $keep = Join-Path $Cache "tmp\datos_conservados_$Stamp"
 if (Test-Path (Join-Path $Exe 'datos')) { Move-Item (Join-Path $Exe 'datos') $keep }
+# Modelos de IA descargados (gigas): se conservan tal cual
+$keepM = Join-Path $Cache "tmp\modelos_conservados_$Stamp"
+if (Test-Path (Join-Path $Exe 'modelos')) { Move-Item (Join-Path $Exe 'modelos') $keepM }
 # Temas que anadiste tu (los de fabrica se actualizan)
 $keepT = Join-Path $Cache "tmp\temas_conservados_$Stamp"
 if (Test-Path (Join-Path $Exe 'templates')) { Move-Item (Join-Path $Exe 'templates') $keepT }
 if (Test-Path $Exe) { Remove-Item -Recurse -Force $Exe }
 Move-Item $Out $Exe
 if (Test-Path $keep) { Move-Item $keep (Join-Path $Exe 'datos') }
+if (Test-Path $keepM) { Move-Item $keepM (Join-Path $Exe 'modelos') }
 if (Test-Path $keepT) {
     foreach ($t in Get-ChildItem $keepT -Directory) {
         $dest = Join-Path $Exe "templates\$($t.Name)"

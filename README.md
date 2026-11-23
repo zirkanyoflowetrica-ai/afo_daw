@@ -68,7 +68,7 @@ Todo lo que AllForOne escribe (datos, registros, cachés, temporales) queda dent
 **Interfaz (Qt Quick, sin navegador interno):** `python -m allforone` desde `app/`. Funcionan el
 lienzo, Pistas, Audios, la consola Mezcla con la mezcla automática, Mezcla final, Afinador, Master
 IA, Antes / Después, Piano roll, Instrumentos, Batería (con el sintetizador del motor), Pistas con
-IA (demo), el **Grabador de cintas** (graba el motor), la
+IA (**instrumentales reales con ACE-Step en tu equipo**, ver `docs/IA_LOCAL.md`), el **Grabador de cintas** (graba el motor), la
 **configuración de audio** (botón «Audio»: Windows Audio, DirectSound o cualquier driver ASIO como
 ASIO4ALL) y el módulo **Efectos** con la Biblioteca nativa (Hito 1: Gain, Channel Strip, Parametric
 EQ, Compressor, Gate, De-Esser, Saturator, Space, Digital Delay y Spectrum Analyzer, con presets y

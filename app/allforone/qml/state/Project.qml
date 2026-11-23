@@ -78,6 +78,8 @@ QtObject {
                 if (!r.ok) { s.toast(r.error); return }
                 s.addTrack(r.track, d.stem !== false)
                 id = r.track.id; uid = "a" + id
+            } else if (d.type === "ia") {
+                return                                     // pistas de la antigua demostración: no tenían audio
             } else {
                 var t = sq.mk(d.type, d.name)
                 ;["cfg", "roll", "pat", "clips"].forEach(function (f) { if (d[f] !== undefined) t[f] = d[f] })

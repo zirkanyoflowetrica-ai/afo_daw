@@ -5,8 +5,8 @@ import "layout.js" as L
 // Pistas de Instrumento, Batería, Voz e IA de la plantilla (mk, addT, pick, basic, piano roll, patrón…).
 // Instrumento y Batería suenan con el sintetizador del motor C++ (plugin de Tracktion que toca un
 // clip MIDI): editar una nota solo rehace el clip, sin renderizar. Las de Voz graban con el motor
-// (Tracktion escribe el WAV desde la entrada del dispositivo). Las de IA son la DEMO de la
-// plantilla: clips de ejemplo, sin audio.
+// (Tracktion escribe el WAV desde la entrada del dispositivo). Pistas con IA genera instrumentales
+// reales con ACE-Step en el equipo (ai_music.py, en otro proceso): el WAV entra como pista de audio.
 QtObject {
     id: sq
     property var studio
@@ -14,8 +14,15 @@ QtObject {
     property var act: ({ inst: "", drum: "", ia: "", voz: "" })   // pista activa de cada módulo (uid)
     property int oct: 4
     property bool sus: false
-    property var draftIa: ({ prompt: "", style: "Lo-fi", cre: 60, den: 40 })
+    property var draftIa: ({ prompt: "", style: "Trap", cre: 50, dur: 60, key: "Auto", inst: true, lyrics: "", bpmSync: true })
+    // IA local (ACE-Step): estado del motor y los modelos, avance de la generación y de la descarga
+    property var ai: ({ ok: false, engineOk: false, installed: "", packs: [], generations: [], styles: [], keys: [] })
     property bool generating: false
+    property bool downloading: false
+    property real aiProgress: 0
+    property string aiMsg: ""
+    property real dlProgress: 0
+    property string dlMsg: ""
     // Grabador de cintas: entrada del dispositivo, escucha por los altavoces y toma en curso
     property var inputs: []
     property string input: ""
@@ -33,7 +40,6 @@ QtObject {
     readonly property var dn: ["Bombo", "Caja", "Hi-hat", "Hi-hat abierto", "Palmas", "Tom", "Platillo", "Cencerro"]
     readonly property var styles: ["Lo-fi", "Funk", "Ambient", "Rock", "Electrónica"]
 
-    property Timer genTimer: Timer { interval: 1100; onTriggered: sq.finishGenerate() }
 
     // ---------------- acceso ----------------
     function indexOf(uid) { for (var i = 0; i < studio.tracks.length; i++) if (studio.tracks[i].uid === uid) return i; return -1 }
@@ -46,7 +52,6 @@ QtObject {
         if (disconnected(t)) return "módulo desconectado"
         if (t.type === "inst") return "síntesis · " + insts[t.cfg.v][0]
         if (t.type === "drum") return "síntesis · 16 pasos"
-        if (t.type === "ia") return "DEMO · " + t.cfg.style + " · sin audio"
         if (t.type === "voz") return t.len > 0 ? "toma " + L.fmt(t.len) + " · motor nativo" : "sin toma · graba en Grabador de cintas"
         return ""
     }
@@ -99,6 +104,12 @@ QtObject {
         return r.track.id
     }
     function addTrack(type) {
+        if (type === "ia") {           // la IA no crea pistas vacías: genera audio en su módulo
+            if (studio.hidden.ia) studio.setHidden("ia", false)
+            studio.goTo("ia"); aiRefresh()
+            studio.toast("Describe la instrumental y pulsa «Generar»: entra como pista de audio")
+            return null
+        }
         var n = studio.tracks.filter(function (x) { return x.type === type }).length + 1
         var t = mk(type, tn[type] + " " + n)
         if (type === "drum") t.pat = basic()
@@ -253,30 +264,52 @@ QtObject {
     function clearPat() { var t = active("drum"); if (t) { replace(t.uid, { pat: {} }); update(t.uid) } }
     function basicPat() { var t = active("drum"); if (t) { replace(t.uid, { pat: basic() }); update(t.uid) } }
 
-    // ---------------- Pistas con IA (DEMO de la plantilla) ----------------
-    function genClips(den) {
-        var cl = [], x = 0
-        while (x < 90) {
-            var l = 12.5 * (1 + Math.floor(Math.random() * 2))
-            cl.push([x, Math.min(l, 100 - x)])
-            x += l + 12.5 * Math.floor(Math.random() * (1 + (100 - den) / 50))
+    // ---------------- Pistas con IA: ACE-Step local (ai_music.py) ----------------
+    function aiRefresh() {
+        if (!studio) return
+        var r = studio.call("aiStatus")
+        if (r.ok) { ai = r; generating = r.generating; downloading = r.downloading }
+        else ai = { ok: false, error: r.error, engineOk: false, installed: "", packs: [], generations: [], styles: [], keys: [] }
+    }
+    function generate() {
+        if (generating) return
+        var c = draftIa
+        var r = studio.call("aiGenerate", JSON.stringify({
+            prompt: c.prompt, style: c.style, duration: c.dur, key: c.key, instrumental: c.inst, lyrics: c.lyrics,
+            creativity: c.cre, bpm: c.bpmSync ? studio.bpm : 0, seed: -1 }))
+        if (!r.ok) { studio.toast(r.error); aiMsg = r.error; return }
+        generating = true; aiProgress = 0.01; aiMsg = "Preparando…"
+    }
+    function cancelGenerate() { studio.call("aiCancel"); aiMsg = "Cancelando…" }
+    function download(pack) {
+        var r = studio.call("aiDownload", pack)
+        if (!r.ok) { studio.toast(r.error); return }
+        downloading = true; dlMsg = "Conectando con Hugging Face…"
+    }
+    function cancelDownload() { studio.call("aiCancelDownload"); dlMsg = "Pausando…" }
+    // Carga una generación guardada como pista de audio del motor (Pistas, mezclador y efectos)
+    function addGenerated(path, title) {
+        if (!studio.engineOk) { studio.toast("Motor nativo no disponible"); return false }
+        var r = studio.call("addAudioPath", path, "IA · " + title)
+        if (!r.ok) { studio.toast(r.error); return false }
+        studio.addTrack(r.track, true)
+        studio.markDirty()
+        return true
+    }
+    function onAiEvent(ev) {
+        if (ev.type === "aiDownload") {
+            if (ev.phase === "progress") { downloading = true; dlProgress = ev.progress; dlMsg = ev.message + " · " + (ev.got / 1073741824).toFixed(2) + " de " + (ev.size / 1073741824).toFixed(2) + " GB" }
+            else { downloading = false; dlMsg = ev.ok || ev.cancelled ? ev.message : ev.error; if (!ev.ok && !ev.cancelled) studio.toast(ev.error); aiRefresh() }
+        } else if (ev.type === "aiGenerate") {
+            if (ev.phase === "progress") { generating = true; aiProgress = ev.progress; aiMsg = ev.message }
+            else {
+                generating = false; aiProgress = 0
+                if (ev.ok) {
+                    aiMsg = ev.message
+                    if (addGenerated(ev.path, ev.title)) studio.toast(ev.message + ": añadida a Pistas")
+                } else { aiMsg = ev.cancelled ? ev.message : ev.error; if (!ev.cancelled) studio.toast(ev.error) }
+                aiRefresh()
+            }
         }
-        return cl
-    }
-    function generate() { if (!generating) { generating = true; genTimer.start() } }
-    function finishGenerate() {
-        var c = Object.assign({}, cfgOf("ia")), t = mk("ia", "")
-        t.cfg = c
-        t.name = "IA " + c.style + " " + (studio.tracks.filter(function (x) { return x.type === "ia" }).length + 1)
-        t.clips = genClips(c.den)
-        if (studio.hidden.ia) studio.setHidden("ia", false)
-        push(t)
-        generating = false
-        studio.toast("Pista de IA de demostración creada y conectada (sin audio)")
-    }
-    function regenerate() {
-        var t = active("ia"); if (!t) return
-        replace(t.uid, { clips: genClips(t.cfg.den) })
-        studio.toast("Clips de demostración regenerados")
     }
 }
