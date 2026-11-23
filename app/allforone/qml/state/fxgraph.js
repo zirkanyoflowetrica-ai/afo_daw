@@ -1,7 +1,7 @@
 .pragma library
 
 // Colores de las lecturas (los pone el tema: Theme.lcd / Theme.lcdSoft antes de dibujar)
-var pal = { lcd: "#5cc8ff", soft: "#a8e2ff" }
+var pal = { lcd: "#a3acea", soft: "#c6cbef" }
 function setPalette(lcd, soft) { pal = { lcd: String(lcd), soft: String(soft) } }
 // Mini gráficas de las tarjetas del rack: se calculan con los MISMOS valores y fórmulas que usa el
 // motor (biquads RBJ de native/src/fx/FxDsp.h, curvas del Saturator, ley del compresor). No miden

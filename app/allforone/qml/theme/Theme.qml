@@ -17,8 +17,8 @@ QtObject {
             canvas: "#fff1c9", panelHead: "#000000", panelHeadInk: "", panelBorder: "#000000", panelBody: "#fffaf0",
             chip: "#ffffff", chipInk: "#000000", shadow: "#000000",
             device: "#f6f1e4", deviceHead: "#e3dac4", deviceInk: "#1b1b1b", deviceBorder: "#000000",
-            knobArc: "#2f86e0", knobTrack: "#c9bfa6", knobValue: "#1b1b1b", chain: "#ece4cf",
-            lcd: "#5cc8ff", lcdSoft: "#a8e2ff",
+            knobArc: "#5b6fc0", knobTrack: "#c9bfa6", knobValue: "#1b1b1b", chain: "#ece4cf",
+            lcd: "#a3acea", lcdSoft: "#c6cbef",
             sidebar: "#fff1c9"
         },
         style: { frame: 9, border: 3, shadow: 7, buttonShadow: 3, buttonBorder: 2, radius: 0, headHeight: 44,
