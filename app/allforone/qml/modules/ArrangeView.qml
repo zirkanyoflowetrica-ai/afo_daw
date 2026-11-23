@@ -138,6 +138,41 @@ Rectangle {
         return m + ":" + (r < 10 ? "0" : "") + r.toFixed(1)
     }
     function seek(s) { if (studio.engineOk) studio.call("seek", Math.max(0, s)) }
+    // Modos de automatización por pista (como Pro Tools): Read solo lee; Touch, Latch y Write graban
+    readonly property var modes: ["read", "touch", "latch", "write"]
+    readonly property var modeName: ({ read: "Read", touch: "Touch", latch: "Latch", write: "Write" })
+    readonly property var modeHelp: ({
+        read: "Read: la pista sigue sus curvas y mover sus controles no graba nada",
+        touch: "Touch: mientras suena, graba lo que mueves mientras lo sujetas; al soltar vuelve a la curva",
+        latch: "Latch: mientras suena, graba lo que mueves y mantiene el último valor hasta que paras",
+        write: "Write: como Latch; al parar, la pista pasa sola a Touch para no borrar otra pasada" })
+    function cycleMode(t) {
+        var m = info(t.id).mode || "read"
+        var next = modes[(modes.indexOf(m) + 1) % modes.length]
+        var r = studio.call("autoMode", t.id, next)
+        if (!r.ok) { studio.toast(r.error); return }
+        studio.toast(t.name + " · " + modeHelp[r.mode])
+        refresh()
+    }
+    // Inverso de norm: posición 0..1 en el carril → valor del parámetro
+    function denorm(l, x) {
+        x = Math.max(0, Math.min(1, x))
+        var lo = l.min, hi = l.max
+        if (l.centre !== undefined && l.centre !== null && l.centre > lo && l.centre < hi) {
+            var skew = Math.log(0.5) / Math.log((l.centre - lo) / (hi - lo))
+            x = Math.pow(x, 1 / skew)
+        }
+        return lo + x * (hi - lo)
+    }
+    // Guarda los puntos de un carril (efecto o fader / paneo de la pista); [] quita la curva
+    function commitLane(l, pts) {
+        pts = pts.slice().sort(function (a, b) { return a[0] - b[0] })
+        var r = l.effect === 0 ? studio.call("trackAutoSet", l.track, l.param, JSON.stringify(pts))
+                               : studio.call("fxSetAutomation", l.effect, l.param, JSON.stringify(pts))
+        if (!r.ok) { studio.toast(r.error); return }
+        studio.dirty = true
+        refresh()
+    }
     function fitAll() { pps = Math.max(2, Math.min(80, (flick.width - headW - 30) / Math.max(1, songLen))) }
     function openInFx(id) {
         studio.rackTrack = id
@@ -152,7 +187,10 @@ Rectangle {
         function onFxRevChanged() { root.refresh() }
         function onTracksChanged() { Qt.callLater(root.refresh) }
         function onEngineOkChanged() { root.refresh() }
+        function onAutoRevChanged() { if (!pendingRefresh.running) pendingRefresh.start() }
+        function onPlayingChanged() { if (!root.studio.playing) Qt.callLater(root.refresh) }
     }
+    Timer { id: pendingRefresh; interval: 150; onTriggered: root.refresh() }   // redibuja lo que se va grabando
     Timer { interval: 2000; repeat: true; running: root.visible && !!root.studio && root.studio.engineOk; onTriggered: root.refresh() }
 
     // ---------------- barra de la vista ----------------
@@ -377,6 +415,15 @@ Rectangle {
                                             pressedState: !!trk.t.solo
                                             color: trk.t.solo ? Theme.accent : Theme.button; textColor: trk.t.solo ? "#000" : Theme.ink
                                             tip: "Solo: escuchar solo esta pista (y las demás en solo)"; onClicked: root.studio.toggleTrackFlag(trk.t.uid, "solo") }
+                                NeoButton { visible: !trk.master
+                                            readonly property string m: trk.inf.mode || "read"
+                                            text: m === "read" ? "R" : m === "touch" ? "T" : m === "latch" ? "L" : "W"
+                                            padX: 6; padY: 3; fontSize: 12; shadow: 2
+                                            pressedState: m !== "read"
+                                            color: m === "read" ? Theme.button : m === "write" ? Theme.pressedBg : Theme.accent
+                                            textColor: m === "read" ? Theme.ink : m === "write" ? Theme.pressedInk : "#000"
+                                            tip: "Automatización: " + root.modeName[m] + ". " + root.modeHelp[m] + ". Clic: siguiente modo (Read → Touch → Latch → Write)"
+                                            onClicked: root.cycleMode(trk.t) }
                                 NeoButton { visible: trk.inf.lanes.length > 0
                                             text: (root.isOpen(trk.t) ? "▾ " : "▸ ") + "∿ " + trk.inf.lanes.length; padX: 6; padY: 3; fontSize: 12; shadow: 2
                                             tip: "Mostrar u ocultar sus " + trk.inf.lanes.length + " curvas de automatización"
@@ -393,6 +440,7 @@ Rectangle {
                             required property var modelData
                             readonly property var l: modelData
                             readonly property real now: root.valueAt(l.points, root.studio.posSec)
+                            property var edit: null          // puntos mientras se arrastra uno (se guardan al soltar)
                             width: col.width; height: root.laneH
                             Rectangle {
                                 x: root.headW; width: parent.width - root.headW; height: parent.height
@@ -401,14 +449,14 @@ Rectangle {
                                 Canvas {
                                     id: curve
                                     anchors.fill: parent
-                                    property var pts: ln.l.points
+                                    property var pts: ln.edit || ln.l.points
                                     property real p: root.pps
                                     property color k: trk.c
                                     property color ink: Theme.deviceInk
                                     onPtsChanged: requestPaint(); onPChanged: requestPaint(); onWidthChanged: requestPaint(); onKChanged: requestPaint()
                                     onPaint: {
                                         var ctx = getContext("2d"); ctx.reset()
-                                        var pts = ln.l.points, top = 6, h = height - 12
+                                        var pts = curve.pts, top = 6, h = height - 12
                                         if (!pts.length) return
                                         var Y = function (v) { return top + h * (1 - root.norm(ln.l, v)) }
                                         ctx.beginPath(); ctx.moveTo(0, Y(pts[0][1]))
@@ -429,7 +477,61 @@ Rectangle {
                                     x: root.studio.posSec * root.pps - 5
                                     y: 6 + (parent.height - 12) * (1 - root.norm(ln.l, ln.now)) - 5
                                 }
-                                MouseArea { anchors.fill: parent; onClicked: function (m) { root.seek(m.x / root.pps) } }
+                                // Clic: añade un punto; arrastrar: lo mueve; clic derecho: lo borra (el cursor se lleva en la regla)
+                                MouseArea {
+                                    id: lma
+                                    anchors.fill: parent; preventStealing: true; hoverEnabled: true
+                                    acceptedButtons: Qt.LeftButton | Qt.RightButton
+                                    cursorShape: Qt.CrossCursor
+                                    property int hit: -1
+                                    function tOf(mx) { return Math.max(0, mx / root.pps) }
+                                    function vOf(my) { return root.denorm(ln.l, 1 - (my - 6) / Math.max(1, height - 12)) }
+                                    function nearest(mx, my) {
+                                        var pts = ln.l.points, best = -1, bd = 10
+                                        for (var i = 0; i < pts.length; i++) {
+                                            var dx = pts[i][0] * root.pps - mx, dy = 6 + (height - 12) * (1 - root.norm(ln.l, pts[i][1])) - my
+                                            var d = Math.sqrt(dx * dx + dy * dy)
+                                            if (d < bd) { bd = d; best = i }
+                                        }
+                                        return best
+                                    }
+                                    onPressed: function (m) {
+                                        hit = nearest(m.x, m.y)
+                                        var pts = ln.l.points.slice()
+                                        if (m.button === Qt.RightButton) {
+                                            if (hit >= 0) { pts.splice(hit, 1); root.commitLane(ln.l, pts) }
+                                            hit = -1; return
+                                        }
+                                        if (hit < 0) {
+                                            var q = [tOf(m.x), vOf(m.y)]
+                                            pts.push(q); pts.sort(function (a, b) { return a[0] - b[0] })
+                                            hit = pts.indexOf(q)
+                                        }
+                                        ln.edit = pts
+                                    }
+                                    onPositionChanged: function (m) {
+                                        if (!pressed || hit < 0 || !ln.edit) return
+                                        var pts = ln.edit.slice()
+                                        var lo = hit > 0 ? pts[hit - 1][0] + 0.001 : 0, hi = hit < pts.length - 1 ? pts[hit + 1][0] - 0.001 : 1e9
+                                        pts[hit] = [Math.max(lo, Math.min(hi, tOf(m.x))), vOf(m.y)]
+                                        ln.edit = pts
+                                    }
+                                    onReleased: function (m) {
+                                        if (ln.edit && m.button === Qt.LeftButton) root.commitLane(ln.l, ln.edit)
+                                        ln.edit = null; hit = -1
+                                    }
+                                    onCanceled: { ln.edit = null; hit = -1 }
+                                }
+                                Rectangle {                 // valor del punto que se arrastra
+                                    readonly property var q: ln.edit && lma.hit >= 0 && lma.hit < ln.edit.length ? ln.edit[lma.hit] : [0, 0]
+                                    visible: lma.pressed && lma.hit >= 0 && !!ln.edit
+                                    x: Math.min(parent.width - width, q[0] * root.pps + 10); y: 2
+                                    width: dragTxt.implicitWidth + 12; height: 22; radius: 3
+                                    color: Theme.deviceHead; border.width: 1; border.color: Theme.deviceBorder
+                                    Text { id: dragTxt; anchors.centerIn: parent; color: Theme.deviceInk
+                                           font.family: Theme.font; font.pixelSize: 12; font.weight: 700
+                                           text: root.fmtTime(parent.q[0]) + " · " + root.fmt(ln.l, parent.q[1]) }
+                                }
                             }
                             Rectangle {
                                 x: flick.contentX; z: 2
@@ -443,16 +545,17 @@ Rectangle {
                                            color: Theme.deviceInk; font.family: Theme.font; font.pixelSize: 12; font.weight: 700 }
                                     Row {
                                         spacing: 8
-                                        Text { text: root.fmt(ln.l, ln.now); color: Theme.deviceInk
+                                        Text { text: ln.l.points.length ? root.fmt(ln.l, ln.now) : "sin curva"; color: Theme.deviceInk
                                                font.family: Theme.font; font.pixelSize: 14; font.weight: 800 }
                                         Text { anchors.baseline: parent.children[0].baseline
-                                               text: ln.l.points.length + " puntos · " + root.fmt(ln.l, ln.l.min) + " … " + root.fmt(ln.l, ln.l.max)
+                                               text: ln.l.points.length ? ln.l.points.length + " puntos · " + root.fmt(ln.l, ln.l.min) + " … " + root.fmt(ln.l, ln.l.max)
+                                                                        : "clic en el carril: añadir punto"
                                                color: Theme.deviceInk; font.family: Theme.font; font.pixelSize: 11 }
                                     }
                                 }
                                 MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; hoverEnabled: true
                                             onDoubleClicked: root.openInFx(trk.t.id)
-                                            ToolTipLite { text: "Doble clic: abrir este efecto en el módulo Efectos"; show: parent.containsMouse } }
+                                            ToolTipLite { text: "En el carril: clic añade un punto, arrastrar lo mueve, clic derecho lo borra. Doble clic aquí: abrir los efectos de la pista"; show: parent.containsMouse } }
                             }
                         }
                     }
@@ -647,6 +750,7 @@ Rectangle {
                                 onPressed: function (m) { at(m.x) }
                                 onPositionChanged: function (m) { if (pressed) at(m.x) }
                                 onDoubleClicked: root.studio.setTrackMixUid(st.t.uid, st.fv, 50)
+                                onReleased: root.studio.trackRelease(st.t.uid)
                             }
                         }
                         Text { visible: !st.master; x: 8; y: parent.height - 128 - 40; color: Theme.deviceInk
@@ -657,7 +761,8 @@ Rectangle {
                             x: 8; y: parent.height - 124; spacing: 4
                             Fader { height: 100; value: st.fv
                                     tip: "Volumen de " + st.t.name
-                                    onMoved: function (v) { if (st.master) root.studio.setMaster(v); else root.studio.setTrackMixUid(st.t.uid, v, st.t.pan === undefined ? 50 : st.t.pan) } }
+                                    onMoved: function (v) { if (st.master) root.studio.setMaster(v); else root.studio.setTrackMixUid(st.t.uid, v, st.t.pan === undefined ? 50 : st.t.pan) }
+                                    onReleased: if (!st.master) root.studio.trackRelease(st.t.uid) }
                             Meter { height: 100; width: 10; level: MD.dbToPct(st.lr[0]) }
                             Meter { height: 100; width: 10; level: MD.dbToPct(st.lr[1]) }
                             Column {

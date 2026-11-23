@@ -71,7 +71,7 @@ Column {
     Row {                                       // las dos pantallas juntas
         width: root.width; spacing: 6
         Repeater {
-            model: [["ANTES", "pre", "pre_db", "#ffcf9e", "rgba(255,207,158,0.30)"], ["DESPUÉS", "post", "post_db", "#5ee0b0", "rgba(94,224,176,0.30)"]]
+            model: [["ANTES", "pre", "pre_db", "#c8b6ff", "rgba(200,182,255,0.30)"], ["DESPUÉS", "post", "post_db", "#5ee0b0", "rgba(94,224,176,0.30)"]]
             Rectangle {
                 id: scr
                 required property var modelData
@@ -81,13 +81,13 @@ Column {
                     x: 3; y: 22; width: parent.width - 6; height: parent.height - 25
                     property var bands: root.scope ? root.scope[scr.modelData[1]] : []
                     onBandsChanged: requestPaint()
-                    onPaint: FG.spectrum(getContext("2d"), width, height, bands, scr.modelData[3], scr.modelData[4])
+                    onPaint: { FG.setPalette(Theme.lcd, Theme.lcdSoft); FG.spectrum(getContext("2d"), width, height, bands, scr.modelData[3], scr.modelData[4]) }
                 }
                 Text { x: 8; y: 4; text: scr.modelData[0]; color: scr.modelData[3]
                        font.family: Theme.font; font.pixelSize: 11; font.weight: 700 }
                 Text { anchors.right: parent.right; anchors.rightMargin: 8; y: 4
                        text: root.f(root.scope ? root.scope[scr.modelData[2]] : undefined) + " dB RMS"
-                       color: "#ffb000"; font.family: Theme.font; font.pixelSize: 11; font.weight: 700 }
+                       color: Theme.lcd; font.family: Theme.font; font.pixelSize: 11; font.weight: 700 }
             }
         }
     }

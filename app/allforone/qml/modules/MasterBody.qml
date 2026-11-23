@@ -80,7 +80,7 @@ Column {
                 id: tag
                 anchors.right: del.left; anchors.rightMargin: 8; anchors.verticalCenter: parent.verticalCenter
                 width: tagText.implicitWidth + 12; height: 20
-                color: row.modelData.kind === "auto" ? "#ff9f45" : "#7ad6ff"; border.width: Theme.buttonBorder; border.color: Theme.line
+                color: row.modelData.kind === "auto" ? "#c8b6ff" : "#7ad6ff"; border.width: Theme.buttonBorder; border.color: Theme.line
                 Text { id: tagText; anchors.centerIn: parent; text: row.modelData.kind === "auto" ? "AUTO" : "MANUAL"; color: "#000"
                        font.family: Theme.font; font.pixelSize: 10; font.weight: 700 }
             }
@@ -92,7 +92,7 @@ Column {
 
     NeoButton {
         width: root.width; text: root.cur ? "EXPORTAR «" + root.cur.name + "»" : "EXPORTAR (master tal como está)"
-        fontSize: 14; fontWeight: 700; padY: 9; shadow: 4; color: "#ff9f45"; textColor: "#000"
+        fontSize: 14; fontWeight: 700; padY: 9; shadow: 4; color: Theme.accent; textColor: "#000"
         tip: "WAV de toda la sesión con la versión elegida en el master"
         onClicked: root.mixer.versionSel >= 0 ? root.mixer.exportVersion(root.mixer.versionSel) : root.studio.exportMix()
     }

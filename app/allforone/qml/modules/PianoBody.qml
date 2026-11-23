@@ -61,7 +61,7 @@ Column {
                 NeoButton { text: "Octava +"; fontSize: 12; padX: 8; padY: 4; color: Theme.dark ? "#3b3646" : "#d6d6dc"
                             onClicked: root.seq.setOct(1) }
                 NeoButton { text: "Sostenido"; fontSize: 12; padX: 8; padY: 4; pressedState: root.seq.sus
-                            color: root.seq.sus ? "#ffb000" : (Theme.dark ? "#3b3646" : "#d6d6dc")
+                            color: root.seq.sus ? Theme.lcd : (Theme.dark ? "#3b3646" : "#d6d6dc")
                             textColor: root.seq.sus ? "#000" : Theme.ink
                             onClicked: root.seq.toggleSus() }
             }

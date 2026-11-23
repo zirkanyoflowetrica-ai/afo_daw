@@ -111,6 +111,10 @@ QtObject {
                 if (!f.ok) s.toast(f.error)
             }
             if (id >= 0 && d.uid) idOf[d.uid] = id
+            if (id >= 0) {                                   // automatización del fader / paneo y modo
+                for (var p in (d.trackAuto || {})) s.call("trackAutoSet", id, p, JSON.stringify(d.trackAuto[p]))
+                if (d.autoMode) s.call("autoMode", id, d.autoMode)
+            }
         })
         ;(doc.tracks || []).forEach(function (d) {          // envíos: cuando ya existen todos los buses
             ;(d.sends || []).forEach(function (e) {

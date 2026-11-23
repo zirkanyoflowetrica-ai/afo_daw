@@ -101,7 +101,7 @@ Column {
                                        text: stem.modelData.name; elide: Text.ElideRight
                                        color: "#f3e7c4"; font.family: Theme.font; font.pixelSize: 12; font.weight: 700 }
                                 Rectangle { id: conv; visible: !!stem.modelData.note; width: ct.implicitWidth + 8; height: 12
-                                            anchors.verticalCenter: parent.verticalCenter; color: "#ffb000"
+                                            anchors.verticalCenter: parent.verticalCenter; color: Theme.lcd
                                             Text { id: ct; anchors.centerIn: parent; text: "conv."; color: "#000"
                                                    font.family: Theme.font; font.pixelSize: 9; font.weight: 700 } }
                             }

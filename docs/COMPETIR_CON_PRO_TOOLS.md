@@ -21,9 +21,11 @@ menos en la primera hora de trabajo va primero.
 1. ~~**Envíos y buses auxiliares.**~~ **Hecho (23-11-2026):** «+ Aux», envíos pre/post fader en cada
    tira de la consola, solo seguro y proyecto. Queda: automatizar el nivel del envío, envíos desde el
    módulo Mezcla y que la mezcla automática use una reverb compartida en vez de una por pista.
-2. **Automatización escrita en vivo.** Las curvas se dibujan o las pone la mezcla automática; faltan
-   los modos **Read / Touch / Latch / Write** al mover un fader o una perilla mientras suena, y editar
-   puntos en el carril de la vista Arreglo (hoy solo se ven).
+2. ~~**Automatización escrita en vivo.**~~ **Hecho (23-11-2026):** modos **Read / Touch / Latch / Write**
+   por pista (botón R/T/L/W en Arreglo); mientras suena, el fader, el paneo (consola y módulo Mezcla) y
+   las perillas de los efectos graban su curva; curvas de volumen y paneo de pista en el motor; editar
+   puntos en los carriles (clic, arrastrar, clic derecho). Queda: automatizar el nivel de los envíos,
+   modo Trim, deshacer de una pasada y que el fader se mueva solo siguiendo la curva en Read.
 3. **Grabación seria.** Hay una toma por vez en la pista de voz. Faltan: armar varias pistas a la vez,
    **punch in / out**, pre-roll, **loop recording con tomas (playlists) y comping**, metrónomo (click)
    y cuenta atrás, y monitorización por entrada con su latencia mostrada.
@@ -71,7 +73,7 @@ menos en la primera hora de trabajo va primero.
 ## Orden de trabajo propuesto
 
 1. ~~Envíos + buses Aux (motor y consola).~~ Hecho.
-2. Automatización Touch / Latch y edición de puntos en Arreglo.
+2. ~~Automatización Touch / Latch y edición de puntos en Arreglo.~~ Hecho.
 3. Metrónomo, bucle, marcadores y rejilla en Arreglo.
 4. Entrada MIDI + piano roll libre.
 5. Grabación multipista con punch y tomas.

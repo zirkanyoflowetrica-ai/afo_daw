@@ -648,9 +648,35 @@ Las entradas van a la izquierda y las salidas a la derecha. Arrastra para moverl
         for (var i = 0; i < tracks.length; i++) if (tracks[i].id === id) setTrackMixUid(tracks[i].uid, vol, pan)
     }
     function setTrackMixUid(uid, vol, pan) {
+        var i = sq.indexOf(uid), old = i >= 0 ? tracks[i] : null
+        var ov = old && old.vol !== undefined ? old.vol : -1, op = old && old.pan !== undefined ? old.pan : -1
         var t = sq.replace(uid, { vol: Math.round(vol), pan: pan })
-        if (t && t.id >= 0 && engineOk) { call("setTrackVolume", t.id, Math.round(vol)); call("setTrackPan", t.id, (pan - 50) / 50) }
+        if (!t || t.id < 0 || !engineOk) return
+        if (Math.round(vol) !== ov && !autoWrite("track", t.id, "volume", MD.faderToDb(Math.round(vol))))
+            call("setTrackVolume", t.id, Math.round(vol))
+        if (pan !== op && !autoWrite("track", t.id, "pan", (pan - 50) / 50))
+            call("setTrackPan", t.id, (pan - 50) / 50)
     }
+    // Automatización en vivo (Touch / Latch / Write): mientras suena, un control de una pista que no
+    // está en Read graba su valor en la curva; devuelve false si no escribe (se aplica el valor fijo).
+    function autoWrite(kind, id, param, value) {
+        if (!playing || !engineOk) return false
+        var r = call("autoTouch", kind, id, param, value, "move")
+        if (r.ok && r.writing) { autoRev++; return true }
+        return false
+    }
+    function autoRelease(kind, id, param, value) {
+        if (!playing || !engineOk) return
+        var r = call("autoTouch", kind, id, param, value, "end")
+        if (r.ok && r.writing) autoRev++
+    }
+    function trackRelease(uid) {
+        var i = sq.indexOf(uid); if (i < 0) return
+        var t = tracks[i]; if (t.id < 0) return
+        autoRelease("track", t.id, "volume", MD.faderToDb(t.vol === undefined ? 70 : t.vol))
+        autoRelease("track", t.id, "pan", ((t.pan === undefined ? 50 : t.pan) - 50) / 50)
+    }
+    property int autoRev: 0                    // sube con cada punto escrito: el Arreglo redibuja sus curvas
     function seqSrc(type) { return sq.src[type] }
     // Pico [L, R] de una pista (el motor da un valor o un par)
     function trackLR(id) { var v = trackDb[String(id)]; return v === undefined ? [-100, -100] : v.length === 2 ? v : [v, v] }
@@ -802,9 +828,9 @@ Las entradas van a la izquierda y las salidas a la derecha. Arrastra para moverl
                     anchors.verticalCenter: parent.verticalCenter
                     color: "#120f0a"; border.width: Theme.border; border.color: Theme.line
                     Rectangle { anchors.fill: parent; anchors.margins: 3; color: "transparent"; border.width: Theme.buttonBorder; border.color: "#3a3020" }
-                    Text { id: timeGlow; anchors.centerIn: parent; text: timeLbl.text; color: "#ffb000"; opacity: 0.45
+                    Text { id: timeGlow; anchors.centerIn: parent; text: timeLbl.text; color: Theme.lcd; opacity: 0.45
                            font: timeLbl.font; scale: 1.06 }
-                    Text { id: timeLbl; anchors.centerIn: parent; text: win.timeText(); color: "#ffb000"
+                    Text { id: timeLbl; anchors.centerIn: parent; text: win.timeText(); color: Theme.lcd
                            font.family: Theme.font; font.pixelSize: 18; font.weight: 700; font.letterSpacing: 1.44 }
                 }
                 Row {

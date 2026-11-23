@@ -1,4 +1,8 @@
 .pragma library
+
+// Colores de las lecturas (los pone el tema: Theme.lcd / Theme.lcdSoft antes de dibujar)
+var pal = { lcd: "#5cc8ff", soft: "#a8e2ff" }
+function setPalette(lcd, soft) { pal = { lcd: String(lcd), soft: String(soft) } }
 // Mini gráficas de las tarjetas del rack: se calculan con los MISMOS valores y fórmulas que usa el
 // motor (biquads RBJ de native/src/fx/FxDsp.h, curvas del Saturator, ley del compresor). No miden
 // audio: muestran lo que el efecto hará con esos parámetros.
@@ -104,12 +108,12 @@ function compCurve(thr, ratio, knee, makeup) {
 
 function draw(ctx, w, h, fx, d, live) {
     var key = fx.key
-    if (key === "eq") return response(ctx, w, h, eqFilters(fx, d), 18, "#ffcf9e")
-    if (key === "strip") return response(ctx, w, h, stripFilters(fx, d), 18, "#ffcf9e")
+    if (key === "eq") return response(ctx, w, h, eqFilters(fx, d), 18, pal.soft)
+    if (key === "strip") return response(ctx, w, h, stripFilters(fx, d), 18, pal.soft)
     if (key === "deesser") {
         var depth = v(fx, d, "range"), bp = biquad("bp", v(fx, d, "freq"), v(fx, d, "q"), 0)
         // Banda vigilada y la reducción máxima que puede aplicar (range) sobre ella
-        return response(ctx, w, h, [function (f) { var g = Math.pow(10, bp(f) / 20); return 20 * Math.log(1 + (Math.pow(10, depth / 20) - 1) * g) / Math.LN10 }], 18, "#ff9f45")
+        return response(ctx, w, h, [function (f) { var g = Math.pow(10, bp(f) / 20); return 20 * Math.log(1 + (Math.pow(10, depth / 20) - 1) * g) / Math.LN10 }], 18, pal.soft)
     }
     if (key === "compressor")
         return transfer(ctx, w, h, compCurve(v(fx, d, "threshold"), v(fx, d, "ratio"), v(fx, d, "knee"), v(fx, d, "makeup")), "#5ee0b0")
@@ -127,7 +131,7 @@ function draw(ctx, w, h, fx, d, live) {
             var y = (1 - mix) * Math.max(-1, Math.min(1, t)) + mix * y0
             if (x) ctx.lineTo(x, h / 2 - (h / 2 - 3) * y); else ctx.moveTo(x, h / 2 - (h / 2 - 3) * y)
         }
-        ctx.strokeStyle = "#ff9f45"; ctx.lineWidth = 2; ctx.stroke()
+        ctx.strokeStyle = pal.soft; ctx.lineWidth = 2; ctx.stroke()
         return
     }
     if (key === "delay") {
@@ -137,7 +141,7 @@ function draw(ctx, w, h, fx, d, live) {
         var a = wet, n = 0
         for (var tt = ms; tt < 2000 && a > 0.01 && n < 40; tt += ms, n++) {
             var bx = w * tt / 2000, bh = (h - 6) * a
-            ctx.fillStyle = v(fx, d, "pingpong") > 0.5 && n % 2 ? "#ffcf9e" : "#ffb000"
+            ctx.fillStyle = v(fx, d, "pingpong") > 0.5 && n % 2 ? pal.soft : pal.lcd
             ctx.fillRect(bx - 2, h - 2 - bh, 4, bh)
             a *= fb
         }
@@ -170,7 +174,7 @@ function draw(ctx, w, h, fx, d, live) {
     // Ganancia y el resto: nivel de entrada y salida
     var total = v(fx, d, "input") + v(fx, d, "output")
     frame(ctx, w, h, [w / 2], [])
-    ctx.fillStyle = "#ffb000"
+    ctx.fillStyle = pal.lcd
     ctx.fillRect(w / 2, h / 2 - 5, (w / 2 - 2) * Math.max(-1, Math.min(1, total / 24)), 10)
 }
 

@@ -118,6 +118,8 @@ class Bridge(QObject):
         self._live_plan: dict | None = None      # última decisión de la mezcla en vivo (bandas para el master)
         self._to_convert: list[str] = []    # audios que el motor no lee y hay que convertir
         self._converting: str | None = None
+        from .automation_write import AutoWriter
+        self._writer = AutoWriter(host.engine) if host.ok else None   # Read / Touch / Latch / Write
 
     def _drain_mixer_events(self) -> None:
         for _ in range(200):
@@ -168,6 +170,8 @@ class Bridge(QObject):
             return g
         eng = self.host.engine
         if eng.is_playing():
+            if self._writer:
+                self._writer.finish(eng.position_seconds())   # cierra las pasadas de Latch / Write aquí
             eng.pause()
             return _ok(playing=False)
         dev = eng.device_info()
@@ -181,7 +185,10 @@ class Bridge(QObject):
     def stop(self) -> str:
         if (g := self._guard()):
             return g
-        self.host.engine.stop()
+        eng = self.host.engine
+        if self._writer and eng.is_playing():
+            self._writer.finish(eng.position_seconds())       # antes de parar: stop lleva el cursor a 0
+        eng.stop()
         return _ok()
 
     @Slot(float, result=str)
@@ -601,6 +608,47 @@ class Bridge(QObject):
         except Exception as exc:
             return _err(f"No se pudo guardar la automatización: {exc}")
 
+    # --- escritura de automatización en vivo (automation_write.py) -------------------------
+    @Slot(int, str, result=str)
+    @_safe
+    def autoMode(self, track_id: int, mode: str) -> str:
+        """Modo de automatización de la pista: read | touch | latch | write."""
+        if (g := self._guard()):
+            return g
+        try:
+            return _ok(mode=self._writer.set_mode(int(track_id), mode))
+        except ValueError as exc:
+            return _err(str(exc))
+
+    @Slot(result=str)
+    @_safe
+    def autoModes(self) -> str:
+        if (g := self._guard()):
+            return g
+        return _ok(modes={str(k): v for k, v in self._writer.modes.items()})
+
+    @Slot(str, int, str, float, str, result=str)
+    @_safe
+    def autoTouch(self, kind: str, target_id: int, param: str, value: float, phase: str) -> str:
+        """Un control se mueve (phase start | move | end). kind "fx" (perilla de un efecto) o "track"
+        (param volume en dB, pan -1..1). writing=False: la interfaz aplica el valor fijo como siempre."""
+        if (g := self._guard()):
+            return g
+        if kind not in ("fx", "track"):
+            return _err(f"Destino desconocido: {kind}")
+        return _ok(writing=self._writer.touch((kind, int(target_id), param), float(value), phase))
+
+    @Slot(int, str, str, result=str)
+    @_safe
+    def trackAutoSet(self, track_id: int, param: str, points_json: str) -> str:
+        """Curva del fader ("volume", dB) o del paneo ("pan") de una pista; [] la quita."""
+        if (g := self._guard()):
+            return g
+        pts = sorted((max(0.0, float(t)), float(v)) for t, v in json.loads(points_json or "[]"))
+        if not self.host.engine.set_track_automation(int(track_id), param, pts):
+            return _err(f"Parámetro de pista desconocido: {param}")
+        return _ok(points=[[round(t, 4), v] for t, v in self.host.engine.track_automation(int(track_id), param)])
+
     @Slot(int, result=str)
     @_safe
     def fxInfo(self, effect_id: int) -> str:
@@ -646,7 +694,18 @@ class Bridge(QObject):
                 sends = eng.sends(tid) if tid > 0 else []
             except Exception:
                 sends = []
-            out[str(tid)] = {"inserts": inserts, "lanes": lanes, "sends": sends}
+            mode = self._writer.mode(tid) if self._writer and tid > 0 else "read"
+            if tid > 0:
+                for pid, nm, unit, lo, hi, ctr in (("pan", "Paneo", "", -1.0, 1.0, 0.0), ("volume", "Volumen", "dB", -60.0, 12.0, None)):
+                    try:
+                        pts = eng.track_automation(tid, pid)
+                    except Exception:
+                        pts = []
+                    if pts or (pid == "volume" and mode != "read"):     # fuera de Read: carril de volumen listo
+                        lanes.insert(0, {"effect": 0, "track": tid, "fx": "Pista", "param": pid, "name": nm, "unit": unit,
+                                         "min": lo, "max": hi, "centre": ctr,
+                                         "points": [[round(t, 3), round(v, 4)] for t, v in pts]})
+            out[str(tid)] = {"inserts": inserts, "lanes": lanes, "sends": sends, "mode": mode}
         return _ok(tracks=out)
 
     @Slot(int, str, result=str)
@@ -802,7 +861,8 @@ class Bridge(QObject):
             eng = self.host.engine
             sources = {t["id"]: t.get("source_path", "") for t in eng.tracks()}
             sources.update({tid: info.get("originalPath") or sources.get(tid, "") for tid, info in self.host.tracks.items()})
-            doc = project.collect(json.loads(doc_json), eng, self.host.effect_catalog(), sources, self._fx_labels, self._auto)
+            doc = project.collect(json.loads(doc_json), eng, self.host.effect_catalog(), sources, self._fx_labels, self._auto,
+                                  self._writer.modes if self._writer else None)
             out = project.save(path, doc)
             return _ok(path=str(out), name=out.stem)
         except Exception as exc:
@@ -1148,6 +1208,8 @@ class Bridge(QObject):
     def removeTrack(self, track_id: int) -> str:
         if (g := self._guard()):
             return g
+        if self._writer:
+            self._writer.forget_track(int(track_id))
         return _ok(removed=self.host.remove(int(track_id)))
 
     # --- exportación ------------------------------------------------------------------

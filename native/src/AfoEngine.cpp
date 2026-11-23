@@ -50,6 +50,7 @@ struct TrackSlot
     std::string instrumentId;
     AfoMeterPlugin* loud = nullptr;          // medidor de sonoridad tras el fader
     int auxBus = -1;                         // pista Aux: bus que recibe (su Aux Return va primero)
+    float staticDb = 0.0f, staticPan = 0.0f; // fader y paneo fijos (a los que se vuelve sin curva)
 };
 
 // Configuración de Tracktion dentro de la carpeta de datos de AllForOne (nada fuera de ella)
@@ -1155,15 +1156,61 @@ std::vector<float> Engine::trackPeaks (int id, int numBuckets) const
 void Engine::setTrackGainDb (int id, float db)
 {
     requireMessageThread();
-    if (auto* vp = impl->slot (id).track->getVolumePlugin())
-        vp->setVolumeDb (clampDb (db));
+    auto& s = impl->slot (id);
+    s.staticDb = clampDb (db);
+    if (auto* vp = s.track->getVolumePlugin())
+        vp->setVolumeDb (s.staticDb);
 }
 
 void Engine::setTrackPan (int id, float pan)
 {
     requireMessageThread();
-    if (auto* vp = impl->slot (id).track->getVolumePlugin())
-        vp->setPan (juce::jlimit (-1.0f, 1.0f, pan));
+    auto& s = impl->slot (id);
+    s.staticPan = juce::jlimit (-1.0f, 1.0f, pan);
+    if (auto* vp = s.track->getVolumePlugin())
+        vp->setPan (s.staticPan);
+}
+
+bool Engine::setTrackAutomation (int trackId, const std::string& param, const std::vector<std::pair<double, float>>& points)
+{
+    requireMessageThread();
+    auto& s = impl->slot (trackId);
+    auto* vp = s.track->getVolumePlugin();
+    if (vp == nullptr || (param != "volume" && param != "pan"))
+        return false;
+    const bool vol = param == "volume";
+    auto& ap = vol ? *vp->volParam : *vp->panParam;
+    auto& curve = ap.getCurve();
+    curve.clear();
+    for (auto& [t, v] : points)
+    {
+        const float x = vol ? te::decibelsToVolumeFaderPosition (clampDb (v)) : juce::jlimit (-1.0f, 1.0f, v);
+        curve.addPoint (te::TimePosition::fromSeconds (std::max (0.0, t)), x, 0.0f);
+    }
+    ap.updateStream();
+    if (points.empty())
+    {
+        if (vol) vp->setVolumeDb (s.staticDb); else vp->setPan (s.staticPan);
+    }
+    else
+        ap.updateToFollowCurve (impl->edit->getTransport().getPosition());
+    return true;
+}
+
+std::vector<std::pair<double, float>> Engine::trackAutomation (int trackId, const std::string& param) const
+{
+    std::vector<std::pair<double, float>> r;
+    auto* vp = impl->slot (trackId).track->getVolumePlugin();
+    if (vp == nullptr || (param != "volume" && param != "pan"))
+        return r;
+    const bool vol = param == "volume";
+    auto& curve = (vol ? *vp->volParam : *vp->panParam).getCurve();
+    for (int i = 0; i < curve.getNumPoints(); ++i)
+    {
+        const float x = curve.getPointValue (i);
+        r.emplace_back (curve.getPointTime (i).inSeconds(), vol ? te::volumeFaderPositionToDB (x) : x);
+    }
+    return r;
 }
 
 void Engine::setTrackMute (int id, bool muted) { requireMessageThread(); impl->slot (id).track->setMute (muted); }

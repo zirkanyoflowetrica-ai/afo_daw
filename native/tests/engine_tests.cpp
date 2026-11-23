@@ -132,6 +132,20 @@ int main (int argc, char** argv)
         CHECK (engine.setSend (t2.id, aux.id, -100.0f, false) && engine.sends (t2.id).empty(), "quitar el envío");
         engine.setSend (t2.id, aux.id, -6.0f, false);
         CHECK (engine.removeTrack (aux.id) && engine.sends (t2.id).empty(), "quitar el bus quita sus envíos");
+        // Automatización del fader: la pista 2 sola, a −20 dB fijos; la curva la lleva a −6 dB
+        engine.setTrackGainDb (t2.id, -20.0f);
+        CHECK (engine.setTrackAutomation (t2.id, "volume", { { 0.0, -6.0f }, { 2.0, -6.0f } }), "curva de volumen de la pista");
+        auto va = engine.trackAutomation (t2.id, "volume");
+        CHECK (va.size() == 2 && std::abs (va[0].second + 6.0f) < 0.05f, "la curva de volumen se lee en dB");
+        const auto volWav = (out / "render_vol.wav").string();
+        CHECK (engine.renderToWav (volWav), "render con curva de volumen");
+        auto [vpk, vrm] = afo::measureFile (volWav);
+        std::printf ("       render (curva de volumen −6 dB): pico %.2f dBFS\n", vpk);
+        CHECK (std::abs (vpk - (tonePeak - 6.0f)) < 0.2f, "la curva de volumen manda sobre el fader fijo");
+        CHECK (engine.setTrackAutomation (t2.id, "volume", {}) && engine.trackAutomation (t2.id, "volume").empty(), "quitar la curva de volumen");
+        CHECK (engine.renderToWav (volWav) && std::abs (afo::measureFile (volWav).first - (tonePeak - 20.0f)) < 0.2f, "sin curva vuelve al fader fijo");
+        CHECK (engine.setTrackAutomation (t2.id, "pan", { { 0.0, -1.0f }, { 2.0, 1.0f } }) && engine.trackAutomation (t2.id, "pan").size() == 2, "curva de paneo");
+        engine.setTrackAutomation (t2.id, "pan", {});
         CHECK (engine.removeTrack (t2.id), "elimina pista 2");
 
         CHECK (engine.previewPlay (tone, 0.5) || ! dev.open, "previsualización acepta el archivo");

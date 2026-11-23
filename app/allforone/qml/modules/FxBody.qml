@@ -159,7 +159,7 @@ Column {
     function setParam(i, v) { setParamOf(cur, i, v) }
     function setParamOf(e, i, v) {
         var p = typeOf(e.key).params[i]
-        studio.call("fxParam", e.id, p.id, v)
+        if (!studio.autoWrite("fx", e.id, p.id, v)) studio.call("fxParam", e.id, p.id, v)
         var vals = e.values.slice(); vals[i] = v
         var id = e.id
         chain = chain.map(function (x) { return x.id === id ? Object.assign({}, x, { values: vals }) : x })
@@ -369,7 +369,7 @@ Column {
                                 onFxChanged: requestPaint()
                                 onLiveChanged: requestPaint()
                                 onWidthChanged: requestPaint()
-                                onPaint: { if (card.desc) FG.draw(getContext("2d"), width, height, fx, card.desc, live) }
+                                onPaint: { FG.setPalette(Theme.lcd, Theme.lcdSoft); if (card.desc) FG.draw(getContext("2d"), width, height, fx, card.desc, live) }
                             }
                             Grid {                       // perillas en dos filas
                                 columns: card.cols; columnSpacing: 4; rowSpacing: 2
@@ -389,6 +389,7 @@ Column {
                                             labelColor: kc.auto ? Theme.knobArc : Theme.deviceInk
                                             tip: kc.modelData.help
                                             onMoved: function (pos) { root.setParamOf(card.modelData, kc.pi, root.fromPos(kc.modelData, pos)) }
+                                            onReleased: root.studio.autoRelease("fx", card.modelData.id, kc.modelData.id, kc.v)
                                         }
                                         Text { anchors.horizontalCenter: parent.horizontalCenter
                                                text: root.fmtVal(kc.modelData, kc.v); color: Theme.deviceInk
@@ -481,14 +482,14 @@ Column {
                                             width: 68 * Math.max(0, Math.min(1, ((root.meters[modelData[1]] === undefined ? -100 : root.meters[modelData[1]]) + 60) / 60)) }
                             }
                             Text { text: root.db(root.meters[modelData[1]] === undefined ? -100 : root.meters[modelData[1]]) + " dB"
-                                   color: "#ffb000"; font.family: Theme.font; font.pixelSize: 10; font.weight: 700 }
+                                   color: Theme.lcd; font.family: Theme.font; font.pixelSize: 10; font.weight: 700 }
                         }
                     }
                     Text {
                         readonly property var extra: root.type && root.type.meters.length && root.type.key !== "eq" ? root.type.meters : []
                         visible: extra.length > 0
                         text: extra.map(function (n, i) { var v = root.meters[2 + i]; return n + ": " + (v === undefined ? "—" : v.toFixed(1)) }).join(" · ")
-                        color: "#ffb000"; font.family: Theme.font; font.pixelSize: 10; font.weight: 700
+                        color: Theme.lcd; font.family: Theme.font; font.pixelSize: 10; font.weight: 700
                     }
                     Text { text: "Latencia: " + (root.cur ? (root.cur.latency_seconds * 1000).toFixed(2) : "0") + " ms (compensada)"
                            color: Theme.deviceInk; font.family: Theme.font; font.pixelSize: 10; font.weight: 600 }
@@ -565,8 +566,8 @@ Column {
                             ctx.beginPath(); ctx.moveTo(0, yOf(p[0][1]))
                             for (var i = 0; i < p.length; i++) ctx.lineTo(xOf(p[i][0]), yOf(p[i][1]))
                             ctx.lineTo(width, yOf(p[p.length - 1][1]))
-                            ctx.strokeStyle = "#ffcf9e"; ctx.lineWidth = 2; ctx.stroke()
-                            ctx.fillStyle = "#ffb000"
+                            ctx.strokeStyle = String(Theme.lcdSoft); ctx.lineWidth = 2; ctx.stroke()
+                            ctx.fillStyle = String(Theme.lcd)
                             for (var j = 0; j < p.length; j++) ctx.fillRect(xOf(p[j][0]) - 4, yOf(p[j][1]) - 4, 8, 8)
                         }
                         if (playX >= 0) { ctx.strokeStyle = "#ff4d3d"; ctx.beginPath(); ctx.moveTo(playX, 0); ctx.lineTo(playX, height); ctx.stroke() }
@@ -619,7 +620,7 @@ Column {
                         var x2 = width * i / (d.length - 1), y2 = height * (hi - Math.max(lo, Math.min(hi, d[i]))) / (hi - lo)
                         if (i) ctx.lineTo(x2, y2); else ctx.moveTo(x2, y2)
                     }
-                    ctx.strokeStyle = eq ? "#ffcf9e" : "#5ee0b0"; ctx.lineWidth = 2; ctx.stroke()
+                    ctx.strokeStyle = eq ? String(Theme.lcdSoft) : "#5ee0b0"; ctx.lineWidth = 2; ctx.stroke()
                     ctx.fillStyle = "#bdb398"; ctx.font = "10px sans-serif"
                     ctx.fillText(eq ? "respuesta real del EQ (±24 dB)" : "espectro (dBFS, 20 Hz – 20 kHz)", 6, 12)
                 }
@@ -667,7 +668,7 @@ Column {
                                 id: addBtn
                                 visible: !!it.fx
                                 text: "+ " + it.modelData[0] + " " + it.modelData[1]; fontSize: 11; padX: 6; padY: 1; shadow: 2
-                                color: "#ffcf9e"; textColor: "#000"
+                                color: Theme.lcdSoft; textColor: "#000"
                                 tip: it.fx ? it.fx.summary : ""
                                 onClicked: root.add(it.fx.key)
                             }

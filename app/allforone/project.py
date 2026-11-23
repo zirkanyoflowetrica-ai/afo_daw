@@ -79,7 +79,7 @@ def restore_chain(engine, catalog: list[dict], track_id: int, chain: list[dict],
 
 
 def collect(doc: dict, engine, catalog: list[dict], sources: dict[int, str], labels: dict | None = None,
-            auto: dict | None = None) -> dict:
+            auto: dict | None = None, modes: dict | None = None) -> dict:
     """Completa el documento de la interfaz con lo que guarda el motor. `sources`: id → audio original.
     `labels` (efecto → nombre) y `auto` (pista → efectos) vienen de la mezcla automática."""
     auto = auto or {}
@@ -101,6 +101,15 @@ def collect(doc: dict, engine, catalog: list[dict], sources: dict[int, str], lab
                     t["sends"] = [s for s in sends if s["to"]]
             except Exception:                # motor sin buses Aux
                 pass
+            try:                             # curvas del fader y del paneo de la pista
+                ta = {p: [[round(x, 4), round(v, 4)] for x, v in engine.track_automation(tid, p)] for p in ("volume", "pan")}
+                ta = {p: v for p, v in ta.items() if v}
+                if ta:
+                    t["trackAuto"] = ta
+            except Exception:
+                pass
+            if modes and modes.get(tid, "read") != "read":
+                t["autoMode"] = modes[tid]
             if t.get("type") == "inst" and (t.get("cfg") or {}).get("plugin"):
                 try:                         # estado del instrumento VST3 (sonido elegido en su ventana)
                     t["cfg"] = {**t["cfg"], "pluginState": engine.track_instrument_state(tid)}

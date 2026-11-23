@@ -17,7 +17,8 @@ QtObject {
             canvas: "#fff1c9", panelHead: "#000000", panelHeadInk: "", panelBorder: "#000000", panelBody: "#fffaf0",
             chip: "#ffffff", chipInk: "#000000", shadow: "#000000",
             device: "#f6f1e4", deviceHead: "#e3dac4", deviceInk: "#1b1b1b", deviceBorder: "#000000",
-            knobArc: "#ff8a1f", knobTrack: "#c9bfa6", knobValue: "#1b1b1b", chain: "#ece4cf",
+            knobArc: "#2f86e0", knobTrack: "#c9bfa6", knobValue: "#1b1b1b", chain: "#ece4cf",
+            lcd: "#5cc8ff", lcdSoft: "#a8e2ff",
             sidebar: "#fff1c9"
         },
         style: { frame: 9, border: 3, shadow: 7, buttonShadow: 3, buttonBorder: 2, radius: 0, headHeight: 44,
@@ -25,7 +26,7 @@ QtObject {
         modules: {
             piano: "#b79bff", inst: "#ff7a70", drums: "#d4f26a", cinta: "#c9ccd2", ia: "#6ab8ff",
             pistas: "#ffc233", mezcla: "#5ee0b0", master: "#ff9ee0",
-            audios: "#ff9f45", afina: "#7ae7ff", mastia: "#ff6b9a", antes: "#e6d3a3", fx: "#ffcf9e", fxm: "#ffb07a"
+            audios: "#a9bdff", afina: "#7ae7ff", mastia: "#ff6b9a", antes: "#e6d3a3", fx: "#bfe0ff", fxm: "#c9d3e0"
         }
     })
     property var spec: base                    // tema cargado (con lo que falte tomado de `base`)
@@ -88,6 +89,8 @@ QtObject {
     readonly property color knobArc: cl.knobArc
     readonly property color knobTrack: cl.knobTrack
     readonly property color knobValue: cl.knobValue
+    readonly property color lcd: cl.lcd                 // cifras de la pantalla LCD, aguja del VU y lecturas
+    readonly property color lcdSoft: cl.lcdSoft
     readonly property color chain: cl.chain
 
     // Colores de módulo

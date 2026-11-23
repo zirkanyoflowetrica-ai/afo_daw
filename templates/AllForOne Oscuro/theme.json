@@ -8,7 +8,7 @@
     "grip": "#3a3446", "pressedBg": "#efe9ff", "pressedInk": "#000000",
     "canvas": "#121017", "panelBody": "#1b1822", "sidebar": "#17141d",
     "device": "#2a2533", "deviceHead": "#3a3346", "deviceInk": "#efe9ff", "deviceBorder": "#000000",
-    "knobArc": "#ffb000", "knobTrack": "#14111a", "knobValue": "#efe9ff", "chain": "#1b1822"
+    "knobArc": "#5cc8ff", "lcd": "#5cc8ff", "lcdSoft": "#a8e2ff", "knobTrack": "#14111a", "knobValue": "#efe9ff", "chain": "#1b1822"
   },
   "style": { "bodyTint": 0.17 }
 }

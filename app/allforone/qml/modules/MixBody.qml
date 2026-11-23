@@ -46,7 +46,7 @@ Column {
         NeoButton {
             width: (root.width - 8) / 2; text: "MEZCLAR AUTOMÁTICAMENTE"
             fontSize: 15; fontWeight: 700; padY: 10; shadow: 4
-            color: root.mixer.busy ? "#e0c0a0" : "#ff9f45"; textColor: "#000"
+            color: root.mixer.busy ? "#e0c0a0" : Theme.lcdSoft; textColor: "#000"
             onClicked: if (!root.mixer.busy) root.mixer.mix(false)
         }
         NeoButton {
@@ -66,7 +66,7 @@ Column {
             Row {
                 Repeater {
                     model: Math.max(0, Math.ceil(root.width / 10))
-                    Row { Rectangle { width: 8; height: 10; color: "#ffb000" } Rectangle { width: 2; height: 10; color: "#ff9f45" } }
+                    Row { Rectangle { width: 8; height: 10; color: Theme.lcd } Rectangle { width: 2; height: 10; color: Theme.lcdSoft } }
                 }
             }
         }
@@ -217,7 +217,7 @@ Column {
         Rectangle {                              // brillo de «trabajando» (mezcla automática)
             visible: strip.working
             anchors.fill: parent; anchors.margins: -5
-            color: "transparent"; border.width: Theme.border; border.color: "#ff9f45"
+            color: "transparent"; border.width: Theme.border; border.color: Theme.lcdSoft
             SequentialAnimation on opacity { running: strip.working; loops: Animation.Infinite
                 NumberAnimation { from: 1; to: 0.45; duration: 700 } NumberAnimation { from: 0.45; to: 1; duration: 700 } }
         }
@@ -245,7 +245,7 @@ Column {
                     Rectangle {
                         visible: strip.track.type === "ia"
                         anchors.fill: parent; color: "#000"
-                        Text { anchors.centerIn: parent; text: "DEMO · sin audio"; color: "#ffb000"
+                        Text { anchors.centerIn: parent; text: "DEMO · sin audio"; color: Theme.lcd
                                font.family: Theme.font; font.pixelSize: 9; font.weight: 700 }
                     }
                     Row {
@@ -271,6 +271,7 @@ Column {
                     label: "PAN"; value: strip.track.pan
                     tip: "Paneo " + strip.track.name
                     onMoved: function (v) { root.studio.setTrackMixUid(strip.track.uid, strip.track.vol, v) }
+                    onReleased: root.studio.trackRelease(strip.track.uid)
                 }
                 Text { width: parent.width; horizontalAlignment: Text.AlignHCenter
                        text: MD.faderDbText(strip.track.vol); color: Theme.ink
@@ -278,7 +279,8 @@ Column {
                 Row {
                     spacing: 5; anchors.horizontalCenter: parent.horizontalCenter
                     Fader { height: 150; value: strip.track.vol; tip: "Volumen " + strip.track.name
-                            onMoved: function (v) { root.studio.setTrackMixUid(strip.track.uid, v, strip.track.pan) } }
+                            onMoved: function (v) { root.studio.setTrackMixUid(strip.track.uid, v, strip.track.pan) }
+                            onReleased: root.studio.trackRelease(strip.track.uid) }
                     StereoMeter { height: 150; color2: strip.cc
                                   l: root.studio.playing ? MD.dbToPct(root.studio.meterMode === "dB" ? strip.lr[0] : root.studio.stripValue(strip.tid)) : 0
                                   r: root.studio.playing ? MD.dbToPct(root.studio.meterMode === "dB" ? strip.lr[1] : root.studio.stripValue(strip.tid)) : 0 }

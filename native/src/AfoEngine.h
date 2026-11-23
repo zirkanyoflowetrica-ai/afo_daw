@@ -225,6 +225,11 @@ public:
     bool setSend (int trackId, int auxTrackId, float db, bool pre);
     std::vector<SendInfo> sends (int trackId) const;
 
+    // Automatización del fader ("volume", puntos en dB) y del paneo ("pan", -1..1) de una pista.
+    // Lista vacía = sin curva (vuelve al valor fijo del fader / paneo).
+    bool setTrackAutomation (int trackId, const std::string& param, const std::vector<std::pair<double, float>>& points);
+    std::vector<std::pair<double, float>> trackAutomation (int trackId, const std::string& param) const;
+
     // Clips de audio: mover, recortar (start/length/offset), dividir, duplicar, borrar, volumen y fundidos.
     // Todos los clips de una pista usan el audio de la pista. setClips sustituye todos (deshacer, abrir).
     std::vector<ClipInfo> clips (int trackId);

@@ -41,7 +41,7 @@ Item {
                    font.family: Theme.font; font.pixelSize: 15; font.weight: 700 }
             Rectangle {                      // aguja: VU del motor (RMS con balística de 300 ms)
                 x: 98.5; y: 28; width: 3; height: 77
-                color: Theme.dark ? "#ffb000" : "#000"
+                color: Theme.dark ? Theme.lcd : "#000"
                 transform: Rotation { origin.x: 1.5; origin.y: 77; angle: -50 + root.vu * 1.05
                                       Behavior on angle { NumberAnimation { duration: 100; easing.type: Easing.OutQuad } } }
             }

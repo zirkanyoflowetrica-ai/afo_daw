@@ -7,6 +7,7 @@ Item {
     property real value: 70                    // 0..100 (70 = 0 dB)
     property string tip: ""
     signal moved(real value)
+    signal released()                          // fin del gesto (la automatización en Touch vuelve a su curva)
     width: 32
     height: 150
 
@@ -37,6 +38,7 @@ Item {
         function at(y) { return 100 * (1 - (y - 9) / root.travel) }
         onPressed: function (m) { root.forceActiveFocus(); root.setValue(at(m.y)) }
         onPositionChanged: function (m) { if (pressed) root.setValue(at(m.y)) }
+        onReleased: root.released()
         onWheel: function (w) { root.setValue(root.value + (w.angleDelta.y > 0 ? 1 : -1)); w.accepted = true }
     }
     activeFocusOnTab: true

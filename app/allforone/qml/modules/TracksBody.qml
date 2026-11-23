@@ -191,7 +191,7 @@ Column {
                     + " · desde " + root.fmtS(root.selInfo.offset) + " del archivo · " + root.db(root.selInfo.gain_db)
                     + " · fades " + root.selInfo.fade_in.toFixed(2) + " / " + root.selInfo.fade_out.toFixed(2) + " s"
                   : "Clic en un clip de audio para editarlo · clic en la regla o en un carril: mover el cursor · cursor " + root.fmtS(root.posSec)
-            color: "#ffb000"; font.family: Theme.font; font.pixelSize: 11; font.weight: 600
+            color: Theme.lcd; font.family: Theme.font; font.pixelSize: 11; font.weight: 600
         }
     }
 

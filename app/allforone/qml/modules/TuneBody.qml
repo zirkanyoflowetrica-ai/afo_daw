@@ -24,13 +24,13 @@ Column {
             Text { text: root.conf ? "CONFIRMADO" : "SIN CONFIRMAR"; color: "#c98f00"
                    font.family: Theme.font; font.pixelSize: 11; font.weight: 700 }
             Text { text: (root.conf ? root.conf.key : root.tn.key) + " " + root.shortScale(root.conf ? root.conf.scale : root.tn.scale)
-                   color: "#ffb000"; font.family: Theme.font; font.pixelSize: 24; font.weight: 700; font.letterSpacing: 1.44 }
+                   color: Theme.lcd; font.family: Theme.font; font.pixelSize: 24; font.weight: 700; font.letterSpacing: 1.44 }
         }
         Column {
             anchors.right: parent.right; anchors.rightMargin: 15; anchors.verticalCenter: parent.verticalCenter
             Text { anchors.right: parent.right; text: "BPM"; color: "#c98f00"; font.family: Theme.font; font.pixelSize: 11; font.weight: 700 }
             Text { anchors.right: parent.right; text: (+(root.conf ? root.conf.bpm : root.tn.bpm)).toFixed(1)
-                   color: "#ffb000"; font.family: Theme.font; font.pixelSize: 24; font.weight: 700; font.letterSpacing: 1.44 }
+                   color: Theme.lcd; font.family: Theme.font; font.pixelSize: 24; font.weight: 700; font.letterSpacing: 1.44 }
         }
     }
     Item { width: 1; height: 10 }

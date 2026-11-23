@@ -11,6 +11,7 @@ Column {
     property string tip: ""
     property color labelColor: Theme.ink
     signal moved(real value)
+    signal released()                          // fin del gesto (la automatización en Touch vuelve a su curva)
     spacing: 4
     width: Math.max(46, lbl.implicitWidth)
 
@@ -77,6 +78,7 @@ Column {
             property real v0
             onPressed: function (m) { y0 = mapToGlobal(m.x, m.y).y; v0 = root.value; dial.forceActiveFocus() }
             onPositionChanged: function (m) { if (pressed) root.setValue(v0 + (y0 - mapToGlobal(m.x, m.y).y) * 0.8) }
+            onReleased: root.released()
         }
         ToolTipLite { text: root.tip; show: drag.containsMouse && !drag.pressed && root.tip.length > 0 }
     }

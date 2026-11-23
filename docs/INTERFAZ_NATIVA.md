@@ -207,6 +207,17 @@ poder ver qué hizo la mezcla.
   envíos que le llegaban. Motor: `addAuxTrack`, `setSend`, `sends` (`AuxSendPlugin` antes o después del
   fader); puente: `auxCreate`, `sendSet`, `sendList` y `sends` en `dawLanes`; el proyecto guarda los
   envíos de cada pista con el uid del bus.
+- **Automatización en vivo** (botón **R/T/L/W** en la cabecera de cada pista: Read → Touch → Latch →
+  Write). Fuera de Read, mientras suena, mover el fader o el paneo (consola de Arreglo o módulo Mezcla) o
+  una perilla de un efecto de esa pista graba su curva: **Touch** escribe mientras se sujeta y al soltar
+  vuelve a la curva anterior en 0,25 s; **Latch** mantiene el último valor hasta parar; **Write** como
+  Latch y al parar la pista pasa a Touch. Lógica en `automation_write.py` (`AutoWriter`, hilo de Qt;
+  rehace la curva del motor en cada movimiento, nunca toca el hilo de audio); puente: `autoMode`,
+  `autoModes`, `autoTouch`, `trackAutoSet`; motor: `setTrackAutomation` / `trackAutomation` (volumen en
+  dB y paneo del `VolumeAndPanPlugin`). Pausar o parar cierra las pasadas. En los carriles: **clic**
+  añade un punto, **arrastrar** lo mueve (muestra tiempo y valor), **clic derecho** lo borra. Una pista
+  fuera de Read muestra su carril de volumen aunque esté vacío. El proyecto guarda `trackAuto` y
+  `autoMode` por pista.
 - Datos: el slot `dawLanes(ids)` del puente devuelve en una llamada, por pista, los inserts y las curvas
   (`effect_automation`) con nombre, unidad, mínimo, máximo y centro del catálogo. Se refresca al cambiar
   una cadena (`fxRev`), las pistas, al mostrar la vista y cada 2 s.

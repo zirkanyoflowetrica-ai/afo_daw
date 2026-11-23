@@ -28,7 +28,7 @@ Column {
             id: go
             text: root.mixer.mastering ? "Masterizando…" : "MASTERIZAR"
             fontSize: 14; fontWeight: 700; padY: 8; shadow: 4
-            color: root.mixer.mastering ? "#e0c0a0" : "#ff9f45"; textColor: "#000"
+            color: root.mixer.mastering ? Theme.lcdSoft : Theme.accent; textColor: "#000"
             tip: "Mide la sesión en el motor y pone la cadena del master en este rack (queda en Rebobinado)"
             onClicked: if (!root.mixer.mastering && !root.mixer.busy) root.mixer.masterAuto(root.mixer.masterSel)
         }

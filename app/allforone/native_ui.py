@@ -420,6 +420,15 @@ def _native_mixer_checks(rep, app, host, window, bridge, prop) -> None:
     rep.check("bus Aux: «+ Aux» crea el bus y el envío de la voz llega al motor y a la consola",
               ax.get("ok") and len(sends) == 1 and sends[0]["aux"] == ax["id"] and abs(sends[0]["db"] + 12) < 0.1
               and lv2["auxes"] == 1 and lv2["sends"] == 1 and lv2["sendsH"] > 0, {"aux": ax, "envíos": sends})
+    # Automatización del fader: modo Touch por pista y curva de volumen visible como carril del Arreglo
+    md = json.loads(bridge.autoMode(voz, "touch"))
+    ta = json.loads(bridge.trackAutoSet(voz, "volume", json.dumps([[0.0, -6.0], [4.0, -18.0]])))
+    vl = json.loads(bridge.dawLanes(json.dumps([voz]))).get("tracks", {}).get(str(voz), {})
+    vlane = next((l for l in vl.get("lanes", []) if l.get("effect") == 0 and l.get("param") == "volume"), None)
+    rep.check("automatización del fader: modo Touch y curva de volumen en el carril de la pista",
+              md.get("mode") == "touch" and len(ta.get("points", [])) == 2 and vl.get("mode") == "touch"
+              and vlane is not None and abs(vlane["points"][1][1] + 18) < 0.1, {"modo": md, "carril": vlane})
+    _wait(app, lambda: False, 0.3, host)
     shot = paths.logs_dir() / "selftest_arreglo.png"
     window.grabWindow().save(str(shot))
     rep.add("captura de la vista Arreglo", "info", str(shot))
@@ -429,6 +438,8 @@ def _native_mixer_checks(rep, app, host, window, bridge, prop) -> None:
         _wait(app, lambda: False, 0.2, host)
         rep.check("bus Aux: quitarlo quita sus envíos", json.loads(bridge.sendList(voz)).get("sends") == [],
                   json.loads(bridge.sendList(voz)))
+    bridge.trackAutoSet(voz, "volume", "[]")       # el resto de la autoprueba mide el fader fijo
+    bridge.autoMode(voz, "read")
     window.setProperty("view", "modules")
     _wait(app, lambda: False, 0.2, host)
     stems_ids = {i["trackId"] for i in st["items"]}
