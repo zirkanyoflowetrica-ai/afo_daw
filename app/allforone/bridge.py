@@ -1315,7 +1315,7 @@ class Bridge(QObject):
                 t["notes"].append(f"no se aplicó: {exc}")
             self._mixer_events.put({"type": "strip", "i": i, "phase": "done", "trackId": tid, "name": t["name"],
                                     "kind": t["kind"], "position": t["position"], "pan": t["pan"], "gain_db": t["gain_db"],
-                                    "tuned": bool(t.get("tuned_path")),
+                                    "tuned": bool(t.get("tuned")),
                                     "chain": [fx["label"] for fx in t["chain"]], "note": "; ".join(t["notes"]),
                                     "automated": [fx["label"] for fx in t["chain"] if fx.get("auto")]})
         self._live_plan = plan

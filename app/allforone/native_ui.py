@@ -509,7 +509,8 @@ def _native_mixer_checks(rep, app, host, window, bridge, prop) -> None:
     call("mixNow", True)                          # REMEZCLAR con afinación al 60 %
     done = _wait(app, lambda: (snap()["runs"] >= 2 and not snap()["mastering"]) or "Error" in snap()["status"], 240, host)
     st = snap()
-    rep.check("REMEZCLAR con afinación: la voz afinada sustituye al audio de su pista", done and st["runs"] >= 2 and bool(st.get("lastTuned")), st["status"])
+    rep.check("REMEZCLAR con afinación precisa: la copia afinada (PSOLA) sustituye al audio de su pista",
+              done and st["runs"] >= 2 and bool(st.get("lastTuned")), st["status"])
     call("setTuneStrength", 0)
     call("mixerCommand", "unmaster", None)
     rep.check("quitar el master IA", _wait(app, lambda: not snap()["masterChain"], 5, host), snap()["masterChain"])

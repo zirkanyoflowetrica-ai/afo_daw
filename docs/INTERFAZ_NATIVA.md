@@ -89,8 +89,11 @@ no muestra (fase 3).
   perillas Velocidad, Naturalidad, Intensidad y Mezcla (automatizables en Touch / Latch / Write).
   «Detectar tonalidad» analiza la música y «Usar …» lleva la tonalidad analizada al efecto (al
   insertarlo se aplica sola si ya estaba confirmada). Los medidores salen de `fxMeters` (~30 Hz solo
-  mientras suena). Abajo queda, dicho tal cual, la afinación **sin conexión** de la Mezcla IA (PSOLA
-  por archivo, voces P / L / R / _B e intensidad). Con intensidad > 0 % sale **un cable a la tira
+  mientras suena). Abajo queda la afinación de la Mezcla IA (voces P / L / R / _B e intensidad) con
+  dos modos: **Precisa** (PSOLA de V4.2 sin conexión, copia `_afinada`; por defecto) y **En vivo
+  (AF-60)**: el mismo afinador en la cadena de la voz, velocidad según el tempo y rango según el
+  tono medido de la voz. `tests/test_proyectos_completos.py` mide los dos en trap, balada, rock y
+  reguetón (sin afinar ≈ 30 cents; PSOLA 2,5–7,5; AF-60 7,5–12,5), por eso PSOLA sigue por defecto. Con intensidad > 0 % sale **un cable a la tira
   exacta** de cada voz con ese rol.
 - `MasteringBody.qml` (Master IA) y `ReviewBody.qml` (Antes / Después) se rehicieron para la
   mezcla en vivo: ver «Mezcla y master en vivo» más abajo (ya no hay WAVs, ZIP ni escucha de archivos).
@@ -247,8 +250,8 @@ poder ver qué hizo la mezcla.
   coloca faders y paneos. Lo que el V4.2 hace sobre el audio y una cadena no reproduce (ducking
   bombo→bajo, enmascaramiento dinámico, balance por secciones, EQ dinámica de la voz, compresión
   paralela por bus) se informa en el estado, no se finge. Solo se escribe audio
-  si se pide afinación (PSOLA no es un efecto en tiempo real): una copia afinada por voz elegida,
-  que sustituye al audio de su pista.
+  con la afinación «Precisa» (PSOLA): una copia afinada por voz elegida, que sustituye al audio de
+  su pista; «En vivo» pone el AF-60 el primero de su cadena y no escribe nada.
 - **Automatizaciones de la mezcla** (`live_mix.automate`, tras decidir las cadenas): se analiza la voz
   principal (RMS de 400 ms cada 50 ms; canta lo que pasa del p95 − 22 dB; huecos < 0,25 s no cortan
   la frase) y se escriben curvas de Tracktion (`set_effect_automation`, desde el inicio de la pista)

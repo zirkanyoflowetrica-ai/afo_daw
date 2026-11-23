@@ -94,6 +94,44 @@ def describe(m, path: str) -> dict:
 
 
 # ----------------------------------------------------------------------------------------
+TUNE_SCALES = {"Cromatica": 0, "Mayor": 1, "Menor natural": 2, "Menor armonica": 3, "Pentatonica mayor": 4, "Pentatonica menor": 5}
+RANGES = ["aguda", "media", "grave"]
+
+
+def voice_range(path: str) -> int:
+    """Rango del AF-60 (0 aguda, 1 media, 2 grave) según las notas graves y agudas de la voz (YIN, 20 s)."""
+    import numpy as np
+    try:
+        import librosa
+        import soundfile as sf
+        info = sf.info(path)
+        y, sr = sf.read(path, frames=int(min(info.frames, 20 * info.samplerate)), always_2d=True, dtype="float32")
+        y = librosa.resample(y.mean(axis=1), orig_sr=sr, target_sr=16000)
+        f0 = librosa.yin(y, fmin=60, fmax=1100, sr=16000, frame_length=1024)
+        rms = librosa.feature.rms(y=y, frame_length=1024, hop_length=256)[0][: len(f0)]
+        f = f0[: len(rms)][rms > 0.3 * rms.max()]
+        lo, hi = (float(v) for v in np.percentile(f, [10, 90])) if len(f) > 20 else (110.0, 330.0)
+    except Exception:
+        return 1
+    # Rangos del AF-60: aguda 140–1100 Hz, media 85–700, grave 60–420. Si la voz pasa de ~C5 va en aguda; se elige el que cubre la voz con margen.
+    return 0 if hi > 500 else 2 if hi < 340 and lo < 120 else 1
+
+
+def tune_fx(t: dict, tuning: dict, bpm: float) -> dict:
+    """Efecto AF-60 para una voz: tonalidad confirmada, velocidad según tempo (balada natural, trap
+    rápido), dobles y coros algo más suaves que la principal."""
+    import numpy as np
+    from . import live_mix
+    from .music_ai import NOTES
+    lead = t["kind"] == "Voz principal"
+    speed = float(np.clip(6000.0 / max(bpm, 50.0) - 30.0, 10.0, 90.0)) + (0.0 if lead else 20.0)
+    amount = float(tuning["strength"]) * (1.0 if lead else 0.85)
+    values = {"key": NOTES.index(tuning["key"]), "scale": TUNE_SCALES.get(tuning["scale"], 0), "speed": speed,
+              "humanize": 35.0 if bpm < 90 else 25.0, "amount": amount, "range": voice_range(t["path"]), "mix": 100.0}
+    return {"key": "tune", "label": f"Afinador AF-60 ({tuning['key']} {tuning['scale']})",
+            "values": {k: float(v) for k, v in values.items()}}
+
+
 class MixerService:
     """Una instancia por aplicación. `emit(dict)` envía eventos al panel (hilo cualquiera)."""
 
@@ -213,8 +251,8 @@ class MixerService:
     def _live(self, payload):
         """Decide la mezcla (V4.2) en este hilo; el puente la aplica en el motor desde el hilo principal.
 
-        No se renderiza nada: solo se escribe audio si se pidió afinación (PSOLA no es un efecto
-        en tiempo real), una copia afinada por voz elegida.
+        No se renderiza nada: solo se escribe audio con la afinación precisa (PSOLA, una copia afinada
+        por voz elegida); la afinación en vivo es un efecto del motor (AF-60).
         """
         from . import live_mix
         m = load()
@@ -241,16 +279,28 @@ class MixerService:
             tuning = dict(key=self.approval["key"], scale=self.approval["scale"], strength=strength,
                           tune_lead=bool(voices.get("lead", True)), tune_left=bool(voices.get("l", False)),
                           tune_right=bool(voices.get("r", False)), tune_center_backings=bool(voices.get("b", False)))
+            # "psola" (por defecto): copia afinada sin conexión con el PSOLA de V4.2, la más exacta en
+            # tests/test_proyectos_completos.py. "live": el AF-60 del motor en la cadena (no escribe
+            # audio; al remezclar con 0 % desaparece), velocidad según el tempo y rango según la voz.
+            live = tune.get("method") == "live"
             dest = paths.user_data_dir() / "afinadas"
             for t in result["tracks"]:
                 if t.get("skip") or not eng._should_tune_vocal(tuning, t["kind"], t["kind"] == "Voz lateral (_L/_R)", t["position"]):
                     continue
                 self.emit({"type": "progress", "panel": "mezcla", "p": 88, "desc": f"Afinando {t['name']}…"})
-                from scale_tuner import tune_to_scale
-                x, note = tune_to_scale(eng.load_stem(t["path"]), eng.SR, tuning["key"], tuning["scale"], strength)
-                dest.mkdir(parents=True, exist_ok=True)
-                t["tuned_path"] = eng.save_wav(dest / f"{safe_name(t['path'])}_afinada_{datetime.now():%H%M%S}.wav", x, subtype="FLOAT")
-                t["notes"].append(f"afinada en {tuning['key']} {tuning['scale']} al {strength:.0f} %: {note}")
+                if not live:
+                    from scale_tuner import tune_to_scale
+                    x, note = tune_to_scale(eng.load_stem(t["path"]), eng.SR, tuning["key"], tuning["scale"], strength)
+                    dest.mkdir(parents=True, exist_ok=True)
+                    t["tuned_path"] = eng.save_wav(dest / f"{safe_name(t['path'])}_afinada_{datetime.now():%H%M%S}.wav", x, subtype="FLOAT")
+                    t["tuned"] = True
+                    t["notes"].append(f"afinada en {tuning['key']} {tuning['scale']} al {strength:.0f} %: {note}")
+                    continue
+                fx = tune_fx(t, tuning, bpm)
+                t["chain"].insert(0, fx)
+                t["tuned"] = True
+                t["notes"].append(f"afinador AF-60 en {tuning['key']} {tuning['scale']} al {strength:.0f} %, "
+                                  f"{fx['values']['speed']:.0f} ms, voz {RANGES[int(fx['values']['range'])]}")
         reference = (payload.get("reference") or {}).get("path")
         if reference:
             x = eng.load_stem(reference)

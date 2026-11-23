@@ -2,7 +2,7 @@
 
 stems de una canción entera (batería, bajo, armonía, voz principal, dobles, laterales o coros) →
 análisis de tonalidad y tempo (Python / IA, solo con los instrumentos) → confirmación → Mezcla IA en
-vivo con afinación sin conexión → afinador en tiempo real AF-60 con la tonalidad analizada → master IA
+vivo que afina en vivo con el AF-60 y la tonalidad analizada → master IA
 → render → guardar y volver a abrir el proyecto. Cada paso se mide; nada se da por bueno sin medir.
 """
 import json
@@ -19,6 +19,7 @@ from allforone.engine_host import EngineHost, afo_audio
 pytestmark = pytest.mark.skipif(afo_audio is None, reason="afo_audio no compilado")
 PLATAFORMAS = "Plataformas (-14 LUFS, -2 dBTP)"
 RANGE = {"trap": 2, "balada": 0, "rock": 1, "regueton": 1}      # Voz: grave / aguda / media
+STRENGTH = {"trap": 100, "balada": 80, "rock": 85, "regueton": 95}   # afinación según el género (trap = efecto)
 BACKING = ("Voz doble", "Coros", "Voz lateral (_L/_R)", "Voz de apoyo (_B)")
 
 
@@ -79,7 +80,7 @@ def test_proyecto_completo(genre, qapp, tmp_path, monkeypatch):
             c = b.mixsvc.confirm({"stems": stems, "tune": {"mode": "Manual", "key": a["key"], "scale": a["scale"], "bpm": a["bpm"]}})
         assert c["ok"], c
         r = json.loads(b.mixer("mix", json.dumps({"stems": stems, "space": 45,
-                                                  "tune": {"strength": 70, "voices": {"lead": True}}})))
+                                                  "tune": {"strength": STRENGTH[genre], "voices": {"lead": True}, "method": "live"}})))
         assert r["ok"], r
         done = _wait(qapp, h, events, ("done", "error"))
         assert done and done["type"] == "done" and done["applied"] == len(stems), done
@@ -87,22 +88,23 @@ def test_proyecto_completo(genre, qapp, tmp_path, monkeypatch):
         chains = {s["name"]: [e["key"] for e in eng.effects(s["trackId"])] for s in stems}
         assert all(chains.values()), chains
         assert {"eq", "deesser"} <= set(chains[lead["name"]]), chains[lead["name"]]
-        assert "_afinada" in h.tracks[lead["trackId"]]["source_path"], "la toma afinada sustituye a la voz"
 
         # Mezcla coherente: la voz principal manda sobre dobles, coros y laterales
         lv = eng.measure_mix()["tracks"]
         for s in backs:
             assert lv[lead["trackId"]]["lufs_i"] > lv[s["trackId"]]["lufs_i"] + 2.0, (s["name"], lv[lead["trackId"]], lv[s["trackId"]])
 
-        # 4. Afinador en tiempo real con la tonalidad confirmada, el primero de la cadena de la voz
+        # 4. La Mezcla IA afina EN VIVO: AF-60 el primero de la cadena de la voz, con la tonalidad
+        #    confirmada y el rango medido de esa voz (grave / media / aguda), sin tocar el audio
         conf = c["confirmed"]
-        fx = json.loads(b.fxAdd(lead["trackId"], "tune", 0))
-        assert fx["ok"], fx
-        tid = fx["effect"]["id"] if isinstance(fx["effect"], dict) else fx["effect"]
+        assert h.tracks[lead["trackId"]]["source_path"] == lead["path"], "la afinación no sustituye el audio"
+        ch = json.loads(b.fxList(lead["trackId"]))["chain"]
+        assert ch[0]["key"] == "tune" and ch[0]["auto"], [e["key"] for e in ch]
+        tid = ch[0]["id"]
         scale = {"Mayor": 1, "Menor natural": 2}.get(conf["scale"], 0)
-        for k, v in {"key": F.NOTES.index(conf["key"]), "scale": scale, "range": RANGE[genre], "speed": 20, "humanize": 20}.items():
-            assert json.loads(b.fxParam(tid, k, float(v)))["ok"]
-        assert json.loads(b.fxList(lead["trackId"]))["chain"][0]["key"] == "tune"
+        vals = ch[0]["values"]
+        assert (round(vals[0]), round(vals[1]), round(vals[5])) == (F.NOTES.index(conf["key"]), scale, RANGE[genre]), (genre, vals)
+        assert abs(vals[4] - STRENGTH[genre]) < 0.5, "intensidad = la elegida"
 
         # 5. Master IA medido sobre la sesión en vivo
         mr = json.loads(b.mixer("master", json.dumps({"preset": PLATAFORMAS})))
@@ -129,12 +131,21 @@ def test_proyecto_completo(genre, qapp, tmp_path, monkeypatch):
             return F.pitch_error_cents(v, g, vsr)
         tuned = voice_err("voz_afinada.wav")
         b.fxEnable(tid, False)
-        offline_only = voice_err("voz_sin_afinador.wav")
+        offline_only = voice_err("voz_sin_afinador.wav")      # la toma original, intacta
         b.fxEnable(tid, True)
         for i in wet:
             b.fxEnable(i, True)
         eng.set_track_solo(lead["trackId"], False)
-        assert tuned < 12.0 and tuned <= offline_only + 1.0, (genre, tuned, offline_only)
+        assert offline_only > 20.0 and tuned < offline_only * (1.0 - 0.6 * STRENGTH[genre] / 100), (genre, tuned, offline_only)
+        # Comparativa con la afinación PSOLA de V4.2 (la que se usaba antes, sin conexión): misma voz y
+        # misma intensidad. Por eso «Precisa» (PSOLA) sigue siendo la opción por defecto de la Mezcla IA
+        # y el AF-60 en vivo es la alternativa editable: las dos tienen que afinar de verdad.
+        m = mixer_service.load()
+        raw = m.eng.load_stem(lead["path"])
+        psola, _ = m.tuner.tune_to_scale(raw, m.eng.SR, conf["key"], conf["scale"], STRENGTH[genre])
+        psola_err = F.pitch_error_cents(np.asarray(psola).T, g, m.eng.SR)    # V4.2: (canales, muestras)
+        print(f"{genre}: sin afinar {offline_only:.1f} c · PSOLA {psola_err:.1f} c · AF-60 {tuned:.1f} c")
+        assert psola_err < offline_only * 0.5 and psola_err <= tuned + 1.0, (genre, tuned, psola_err)
 
         # 7. Guardar y reabrir el proyecto: el afinador y su tonalidad siguen en la voz
         doc = project.collect({"tracks": [{"id": lead["trackId"], "type": "audio"}]}, eng, h.effect_catalog(), {},

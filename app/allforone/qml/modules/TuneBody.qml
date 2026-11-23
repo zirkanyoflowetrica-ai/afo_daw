@@ -5,7 +5,7 @@ import "../controls"
 // Afinador Pitch AT-60: interfaz del efecto nativo «tune» (AF-60, afinación en tiempo real en el motor).
 // Pantalla con la nota que se canta, la aguja de desafinación y la corrección aplicada; gráfica de tono
 // de los últimos segundos (detectado frente a destino); teclado con las notas de la escala.
-// Abajo, la afinación SIN CONEXIÓN que hace la Mezcla IA al mezclar (PSOLA por archivo).
+// Abajo, cómo afina la Mezcla IA al mezclar: Precisa (PSOLA, copia afinada) o En vivo (este AF-60).
 Column {
     id: root
     property var mixer
@@ -353,7 +353,9 @@ Column {
             id: offCol
             x: 10; y: 8; width: parent.width - 20; spacing: 6
             Text { width: parent.width; wrapMode: Text.Wrap; textFormat: Text.StyledText
-                   text: "<b>Al mezclar con IA</b> (sin conexión, PSOLA por archivo): afina las voces marcadas con la intensidad elegida y deja una copia <i>_afinada</i>. Se aplica al pulsar MEZCLAR en Mezcla."
+                   text: root.tn.method === "live"
+                         ? "<b>Al mezclar con IA · en vivo</b>: pone este afinador (AF-60) en las voces marcadas con la tonalidad confirmada, la intensidad elegida, velocidad según el tempo y rango según la voz. No toca el audio y se ajusta aquí después."
+                         : "<b>Al mezclar con IA · precisa</b>: afina las voces marcadas sin conexión (PSOLA, la más exacta en las pruebas) y pone en su pista una copia <i>_afinada</i>; el original queda intacto."
                    color: Theme.deviceInk; font.family: Theme.font; font.pixelSize: 12 }
             Row {                              // la Mezcla IA solo afina con una tonalidad confirmada
                 spacing: 8
@@ -367,6 +369,20 @@ Column {
                     tip: ok ? "Tonalidad confirmada: la Mezcla IA puede afinar. Clic: volver a confirmar"
                             : "Autoriza a la Mezcla IA a afinar en esta tonalidad (la del análisis; «Detectar tonalidad» la propone)"
                     onClicked: root.mixer.confirmTune()
+                }
+                NeoButton {
+                    readonly property bool on: root.tn.method !== "live"
+                    text: "Precisa"; fontSize: 12; padX: 8; padY: 3; pressedState: on
+                    color: on ? Theme.pc.afina : Theme.button; textColor: on ? "#000" : Theme.ink
+                    tip: "Afinación sin conexión (PSOLA): más exacta, escribe una copia afinada de la voz"
+                    onClicked: root.mixer.setTune({ method: "psola" })
+                }
+                NeoButton {
+                    readonly property bool on: root.tn.method === "live"
+                    text: "En vivo (AF-60)"; fontSize: 12; padX: 8; padY: 3; pressedState: on
+                    color: on ? Theme.pc.afina : Theme.button; textColor: on ? "#000" : Theme.ink
+                    tip: "Pone el afinador AF-60 en la cadena de la voz: no escribe audio y se puede retocar"
+                    onClicked: root.mixer.setTune({ method: "live" })
                 }
             }
             Row {
