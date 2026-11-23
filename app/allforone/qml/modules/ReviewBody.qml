@@ -12,6 +12,7 @@ Column {
     property var studio
     property bool shown: true
     property string src: "rack"                 // "rack" (canal de Efectos) o "master"
+    onSrcChanged: if (studio) studio.abSource = src   // su cable sale del rack que mide
     readonly property int tid: src === "master" ? 0 : studio.rackTrack
     property var scope: null                    // {pre, post, pre_db, post_db, active}
     property var saved: null                    // estados de la cadena antes de escuchar A

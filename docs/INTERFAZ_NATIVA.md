@@ -165,6 +165,24 @@ detalle del efecto elegido: medidores de entrada/salida y de reducción, curva r
 presets propios y automatización. El rack del canal sigue a la tira elegida en Mezcla (clic en su
 nombre; `studio.rackTrack`). Detalle de los efectos en `docs/BIBLIOTECA_NATIVA.md`.
 
+## Entradas y salidas: placas de rack
+
+Cada módulo es un aparato de rack: a su **izquierda** una placa **ENTRADAS** y a su **derecha** una
+placa **SALIDAS** (negras, con la cabecera del color del módulo y el número de conexiones). Los
+jacks están en esas placas, rotulados con lo que viaja por el cable (`layout.js` `JACKS`: SONIDO,
+NOTAS, RITMO, INSTRUMENTAL, VOZ, AUDIO, PISTAS → CANALES, INSERT → CANAL, MIX, MASTER → VERSIONES,
+RACK/MASTER → A/B, AFINADA; las pistas llevan su nombre a la salida y «PISTA n» a la entrada).
+Una placa solo aparece si ese lado tiene conexiones reales; nada es decorativo. Los jacks de un
+mismo lado se apilan y se pueden deslizar por su placa, pero no cambiar de lado: el sonido siempre
+entra por la izquierda y sale por la derecha.
+
+El diseño de fábrica (versión 5 del lienzo) sigue el camino del sonido de izquierda a derecha:
+fuentes → Piano / Batería / Audios → Pistas (con el Afinador debajo, que entrega la voz afinada a
+Mezcla) → Mezcla → Efectos → Mastering → Efectos master → Rebobinado, con Antes / Después al final
+cableado desde el rack que mide (Efectos o Efectos master). Entre módulos queda sitio para las dos
+placas y el cable (`gapX` en `Main.qml`; al arrastrar, un módulo se para antes de pisar las placas
+del vecino).
+
 ## Mezcla y master en vivo (sin WAVs)
 
 - **Mezcla:** `mixer_service._live` (hilo del mezclador) llama a `live_mix.plan`: las mismas

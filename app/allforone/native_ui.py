@@ -297,7 +297,7 @@ def run_native_selftest(app, host, report_path: str | None, screenshot_path: str
     rep.check("14 módulos en el lienzo", len(panels or {}) == 14, sorted(panels or {}))
     links = [l["key"] for l in (prop("cableLinks") or [])]
     seq = [t for t in (prop("tracks") or []) if t["type"] in ("inst", "drum", "ia", "voz")]
-    flow = ["inst-piano", "audios-pistas", "pistas-mezcla", "mezcla-fx", "mezcla-antes", "mezcla-mastia", "mastia-fxm", "fxm-master"]
+    flow = ["inst-piano", "audios-pistas", "pistas-mezcla", "mezcla-fx", "fx-antes", "mezcla-mastia", "mastia-fxm", "fxm-master"]
     src = {"inst": "piano", "drum": "drums", "ia": "ia", "voz": "cinta"}
     idle = [f + "-pistas" for f in ("piano", "drums", "ia", "cinta") if f not in {src[t["type"]] for t in seq}]
     rep.check("cables del camino del sonido: instrumento → piano → pistas → mezcla → mastering → efectos master → rebobinado",

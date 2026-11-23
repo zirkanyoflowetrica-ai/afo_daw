@@ -43,6 +43,7 @@ Window {
     property int selected: -1
     property var hidden: ({})
     property var portOverride: ({})
+    property string abSource: "rack"          // a qué rack escucha Antes / Después (ReviewBody.src)
     property var bends: ({})
     property int portRev: 0
     property int geomRev: 0
@@ -139,11 +140,13 @@ Window {
             if (!sources[f] && !hidden[f] && !hidden.pistas) trackLinks.push({ key: f + "-pistas", f: f, t: "pistas" })
         })
         out.splice.apply(out, [out.length && out[0].key === "inst-piano" ? 1 : 0, 0].concat(trackLinks))
+        var ab = abSource === "master" ? "fxm" : "fx"          // Antes / Después mide ese rack
+        if (!hidden[ab] && !hidden.antes) out.push({ key: ab + "-antes", f: ab, t: "antes" })
         if (mx.tuneStrength > 0 && !hidden.afina && !hidden.mezcla) {
             mx.items; mx.tune; tracks
             var S = mx.tunedStrips()
             for (var k = 0; k < S.length; k++)
-                out.push({ key: "afina-tira-" + S[k].i, f: "afina", t: "mezcla", mx: S[k].i, slot: k, total: S.length })
+                out.push({ key: "afina-tira-" + S[k].i, f: "afina", t: "mezcla", mx: S[k].i, slot: k, total: S.length, name: S[k].name })
         }
         return out
     }
@@ -155,6 +158,34 @@ Window {
         }
         return out
     }
+    // Puesto de cada conector en su placa: los de un mismo lado de un módulo se apilan de arriba abajo
+    readonly property var jackSlot: {
+        var n = {}, out = {}
+        for (var i = 0; i < portList.length; i++) {
+            var p = portList[i], l = p.link
+            if (l.i !== undefined || l.mx !== undefined) continue      // filas de Pistas y tiras de la consola
+            var side = p.pid + ":" + p.end
+            out[p.key + ":" + p.end] = n[side] || 0
+            n[side] = (n[side] || 0) + 1
+        }
+        return out
+    }
+
+    // Rótulo del conector: qué sale o qué entra por él
+    function jackText(link, end) {
+        var s = ""
+        if (link.i !== undefined) s = end === "from" && tracks[link.i] ? tracks[link.i].name : "PISTA " + (link.i + 1)
+        else if (link.mx !== undefined) s = end === "from" ? "AFINADA" : "AFINADA · " + (link.name || "")
+        else { var j = L.JACKS[link.key]; s = j ? j[end === "from" ? 0 : 1] : "" }
+        s = String(s).toUpperCase()
+        return s.length > 16 ? s.slice(0, 15) + "…" : s
+    }
+    function jackTip(link, end) {
+        var o = L.panelName(link.f), d = L.panelName(link.t), a = jackText(link, "from"), b = jackText(link, "to")
+        return (end === "from" ? "Salida" : "Entrada") + " · " + o + (a ? " «" + a + "»" : "") + " → " + d + (b ? " «" + b + "»" : "") +
+               "
+Las entradas van a la izquierda y las salidas a la derecha. Arrastra para moverlo por este borde."
+    }
 
     // ---------------- geometría ----------------
     function geom(id) {
@@ -162,8 +193,11 @@ Window {
         return p ? { x: p.x, y: p.y, w: p.width, h: p.height } : { x: 0, y: 0, w: 1, h: 1 }
     }
     function anchorOf(link, end) {
-        var id = end === "from" ? link.f : link.t, g = geom(id)
-        return L.anchor(g, portOverride[link.key + ":" + end] || defaultPin(link, end, g))
+        var id = end === "from" ? link.f : link.t, g = geom(id), o = portOverride[link.key + ":" + end]
+        var pin = o && o.side === L.sideOf(end) ? o : defaultPin(link, end, g)
+        // el jack está en la placa de ENTRADAS (izquierda) o SALIDAS (derecha), a 18 px de su borde exterior
+        var ext = plateW - 21
+        return L.anchor(end === "from" ? { x: g.x, y: g.y, w: g.w + ext, h: g.h } : { x: g.x - ext, y: g.y, w: g.w + ext, h: g.h }, pin)
     }
     function defaultPin(link, end, g) {
         if (link.i !== undefined) {                 // pista → su fila en Pistas
@@ -171,8 +205,8 @@ Window {
             var y = rowCenter ? rowCenter(link.i) : 40
             return { side: "left", u: L.clamp(y / g.h, .05, .95) }
         }
-        if (link.mx === undefined) return L.defaultPin(link, end)
-        if (end === "to") return { side: "top", u: L.clamp((12 + link.mx * 92 + 42 - stripScroll) / g.w, .04, .96) }   // centro de la tira
+        if (link.mx === undefined) return { side: L.sideOf(end), u: L.clamp((84 + 66 * (jackSlot[link.key + ":" + end] || 0)) / g.h, .05, .95) }
+        if (end === "to") return { side: "left", u: L.clamp(.42 + .5 * (link.slot + 1) / (link.total + 1), .3, .95) }   // entra a la consola
         return { side: "right", u: L.clamp(.12 + .76 * (link.slot + 1) / (link.total + 1), .08, .92) }
     }
     function fitIds(ids) {
@@ -320,6 +354,9 @@ Window {
     // Ningún módulo se monta sobre otro: al arrastrar se detiene contra los demás (y se desliza por
     // su borde), al redimensionar el borde se para y si un módulo crece empuja hacia abajo a los de debajo.
     readonly property int gap: 28
+    // En horizontal caben además las placas de ENTRADAS y SALIDAS de los dos módulos y el cable entre ellas
+    readonly property int plateW: 92
+    readonly property int gapX: gap + 2 * plateW + 24
     function obstacles(p) {
         var out = []
         for (var id in panelItems) {
@@ -328,9 +365,9 @@ Window {
         }
         return out
     }
-    function hits(a, b) { return a.x < b.x + b.w + gap && b.x < a.x + a.w + gap && a.y < b.y + b.h + gap && b.y < a.y + a.h + gap }
+    function hits(a, b) { return a.x < b.x + b.w + gapX && b.x < a.x + a.w + gapX && a.y < b.y + b.h + gap && b.y < a.y + a.h + gap }
     function spanY(y, h, b) { return y < b.y + b.h + gap && b.y < y + h + gap }
-    function spanX(x, w, b) { return x < b.x + b.w + gap && b.x < x + w + gap }
+    function spanX(x, w, b) { return x < b.x + b.w + gapX && b.x < x + w + gapX }
     // Arrastre: primero en horizontal y luego en vertical, parando en el primer módulo del camino.
     // Los que ya se solapaban al empezar no frenan (para poder sacar un módulo de encima de otro).
     function slideTo(p, x, y) {
@@ -340,8 +377,8 @@ Window {
         var nx = x
         os.forEach(function (b) {
             if (!spanY(p.y, p.height, b)) return
-            if (x > p.x && b.x >= p.x + p.width && b.x - gap - p.width < nx) nx = Math.max(p.x, b.x - gap - p.width)
-            if (x < p.x && b.x + b.w <= p.x && b.x + b.w + gap > nx) nx = Math.min(p.x, b.x + b.w + gap)
+            if (x > p.x && b.x >= p.x + p.width && b.x - gapX - p.width < nx) nx = Math.max(p.x, b.x - gapX - p.width)
+            if (x < p.x && b.x + b.w <= p.x && b.x + b.w + gapX > nx) nx = Math.min(p.x, b.x + b.w + gapX)
         })
         var ny = y
         os.forEach(function (b) {
@@ -365,8 +402,8 @@ Window {
         var right = r.x + r.w, bottom = r.y + r.h
         os.forEach(function (b) {
             if (spanY(r.y, r.h, b)) {
-                if (right > p.x + p.width && b.x >= p.x + p.width && b.x - gap < right) right = Math.max(p.x + p.width, b.x - gap)
-                if (r.x < p.x && b.x + b.w <= p.x && b.x + b.w + gap > r.x) r.x = Math.min(p.x, b.x + b.w + gap)
+                if (right > p.x + p.width && b.x >= p.x + p.width && b.x - gapX < right) right = Math.max(p.x + p.width, b.x - gapX)
+                if (r.x < p.x && b.x + b.w <= p.x && b.x + b.w + gapX > r.x) r.x = Math.min(p.x, b.x + b.w + gapX)
             }
         })
         os.forEach(function (b) {
@@ -400,7 +437,7 @@ Window {
             var r = { x: p.x, y: p.y, w: p.width, h: p.height }
             var hit = obstacles(p).filter(function (b) { return hits(r, b) })[0]
             if (!hit) return
-            p.x = hit.x + hit.w + gap
+            p.x = hit.x + hit.w + gapX
         }
     }
 
@@ -995,7 +1032,55 @@ Window {
                 }
             }
 
-            // conectores redondos (en el borde de su módulo, por encima de él)
+            // Placas de E/S, como la trasera de un rack: ENTRADAS a la izquierda del módulo y SALIDAS a la
+            // derecha. Solo aparecen en el lado que tiene conexiones reales (nada decorativo).
+            Repeater {
+                model: win.panelList
+                Item {
+                    id: io
+                    required property var modelData
+                    readonly property var pnl: win.panelItems[modelData.pid]
+                    readonly property var count: {
+                        var o = { to: 0, from: 0 }
+                        win.portList.forEach(function (p) { if (p.pid === io.modelData.pid) o[p.end]++ })
+                        return o
+                    }
+                    readonly property color mc: Theme.pc[modelData.base || modelData.pid] || Theme.ink
+                    visible: !!pnl && pnl.visible && !win.maxId
+                    z: pnl ? pnl.z + 0.3 : 0
+                    Repeater {
+                        model: [["to", "ENTRADAS"], ["from", "SALIDAS"]]
+                        Rectangle {
+                            id: plate
+                            required property var modelData
+                            readonly property bool out: modelData[0] === "from"
+                            visible: !!io.pnl && io.count[modelData[0]] > 0
+                            x: io.pnl ? (out ? io.pnl.x + io.pnl.width - 3 : io.pnl.x - win.plateW + 3) : 0
+                            y: io.pnl ? io.pnl.y + 16 : 0
+                            width: win.plateW; height: io.pnl ? io.pnl.height - 32 : 0
+                            color: "#1d1d1f"; border.width: 3; border.color: "#000"
+                            Rectangle { x: 4; y: 4; z: -1; width: parent.width; height: parent.height; color: "#000" }
+                            Rectangle {                  // cabecera de la placa con el color del módulo
+                                x: 3; y: 3; width: parent.width - 6; height: 24; color: io.mc
+                                Text { anchors.centerIn: parent; text: plate.modelData[1] + " · " + io.count[plate.modelData[0]]
+                                       color: "#000"; font.family: Theme.font; font.pixelSize: 11; font.weight: 700 }
+                            }
+                            Repeater {                   // tornillos del panel
+                                model: [[8, 33], [plate.width - 16, 33], [8, plate.height - 16], [plate.width - 16, plate.height - 16]]
+                                Rectangle { required property var modelData
+                                            x: modelData[0]; y: modelData[1]; width: 8; height: 8; radius: 4
+                                            color: "#6b6b6b"; border.width: 1; border.color: "#000" }
+                            }
+                            HoverHandler { id: ph }
+                            ToolTipLite { text: (plate.out ? "Salidas de " : "Entradas de ") + L.panelName(io.modelData.base || io.modelData.pid) +
+                                                ": " + io.count[plate.modelData[0]] + " conexión(es). Las entradas van a la izquierda y las salidas a la derecha."
+                                          show: ph.hovered }
+                        }
+                    }
+                }
+            }
+
+            // jacks (en la placa de su módulo, por encima de ella)
             Repeater {
                 model: win.portList
                 Item {
@@ -1027,12 +1112,22 @@ Window {
                         onPositionChanged: function (m) {
                             if (!pressed) return
                             var p = mapToItem(world, m.x, m.y), o = Object.assign({}, win.portOverride)
-                            o[port.modelData.key + ":" + port.modelData.end] = L.nearestPin(win.geom(port.modelData.pid), p.x, p.y)
+                            o[port.modelData.key + ":" + port.modelData.end] = L.slidePin(win.geom(port.modelData.pid), port.modelData.end, p.y)
                             win.portOverride = o; win.portRev++
                         }
                         onReleased: win.saveLayout()
                     }
-                    ToolTipLite { text: "Arrastra para cambiar este conector a cualquier lado del módulo"; show: pm.containsMouse && !pm.pressed }
+                    Text {                           // rótulo serigrafiado en la placa, encima del jack
+                        readonly property bool out: port.modelData.end === "from"
+                        readonly property real plateX: port.pnl ? (out ? port.pnl.x + port.pnl.width - 3 : port.pnl.x - win.plateW + 3) : 0
+                        x: plateX + 6 - port.x; y: -17
+                        width: win.plateW - 12; height: 15
+                        text: win.jackText(port.modelData.link, port.modelData.end)
+                        visible: text.length > 0
+                        horizontalAlignment: Text.AlignHCenter; elide: Text.ElideRight
+                        color: "#fff"; font.family: Theme.font; font.pixelSize: 10; font.weight: 700
+                    }
+                    ToolTipLite { text: win.jackTip(port.modelData.link, port.modelData.end); show: pm.containsMouse && !pm.pressed }
                 }
             }
 
@@ -1139,7 +1234,7 @@ Window {
         var tn = savedLayout.theme === "dark" ? "AllForOne Oscuro" : (!savedLayout.theme || savedLayout.theme === "light") ? "AllForOne" : savedLayout.theme
         if (!setTheme(tn, true)) setTheme("AllForOne", true)
         var po = savedLayout.ports || {}, ok = {}
-        for (var k in po) if (po[k] && ["top", "bottom", "left", "right"].indexOf(po[k].side) >= 0 && isFinite(po[k].u)) ok[k] = { side: po[k].side, u: L.clamp(po[k].u, .03, .97) }
+        for (var k in po) if (po[k] && L.sideOf(k.split(":").pop()) === po[k].side && isFinite(po[k].u)) ok[k] = { side: po[k].side, u: L.clamp(po[k].u, .03, .97) }
         portOverride = ok
         var be = savedLayout.bends || {}, bk = {}
         for (var b in be) if (be[b] && isFinite(be[b].x) && isFinite(be[b].y)) bk[b] = { x: L.clamp(be[b].x, -15000, 15000), y: L.clamp(be[b].y, -15000, 15000) }

@@ -5,32 +5,55 @@ function clamp(v, a, b) { return Math.max(a, Math.min(b, v)) }
 
 // Versión del lienzo: sube cuando cambian los módulos o su colocación de fábrica (el diseño guardado
 // de otra versión no se aplica)
-var VERSION = 4
+var VERSION = 5
 
 // Módulos: [id, nombre, modelo, [x, y, ancho], alto]. Tamaño fijo: solo cambia si lo cambias tú.
-// De izquierda a derecha sigue el camino del sonido: fuentes → Piano → Pistas → Mezcla → Mastering →
-// Efectos master → Rebobinado. Al abrir, nada se solapa (Main.settleAll).
+// De izquierda a derecha sigue el camino del sonido: fuentes → Piano → Pistas → (Afinador) → Mezcla →
+// Efectos → Mastering → Efectos master → Rebobinado → Antes / Después. Como en un rack, cada módulo
+// recibe por la IZQUIERDA y entrega por la DERECHA, así que ningún cable vuelve hacia atrás.
+// Al abrir, nada se solapa (Main.settleAll).
 var PANELS = [
     ["inst", "Instrumentos", "Banco VST-1", [0, 0, 440], 560],
     ["ia", "Pistas con IA", "Cerebro AI-1", [0, 600, 440], 500],
     ["cinta", "Grabador de voz", "Cinta RX-2", [0, 1140, 440], 470],
-    ["piano", "Piano roll", "Teclas S-61", [500, 0, 780], 645],
-    ["drums", "Batería", "Ritmos R-16", [500, 690, 780], 640],
-    ["audios", "Audios", "Carga A-30", [500, 1370, 780], 380],
-    ["pistas", "Pistas", "Mesa MT-8", [1340, 0, 960], 860],
-    ["mezcla", "Mezcla", "Consola 6C", [2360, 0, 900], 900],
-    ["antes", "Antes / Después", "A/B Comp", [2360, 940, 440], 330],
-    ["afina", "Afinador", "PSOLA AT-1", [2830, 940, 430], 700],
-    ["fx", "Efectos", "Rack FX-96", [3320, 0, 900], 760],
-    ["mastia", "Mastering", "Master M-4", [4280, 0, 460], 900],
-    ["fxm", "Efectos master", "Rack FX-M", [4800, 0, 900], 760],
-    ["master", "Rebobinado", "Cinta M-2", [5760, 0, 460], 640]
+    ["piano", "Piano roll", "Teclas S-61", [676, 0, 780], 645],
+    ["drums", "Batería", "Ritmos R-16", [676, 690, 780], 640],
+    ["audios", "Audios", "Carga A-30", [676, 1370, 780], 380],
+    ["pistas", "Pistas", "Mesa MT-8", [1692, 0, 960], 860],
+    ["mezcla", "Mezcla", "Consola 6C", [2888, 0, 900], 900],
+    ["antes", "Antes / Después", "A/B Comp", [6992, 690, 440], 330],
+    ["afina", "Afinador", "PSOLA AT-1", [2222, 900, 430], 700],
+    ["fx", "Efectos", "Rack FX-96", [4024, 0, 900], 760],
+    ["mastia", "Mastering", "Master M-4", [5160, 0, 460], 900],
+    ["fxm", "Efectos master", "Rack FX-M", [5856, 0, 900], 760],
+    ["master", "Rebobinado", "Cinta M-2", [6992, 0, 460], 640]
 ]
 
 // Cables fijos entre módulos (el camino del sonido). Las pistas de Instrumento van del Piano a su
 // fila en Pistas, y las de Batería, IA y voz desde su módulo (Main.cableLinks).
-var LINKS = [["inst", "piano"], ["audios", "pistas"], ["pistas", "mezcla"], ["mezcla", "fx"], ["mezcla", "antes"],
+// El A/B se cablea desde el rack que mide (Efectos o Efectos master: Main.cableLinks).
+var LINKS = [["inst", "piano"], ["audios", "pistas"], ["pistas", "mezcla"], ["mezcla", "fx"],
              ["mezcla", "mastia"], ["mastia", "fxm"], ["fxm", "master"]]
+
+// Rótulo de cada conector: [salida, entrada]. Dice qué viaja por el cable.
+var JACKS = {
+    "inst-piano": ["SONIDO", "SONIDO"], "audios-pistas": ["AUDIO", "AUDIO"], "pistas-mezcla": ["PISTAS", "CANALES"],
+    "mezcla-fx": ["INSERT", "CANAL"], "mezcla-mastia": ["MIX", "MIX"], "mastia-fxm": ["MASTER", "ENTRADA"],
+    "fxm-master": ["MASTER", "VERSIONES"], "fx-antes": ["RACK", "A/B"], "fxm-antes": ["MASTER", "A/B"],
+    "piano-pistas": ["NOTAS", "PISTAS"], "drums-pistas": ["RITMO", "PISTAS"], "ia-pistas": ["INSTRUMENTAL", "PISTAS"],
+    "cinta-pistas": ["VOZ", "PISTAS"]
+}
+
+function panelName(id) {
+    for (var i = 0; i < PANELS.length; i++) if (PANELS[i][0] === id) return PANELS[i][1]
+    return id
+}
+
+// Lado fijo: las entradas a la izquierda, las salidas a la derecha
+function sideOf(end) { return end === "from" ? "right" : "left" }
+
+// El conector se desliza por su borde (no cambia de lado)
+function slidePin(g, end, y) { return { side: sideOf(end), u: clamp((y - g.y) / g.h, .03, .97) } }
 
 function links(hidden) {
     var out = []
