@@ -483,7 +483,7 @@ def _native_sequencer_checks(rep, app, host, window, prop) -> None:
 
     if host.engine.device_info().get("open"):
         ok = host.audition({"type": "inst", "cfg": {"v": 0, "vel": 70, "bri": 50}, "note": 69, "seconds": 0.4})
-        rep.check("escuchar una nota al pulsar (sintetizador del motor)", ok and _wait(app, lambda: host.engine.preview_playing(), 1, host))
+        rep.check("escuchar una nota al pulsar (sintetizador del motor)", ok and _wait(app, lambda: host.engine.preview_playing(), 3, host))   # salidas HDMI tardan en arrancar
         host.engine.preview_stop()
 
     n = len(snap()["tracks"])
