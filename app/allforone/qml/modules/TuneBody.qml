@@ -355,6 +355,20 @@ Column {
             Text { width: parent.width; wrapMode: Text.Wrap; textFormat: Text.StyledText
                    text: "<b>Al mezclar con IA</b> (sin conexión, PSOLA por archivo): afina las voces marcadas con la intensidad elegida y deja una copia <i>_afinada</i>. Se aplica al pulsar MEZCLAR en Mezcla."
                    color: Theme.deviceInk; font.family: Theme.font; font.pixelSize: 12 }
+            Row {                              // la Mezcla IA solo afina con una tonalidad confirmada
+                spacing: 8
+                NeoButton {
+                    readonly property bool ok: !!root.tn.confirmed
+                    text: ok ? "✓ " + (root.noteNames[root.mixer.keys.indexOf(root.tn.confirmed.key)] || root.tn.confirmed.key) + " "
+                               + root.tn.confirmed.scale + " · " + Math.round(root.tn.confirmed.bpm) + " BPM"
+                             : "Confirmar " + (root.noteNames[root.mixer.keys.indexOf(root.tn.key)] || root.tn.key) + " " + root.tn.scale
+                               + " · " + Math.round(root.tn.bpm) + " BPM"
+                    pressedState: ok; color: ok ? Theme.pc.afina : Theme.button; textColor: ok ? "#000" : Theme.ink
+                    tip: ok ? "Tonalidad confirmada: la Mezcla IA puede afinar. Clic: volver a confirmar"
+                            : "Autoriza a la Mezcla IA a afinar en esta tonalidad (la del análisis; «Detectar tonalidad» la propone)"
+                    onClicked: root.mixer.confirmTune()
+                }
+            }
             Row {
                 spacing: 6
                 Repeater {

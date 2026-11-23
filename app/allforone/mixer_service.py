@@ -138,10 +138,21 @@ class MixerService:
         self.emit({"type": "progress", "panel": "afina", "p": 20, "desc": "Analizando instrumentos (las voces no participan)…"})
         result = analyze_music(paths_, use_essentia=False, use_beat_this=True)
         data = result.as_dict()
+        summary = result.summary()
+        # Segunda opinión (music_ai): resuelve tonalidades relativas por el bajo y el tempo sincopado
+        self.emit({"type": "progress", "panel": "afina", "p": 70, "desc": "Segunda opinión: bajo y ataques…"})
+        try:
+            from . import music_ai
+            data = music_ai.combine(data, music_ai.analyze(paths_))
+            if data.get("ai_notes"):
+                notes = "".join("\n • " + n for n in data["ai_notes"])
+                summary += "\nSegunda opinión (AllForOne):" + notes
+        except Exception:                      # el análisis del V4.2 sigue valiendo por sí solo
+            log.exception("music_ai")
         data["source_signature"] = m.confirm.signature(paths_, None, flags)
         self.analysis = data
         self.approval = None
-        self.emit({"type": "analysis", "summary": result.summary(), "key": data.get("key"), "scale": data.get("scale"),
+        self.emit({"type": "analysis", "summary": summary, "key": data.get("key"), "scale": data.get("scale"),
                    "bpm": data.get("bpm"), "key_confidence": data.get("key_confidence"), "bpm_confidence": data.get("bpm_confidence")})
 
     def confirm(self, payload: dict) -> dict:
@@ -156,7 +167,7 @@ class MixerService:
                 if not self.analysis or self.analysis.get("source_signature") != expected:
                     raise ValueError("Primero pulsa «Analizar música» con estos stems.")
             choice = m.confirm.resolve_choice(self.analysis or {}, mode, t.get("key", "F"), t.get("scale", "Menor natural"),
-                                              float(t.get("bpm", 91)), bool(t.get("prefer", True)))
+                                              float(t.get("bpm", 91)), bool(t.get("prefer", False)))
             choice["signature"] = m.confirm.signature(paths_, None, {"mode": mode, "key": t.get("key"), "scale": t.get("scale"),
                                                                      "bpm": float(t.get("bpm", 91))})
             choice["confirmed"] = True
