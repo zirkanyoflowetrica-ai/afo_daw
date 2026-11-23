@@ -16,7 +16,9 @@ Item {
         if (v !== value) { value = v; moved(v) }
     }
 
-    Rectangle { x: 12; width: 8; height: parent.height; color: "#000" }
+    // riel: negro en los temas claros; en los oscuros, un gris del texto del tema (≥ 3:1 con el fondo)
+    Rectangle { x: 12; width: 8; height: parent.height
+                color: Theme.dark ? Qt.tint(Theme.device, Qt.rgba(Qt.color(Theme.ink).r, Qt.color(Theme.ink).g, Qt.color(Theme.ink).b, 0.55)) : "#000" }
     Item {
         id: thumb
         x: 1; width: 30; height: 18

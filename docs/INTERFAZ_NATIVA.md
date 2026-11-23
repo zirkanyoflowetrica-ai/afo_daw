@@ -202,6 +202,12 @@ poder ver qué hizo la mezcla.
 - Datos: el slot `dawLanes(ids)` del puente devuelve en una llamada, por pista, los inserts y las curvas
   (`effect_automation`) con nombre, unidad, mínimo, máximo y centro del catálogo. Se refresca al cambiar
   una cadena (`fxRev`), las pistas, al mostrar la vista y cada 2 s.
+- Coherencia con el resto (revisión del 23-11-2026): el **tema oscuro es el de fábrica** (un diseño
+  guardado con el claro de fábrica pasa una vez al oscuro; luego manda lo que elija el usuario); los
+  controles del lienzo (zoom, Ver todo, Restaurar diseño) y el menú de módulos solo aparecen en
+  Módulos; la barra de estado da la ayuda y el zoom de la vista que se ve; el reloj de la cabecera
+  marca compás.tiempo de la posición real del motor (antes daba la vuelta a los 16 compases); el texto
+  de la vista no baja de 11 px ni usa transparencia (contraste de la guía).
 - Autoprueba: tras MEZCLAR AUTOMÁTICAMENTE comprueba que la vista muestra todos los inserts y todas las
   curvas que tiene el motor y guarda `logs/selftest_arreglo.png`.
 

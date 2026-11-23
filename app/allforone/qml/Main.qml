@@ -343,7 +343,7 @@ Las entradas van a la izquierda y las salidas a la derecha. Arrastra para moverl
         }
         var extra = panelList.filter(function (q) { return q.extra }).map(function (q) { return { pid: q.pid, base: q.base } })
         layoutStore.save(JSON.stringify({ v: L.VERSION, pos: pos, ports: portOverride, bends: bends, theme: Theme.name,
-                                          names: names, extra: extra, targets: extraTargets, view: view }))
+                                          names: names, extra: extra, targets: extraTargets, view: view, darkDefault: 1 }))
     }
     // Un diseño de otra versión del lienzo (módulos distintos) no se aplica: se usa el de fábrica y
     // solo se conserva el tema
@@ -678,9 +678,8 @@ Las entradas van a la izquierda y las salidas a la derecha. Arrastra para moverl
     }
     function importPaths(paths) { mx.importToTracks(paths) }   // audio → ficha + pista + tira
     function timeText() {
-        if (step < 0) return "1.1"
-        var s = step % 16, b = step >> 4
-        return (b + 1) + "." + ((s >> 2) + 1)
+        var beats = Math.max(0, posSec) * bpm / 60
+        return (Math.floor(beats / 4) + 1) + "." + (Math.floor(beats % 4) + 1)
     }
     Connections {
         target: afo
@@ -827,10 +826,11 @@ Las entradas van a la izquierda y las salidas a la derecha. Arrastra para moverl
             }
             Row {                                   // .zoom
                 spacing: 6
-                NeoButton { text: "−"; tip: "Alejar"; onClicked: win.zoomAt(.8, viewport.width / 2, viewport.height / 2) }
-                NeoButton { text: "+"; tip: "Acercar"; onClicked: win.zoomAt(1.25, viewport.width / 2, viewport.height / 2) }
-                NeoButton { text: "Ver todo"; onClicked: win.fitIds(win.visibleIds()) }
-                NeoButton { text: "Restaurar diseño"; tip: "Restaurar posiciones, tamaños y cables iniciales"; onClicked: win.resetLayout() }
+                // controles del lienzo: solo en la vista Módulos (en Arreglo tiene los suyos)
+                NeoButton { visible: win.view === "modules"; text: "−"; tip: "Alejar el lienzo"; onClicked: win.zoomAt(.8, viewport.width / 2, viewport.height / 2) }
+                NeoButton { visible: win.view === "modules"; text: "+"; tip: "Acercar el lienzo"; onClicked: win.zoomAt(1.25, viewport.width / 2, viewport.height / 2) }
+                NeoButton { visible: win.view === "modules"; text: "Ver todo"; tip: "Encuadrar todos los módulos visibles"; onClicked: win.fitIds(win.visibleIds()) }
+                NeoButton { visible: win.view === "modules"; text: "Restaurar diseño"; tip: "Restaurar posiciones, tamaños y cables iniciales"; onClicked: win.resetLayout() }
                 Row {                               // selector de tema (carpetas de templates/)
                     spacing: 4
                     Text { text: "Tema"; anchors.verticalCenter: parent.verticalCenter; color: Theme.ink
@@ -1268,8 +1268,11 @@ Las entradas van a la izquierda y las salidas a la derecha. Arrastra para moverl
         extraTargets = savedLayout.targets || {}
         ;(savedLayout.extra || []).forEach(function (e) { if (e && e.base === "fx" && /^fx~\d+$/.test(e.pid)) addExtra("fx", e.pid) })
         loadThemes()                              // tema guardado (los diseños antiguos guardaban "dark"/"light")
-        var tn = savedLayout.theme === "dark" ? "AllForOne Oscuro" : (!savedLayout.theme || savedLayout.theme === "light") ? "AllForOne" : savedLayout.theme
-        if (!setTheme(tn, true)) setTheme("AllForOne", true)
+        // El oscuro es el de fábrica (noviembre 2026). Un diseño guardado antes de eso con el claro de
+        // fábrica pasa una vez al oscuro; después se respeta lo que elija el usuario.
+        var tn = savedLayout.theme === "dark" ? "AllForOne Oscuro" : savedLayout.theme === "light" ? "AllForOne" : savedLayout.theme
+        if (!tn || (!savedLayout.darkDefault && tn === "AllForOne")) tn = "AllForOne Oscuro"
+        if (!setTheme(tn, true)) setTheme("AllForOne Oscuro", true)
         var po = savedLayout.ports || {}, ok = {}
         for (var k in po) if (po[k] && L.sideOf(k.split(":").pop()) === po[k].side && isFinite(po[k].u)) ok[k] = { side: po[k].side, u: L.clamp(po[k].u, .03, .97) }
         portOverride = ok

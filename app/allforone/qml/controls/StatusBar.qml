@@ -61,7 +61,9 @@ Rectangle {
         x: left.x + left.width + 24; width: zoomText.x - x - 16
         horizontalAlignment: Text.AlignRight
         elide: Text.ElideRight
-        text: root.studio.maxId ? "Esc: volver al lienzo"
+        text: root.studio.view === "arrange"
+              ? "Clic en la regla o un carril: mover el cursor · Ctrl+rueda: zoom · doble clic en un insert o curva: abrir en Efectos · F6: módulos"
+              : root.studio.maxId ? "Esc: volver al lienzo"
               : "Arrastra la cabecera para mover · □ maximizar · bordes: tamaño · Espacio: reproducir · Ctrl+S: guardar"
         color: Theme.ink; font.family: Theme.font; font.pixelSize: 12; font.weight: 500
     }
@@ -69,7 +71,8 @@ Rectangle {
         id: zoomText
         anchors.verticalCenter: parent.verticalCenter
         anchors.right: parent.right; anchors.rightMargin: 12
-        text: "Zoom " + Math.round(root.studio.zoom * 100) + " %"
+        text: root.studio.view === "arrange" ? root.studio.arrangeView.pps.toFixed(0) + " px/s"
+              : "Zoom " + Math.round(root.studio.zoom * 100) + " %"
         color: Theme.ink; font.family: Theme.font; font.pixelSize: 12; font.weight: 600
     }
 }

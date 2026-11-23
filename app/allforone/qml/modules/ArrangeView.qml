@@ -176,7 +176,7 @@ Rectangle {
                 }
                 // segundos arriba
                 var stepS = [1, 2, 5, 10, 15, 30, 60].filter(function (s) { return s * p >= 60 })[0] || 60
-                ctx.globalAlpha = 0.75; ctx.font = "500 10px '" + Theme.font + "'"
+                ctx.font = "500 11px '" + Theme.font + "'"
                 for (var s = Math.floor(off / p / stepS) * stepS; s * p - off < width; s += stepS)
                     ctx.fillText(root.fmtTime(s).replace(".0", ""), s * p - off + 3, 10)
             }
@@ -299,7 +299,7 @@ Rectangle {
                                 visible: trk.master
                                 x: 10; anchors.verticalCenter: parent.verticalCenter
                                 text: "Suma de todas las pistas → inserts del master → salida"
-                                color: Theme.deviceInk; font.family: Theme.font; font.pixelSize: 12; opacity: 0.85
+                                color: Theme.deviceInk; font.family: Theme.font; font.pixelSize: 12
                             }
                         }
                         // cabecera fija a la izquierda
@@ -405,7 +405,7 @@ Rectangle {
                                                font.family: Theme.font; font.pixelSize: 14; font.weight: 800 }
                                         Text { anchors.baseline: parent.children[0].baseline
                                                text: ln.l.points.length + " puntos · " + root.fmt(ln.l, ln.l.min) + " … " + root.fmt(ln.l, ln.l.max)
-                                               color: Theme.deviceInk; font.family: Theme.font; font.pixelSize: 10; opacity: 0.85 }
+                                               color: Theme.deviceInk; font.family: Theme.font; font.pixelSize: 11 }
                                     }
                                 }
                                 MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; hoverEnabled: true
@@ -508,20 +508,20 @@ Rectangle {
                                 }
                             }
                             Text { visible: st.inf.inserts.length === 0; text: "sin inserts"; color: Theme.deviceInk
-                                   font.family: Theme.font; font.pixelSize: 11; opacity: 0.8 }
+                                   font.family: Theme.font; font.pixelSize: 11 }
                         }
                         }
                         Text {                           // aviso de que hay más inserts abajo
                             visible: insF.contentHeight > insF.height
                             x: 6; y: insF.y + insF.height + 2
                             text: "+" + Math.max(0, st.inf.inserts.length - Math.floor((insF.height + 2) / 26)) + " más ↓ (rueda)"
-                            color: Theme.deviceInk; font.family: Theme.font; font.pixelSize: 10; font.weight: 700
+                            color: Theme.deviceInk; font.family: Theme.font; font.pixelSize: 11; font.weight: 700
                         }
                         // paneo
                         Item {
                             visible: !st.master
                             x: 8; y: parent.height - 128 - 26; width: parent.width - 16; height: 24
-                            Rectangle { y: 10; width: parent.width; height: 4; color: Theme.knobTrack }
+                            Rectangle { y: 10; width: parent.width; height: 4; color: Theme.dark ? Qt.tint(Theme.device, Qt.rgba(Qt.color(Theme.ink).r, Qt.color(Theme.ink).g, Qt.color(Theme.ink).b, 0.55)) : Theme.knobTrack }
                             Rectangle { x: parent.width / 2 - 1; y: 6; width: 2; height: 12; color: Theme.deviceInk }
                             Rectangle { width: 10; height: 18; y: 3; radius: 2; color: Theme.knobArc; border.width: 2; border.color: "#000"
                                         x: (parent.width - 10) * (st.t.pan === undefined ? 50 : st.t.pan) / 100 }
@@ -534,7 +534,7 @@ Rectangle {
                             }
                         }
                         Text { visible: !st.master; x: 8; y: parent.height - 128 - 40; color: Theme.deviceInk
-                               font.family: Theme.font; font.pixelSize: 10; font.weight: 600
+                               font.family: Theme.font; font.pixelSize: 11; font.weight: 600
                                text: { var p = st.t.pan === undefined ? 50 : st.t.pan; return p === 50 ? "Paneo C" : "Paneo " + (p < 50 ? "I " + (50 - p) * 2 : "D " + (p - 50) * 2) } }
                         // fader + medidores
                         Row {
@@ -547,7 +547,7 @@ Rectangle {
                             Column {
                                 spacing: 2
                                 Text { text: MD.faderDbText(st.fv); color: Theme.deviceInk; font.family: Theme.font; font.pixelSize: 12; font.weight: 800 }
-                                Text { text: "pico"; color: Theme.deviceInk; font.family: Theme.font; font.pixelSize: 10; opacity: 0.85 }
+                                Text { text: "pico"; color: Theme.deviceInk; font.family: Theme.font; font.pixelSize: 11 }
                                 Text { text: Math.max(st.lr[0], st.lr[1]) <= -99 ? "−∞" : Math.max(st.lr[0], st.lr[1]).toFixed(1)
                                        color: Theme.deviceInk; font.family: Theme.font; font.pixelSize: 12; font.weight: 700 }
                             }
@@ -556,7 +556,7 @@ Rectangle {
                             visible: !st.master
                             x: 8; y: parent.height - 20; spacing: 4
                             Text { text: st.t.mute ? "SILENCIADA" : st.t.solo ? "SOLO" : ""; color: Theme.deviceInk
-                                   font.family: Theme.font; font.pixelSize: 10; font.weight: 800 }
+                                   font.family: Theme.font; font.pixelSize: 11; font.weight: 800 }
                         }
                     }
                 }
