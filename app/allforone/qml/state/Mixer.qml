@@ -209,6 +209,18 @@ QtObject {
         if (r.ok) { abState = ab; studio.refreshRacks() }
     }
 
+    // Resumen de las automatizaciones que escribió la mezcla (live_mix.automate)
+    function autoText(a) {
+        if (a.note) return "Automatización: " + a.note + "."
+        var p = []
+        if (a.ride_points) p.push("ride de la voz")
+        if (a.delay_throws) p.push(a.delay_throws + " eco(s) lanzado(s)")
+        if (a.reverb_throws) p.push(a.reverb_throws + " reverb(s) lanzada(s)")
+        if (a.ducked) p.push("ducking en " + a.ducked + " pista(s) de música")
+        if (a.sweeps) p.push(a.sweeps + " barrido(s) de filtro")
+        return p.length ? "Automatización (∿, se mueve al reproducir): " + p.join(", ") + "." : ""
+    }
+
     function onEvent(ev) {
         if (ev.type === "strip") {
             var id = ev.trackId !== undefined ? ev.trackId : -1, it = itemOfTrack(id)
@@ -216,7 +228,7 @@ QtObject {
             workingTrack = -1
             if (id < 0 || ev.skip) return
             var l = Object.assign({}, live)
-            l[id] = { gain_db: ev.gain_db, pan: ev.pan, position: ev.position, note: ev.note, kind: ev.kind, chain: ev.chain || [], tuned: !!ev.tuned }
+            l[id] = { gain_db: ev.gain_db, pan: ev.pan, position: ev.position, note: ev.note, kind: ev.kind, chain: ev.chain || [], automated: ev.automated || [], tuned: !!ev.tuned }
             live = l
             if (ev.kind && it) { it.kind = ev.kind; touch() }
             // Las decisiones reales se llevan a la consola: fader (nivel) y perilla (paneo)
@@ -235,8 +247,9 @@ QtObject {
             lastTuned = Object.keys(live).some(function (k) { return live[k].tuned })
             studio.refreshRacks()
             status = "Mezcla en vivo #" + runs + " (" + ev.profile + ") aplicada a " + ev.applied + " pistas en " + ev.seconds + " s" +
-                     (lastTuned ? " · voces afinadas" : "") + ". No se reproduce en vivo: " + ev.skipped.join(", ") + "."
-            studio.toast("Mezcla automática aplicada: faders, paneo y cadenas de efectos reales")
+                     (lastTuned ? " · voces afinadas" : "") + ". " + autoText(ev.automation || {}) +
+                     " No se reproduce en vivo: " + ev.skipped.join(", ") + "."
+            studio.toast("Mezcla automática aplicada: faders, paneo, efectos y automatizaciones que se mueven al reproducir")
         } else if (ev.type === "error") {
             busy = false; workingTrack = -1; status = "Error: " + ev.error
             if (ev.panel === "analysis") setTune({ status: "Error: " + ev.error })

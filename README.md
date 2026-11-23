@@ -27,7 +27,9 @@ Todo lo que AllForOne escribe (datos, registros, cachés, temporales) queda dent
 3. En **Mezcla** elige la plantilla trap/rap y pulsa **MEZCLAR AUTOMÁTICAMENTE**. La mezcla es
    **en vivo**: el Mezclador V4.2 decide y deja en cada pista su fader, su paneo y una cadena de
    efectos real (EQ, de-esser, compresión, saturación, espacio, eco) que puedes abrir y ajustar en
-   **Efectos**; no se renderiza ningún WAV. La mezcla automática solo mezcla: el master va aparte.
+   **Efectos**, con **automatizaciones** que se mueven al reproducir: ride de la voz frase a frase,
+   ecos y reverbs lanzados al final de las frases, ducking de la música bajo la voz y barridos de
+   filtro antes de cada entrada; no se renderiza ningún WAV. La mezcla automática solo mezcla: el master va aparte.
 4. Para afinar voces: **Afinador** → Analizar música → Confirmar → sube la intensidad (sus cables
    te muestran a qué tiras está conectado).
 5. **Flujo del sonido** (los cables lo muestran): Instrumentos → Piano roll → Pistas; Pistas con IA,

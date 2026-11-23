@@ -286,10 +286,11 @@ Column {
                 Text { width: parent.width; horizontalAlignment: Text.AlignHCenter
                        readonly property real val: root.studio.stripValue(strip.tid)
                        text: (root.studio.playing && val > -99 ? val.toFixed(1) : "—") + " " + root.studio.meterMode
-                              + (strip.live ? " · " + (strip.live.chain || []).length + " FX" : "")
+                              + (strip.live ? " · " + (strip.live.chain || []).length + " FX" + ((strip.live.automated || []).length ? " ∿" : "") : "")
                        color: "#c98f00"; font.family: Theme.font; font.pixelSize: 9; font.weight: 700
                        HoverHandler { id: lh }
-                       ToolTipLite { text: strip.live ? ((strip.live.chain || []).join(" → ") + "\n" + (strip.live.note || "")).trim() : ""
+                       ToolTipLite { text: strip.live ? ((strip.live.chain || []).join(" → ") + "\n" + (strip.live.note || "")
+                                                          + ((strip.live.automated || []).length ? "\n∿ Automatizado: " + strip.live.automated.join(", ") : "")).trim() : ""
                                      show: lh.hovered && text.length > 0 } }
                 Row {
                     spacing: 6; anchors.horizontalCenter: parent.horizontalCenter

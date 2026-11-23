@@ -1104,7 +1104,8 @@ class Bridge(QObject):
                     start = float(self.host.tracks[tid].get("start_seconds", 0.0))
                     info = dict(eng.set_track_audio(tid, t["tuned_path"], start))
                     self.host.tracks[tid] = {**self.host.tracks[tid], **info}
-                ids = live_mix.apply_chain(eng, tid, t["chain"], self._auto.get(tid, []))
+                ids = live_mix.apply_chain(eng, tid, t["chain"], self._auto.get(tid, []),
+                                           start=float(self.host.tracks[tid].get("start_seconds", 0.0) or 0.0))
                 for old in self._auto.get(tid, []):
                     self._fx_labels.pop(old, None)
                 for eid, fx in zip(ids, t["chain"]):
@@ -1119,11 +1120,13 @@ class Bridge(QObject):
             self._mixer_events.put({"type": "strip", "i": i, "phase": "done", "trackId": tid, "name": t["name"],
                                     "kind": t["kind"], "position": t["position"], "pan": t["pan"], "gain_db": t["gain_db"],
                                     "tuned": bool(t.get("tuned_path")),
-                                    "chain": [fx["label"] for fx in t["chain"]], "note": "; ".join(t["notes"])})
+                                    "chain": [fx["label"] for fx in t["chain"]], "note": "; ".join(t["notes"]),
+                                    "automated": [fx["label"] for fx in t["chain"] if fx.get("auto")]})
         self._live_plan = plan
         self._mixer_events.put({"type": "done", "live": True, "applied": applied, "seconds": plan["seconds"],
                                 "profile": plan.get("profile_name", ""), "skipped": plan["skipped"],
-                                "reference_lufs": plan.get("reference_lufs"), "master": plan.get("master")})
+                                "reference_lufs": plan.get("reference_lufs"), "master": plan.get("master"),
+                                "automation": plan.get("automation") or {}})
 
     def _master_target(self, preset: str):
         """El preset elegido; «Según referencia» = Comercial con el objetivo de la referencia (como el V4.2)."""

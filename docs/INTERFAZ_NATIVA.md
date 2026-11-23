@@ -172,11 +172,31 @@ nombre; `studio.rackTrack`). Detalle de los efectos en `docs/BIBLIOTECA_NATIVA.m
   `_blend_backing`, `vocal_space.PROFILES`, aire de `enhance_vocal`) dan por pista ganancia, paneo y
   una cadena de la Biblioteca con sus valores. El puente (`Bridge._apply_plan`, hilo principal)
   la pone en el motor, sustituyendo solo los efectos que puso la mezcla anterior, y la consola
-  coloca faders y paneos. Lo que el V4.2 hace sobre el audio y una cadena no reproduce (nivelado
-  de frases, ducking bombo→bajo, enmascaramiento dinámico, balance por secciones, EQ dinámica de
-  la voz, compresión paralela por bus) se informa en el estado, no se finge. Solo se escribe audio
+  coloca faders y paneos. Lo que el V4.2 hace sobre el audio y una cadena no reproduce (ducking
+  bombo→bajo, enmascaramiento dinámico, balance por secciones, EQ dinámica de la voz, compresión
+  paralela por bus) se informa en el estado, no se finge. Solo se escribe audio
   si se pide afinación (PSOLA no es un efecto en tiempo real): una copia afinada por voz elegida,
   que sustituye al audio de su pista.
+- **Automatizaciones de la mezcla** (`live_mix.automate`, tras decidir las cadenas): se analiza la voz
+  principal (RMS de 400 ms cada 50 ms; canta lo que pasa del p95 − 22 dB; huecos < 0,25 s no cortan
+  la frase) y se escriben curvas de Tracktion (`set_effect_automation`, desde el inicio de la pista)
+  que el motor sigue al reproducir:
+  - **Ride de voz:** un «Ride de voz (automático)» (ganancia) tras el de-esser lleva cada frase
+    hacia el nivel típico de la voz (media recortada p10–p90): 70 % de la diferencia, ±4 dB, suave
+    (600 ms) y quieto en los silencios. Curva aligerada con Ramer–Douglas–Peucker (0,35 dB).
+  - **Ecos lanzados:** la mezcla del delay sube a ~3× al final de las frases seguidas de un hueco
+    ≥ 0,6 s (como mucho uno cada 6 s), dos tiempos, y vuelve en 0,35 s.
+  - **Reverb lanzada:** +22 en la mezcla del espacio antes de los huecos ≥ 1,8 s (uno cada 8 s).
+  - **Ducking:** guitarras, teclados, pads, piano, FX y «Otro» llevan «Ducking bajo la voz
+    (automático)»: −1,5 dB (−2 dB «Otro») mientras canta, frases a < 0,8 s unidas para no bombear.
+  - **Barrido de filtro:** la música lleva al principio un EQ con el paso alto de 20 a 650 Hz en dos
+    compases (exponencial) antes de cada entrada de la voz tras ≥ 6 s sin ella (intro, puente), y
+    se abre de golpe al entrar.
+
+  En **Efectos** las perillas de todos los efectos automatizados del rack se mueven al reproducir
+  (los efectos llevan «∿»); en **Mezcla** la tira marca «∿» y su ayuda dice qué se automatizó, y el
+  estado resume rides, lanzamientos, ducking y barridos. Las curvas se editan en la línea de
+  automatización del efecto y se guardan con el proyecto.
 - **Master IA:** `live_mix.apply_master` reproduce `master()` del V4.2 con medidas del motor:
   `Engine::measureMix()` procesa la sesión entera en memoria (un `RenderTask` propio con los
   plugins del master, sin archivo) y devuelve LUFS integrada, RMS y pico del master y de cada
@@ -195,7 +215,10 @@ nombre; `studio.rackTrack`). Detalle de los efectos en `docs/BIBLIOTECA_NATIVA.m
 - El proyecto `.afo` guarda el nombre y la marca «mezcla automática» de cada efecto y el techo del
   limitador del master.
 
-Comprobado: `tests/test_live_mix.py` (cadenas y faders reales; master −14 LUFS y pico ≤ −2 dB sin
+Comprobado: `tests/test_live_automation.py` (frases, ride, lanzamientos, ducking y barridos con
+una voz sintética; el ride reduce en el render del motor la diferencia entre frase fuerte y suave;
+la mezcla desde el puente escribe las curvas y el proyecto las guarda y recupera),
+`tests/test_live_mix.py` (cadenas y faders reales; master −14 LUFS y pico ≤ −2 dB sin
 escribir audio; A/B y quitar el master; el proyecto conserva la mezcla) y `--selftest` (mezcla y
 master en vivo desde la interfaz, rack de la voz al elegir su tira, A/B, medidores dB/LUFS/RMS,
 remezcla afinada, ningún WAV nuevo).

@@ -181,24 +181,30 @@ Column {
     }
     function db(v) { return v <= -99 ? "−∞" : v.toFixed(1) }
 
-    Timer {                                     // medidores del efecto abierto (~12 por segundo)
+    Timer {                                     // medidores y automatización del rack (~12 por segundo)
         interval: 80; repeat: true
-        running: root.shown && root.studio.engineOk && !!root.cur
+        running: root.shown && root.studio.engineOk && root.chain.length > 0
         onTriggered: {
-            var r = root.studio.call("fxMeters", root.cur.id)
-            if (r.ok) root.meters = r.m
-            if (root.cur.key === "analyzer") { var s = root.studio.call("fxSpectrum", root.cur.id, 96); if (s.ok) root.spectrum = s.bands }
-            var live = {}
+            var cur = root.cur
+            if (cur) {
+                var r = root.studio.call("fxMeters", cur.id)
+                if (r.ok) root.meters = r.m
+                if (cur.key === "analyzer") { var s = root.studio.call("fxSpectrum", cur.id, 96); if (s.ok) root.spectrum = s.bands }
+            }
+            var live = {}, moved = {}, any = false
             for (var i = 0; i < root.chain.length; i++) {
                 var e = root.chain[i]
                 if (e.key === "analyzer" && root.studio.playing) { var sp = root.studio.call("fxSpectrum", e.id, 48); if (sp.ok) live[e.id] = sp.bands }
-                else if (e.key === "delay") live[e.id] = e.id === root.cur.id ? root.meters : (root.studio.call("fxMeters", e.id).m || [])
+                else if (e.key === "delay") live[e.id] = cur && e.id === cur.id ? root.meters : (root.studio.call("fxMeters", e.id).m || [])
+                // Las perillas de TODOS los efectos automatizados siguen su curva al reproducir
+                // (rides, lanzamientos, ducking y barridos de la mezcla automática se ven moverse)
+                if (root.studio.playing && (e.automated || []).length) {
+                    var f = root.studio.call("fxInfo", e.id)
+                    if (f.ok) { moved[e.id] = f.effect.values; any = true }
+                }
             }
             root.cardLive = live
-            if (root.studio.playing && (root.cur.automated || []).length) {   // las perillas siguen la curva
-                var f = root.studio.call("fxInfo", root.cur.id)
-                if (f.ok) root.patch({ id: f.effect.id, values: f.effect.values })
-            }
+            if (any) root.chain = root.chain.map(function (x) { return moved[x.id] ? Object.assign({}, x, { values: moved[x.id] }) : x })
         }
     }
 
