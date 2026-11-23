@@ -24,6 +24,10 @@ Window {
     property var deviceInfo: ({})
     property real latencyMs: 0
     property bool dirty: false
+    // Vista principal: «arrange» (Arreglo: pistas, automatización y consola, como Studio One / Ableton)
+    // o «modules» (el lienzo de módulos). Se recuerda en el diseño guardado.
+    property string view: savedLayout.view === "modules" ? "modules" : "arrange"
+    onViewChanged: if (!loading) saveLayout()
     // Llamadas al motor que cambian el proyecto (las de leer y medir no cuentan)
     readonly property var editCalls: ["fxAdd", "fxAddPlugin", "fxApplyPreset", "fxEnable", "fxMove", "fxParam", "fxRemove",
         "fxRestore", "fxSetAutomation", "clipEdit", "masterLoad", "setMasterCeiling", "setMasterProcessing", "setMasterVolume",
@@ -110,6 +114,9 @@ Window {
     Shortcut { sequences: [StandardKey.Open]; onActivated: pj.open("") }
     Shortcut { sequences: [StandardKey.Save]; onActivated: pj.save(false) }
     Shortcut { sequence: "Ctrl+Shift+S"; onActivated: pj.save(true) }
+    Shortcut { sequence: "F5"; onActivated: win.view = "arrange" }
+    Shortcut { sequence: "F6"; onActivated: win.view = "modules" }
+    property alias arrangeView: arrange
     // Para la autoprueba: guardar y abrir proyectos sin diálogo
     function projectCommand(what, path) {
         if (what === "save") { pj.file = path; return pj.save(false) }
@@ -262,6 +269,7 @@ Las entradas van a la izquierda y las salidas a la derecha. Arrastra para moverl
         else if (what === "drop") removeTrackAt(tracks.length - 1)
     }
     function mixNow(remix) { mx.mix(!!remix) }
+    function openProject(path) { return pj.open(path) }
     function setTuneStrength(v) { mx.tuneStrength = v }
     function tuneCommand(what, v) { if (what === "confirm") mx.confirmTune(); else mx.setTuneParam(what, v) }
     function mixerCommand(what, a) {
@@ -308,6 +316,9 @@ Las entradas van a la izquierda y las salidas a la derecha. Arrastra para moverl
             }
             return out2
         }
+        if (what === "view") { if (a) view = a
+                               return { view: view, lanes: arrange.laneCount, inserts: arrange.insertCount, rows: arrange.rows.length,
+                                        visible: arrange.visible, modules: viewport.visible } }
         if (what === "heights") { var hs = {}; for (var hid in panelItems) hs[hid] = panelItems[hid].height; return hs }
         if (what === "theme") { var ok = setTheme(a, true); return { ok: ok, name: Theme.name, frame: Theme.frame, knob: Theme.knobStyle,
                                                                    themes: loadThemes().map(function (t) { return t.name }) } }
@@ -332,7 +343,7 @@ Las entradas van a la izquierda y las salidas a la derecha. Arrastra para moverl
         }
         var extra = panelList.filter(function (q) { return q.extra }).map(function (q) { return { pid: q.pid, base: q.base } })
         layoutStore.save(JSON.stringify({ v: L.VERSION, pos: pos, ports: portOverride, bends: bends, theme: Theme.name,
-                                          names: names, extra: extra, targets: extraTargets }))
+                                          names: names, extra: extra, targets: extraTargets, view: view }))
     }
     // Un diseño de otra versión del lienzo (módulos distintos) no se aplica: se usa el de fábrica y
     // solo se conserva el tema
@@ -491,6 +502,7 @@ Las entradas van a la izquierda y las salidas a la derecha. Arrastra para moverl
     }
     // Ir a un módulo: se muestra si estaba oculto y se encuadra (o se maximiza si hay uno maximizado)
     function goTo(id) {
+        view = "modules"
         currentId = id
         var p = panelItems[id]
         if (!p) return
@@ -740,9 +752,22 @@ Las entradas van a la izquierda y las salidas a la derecha. Arrastra para moverl
                 spacing: 6
                 NeoButton {
                     text: "☰"; tip: "Mostrar u ocultar el menú lateral (módulos, instrumentos y efectos)"
-                    pressedState: win.menuOpen
-                    color: win.menuOpen ? Theme.pressedBg : Theme.button; textColor: win.menuOpen ? Theme.pressedInk : Theme.ink
-                    onClicked: win.menuOpen = !win.menuOpen
+                    readonly property bool on: win.menuOpen && win.view === "modules"
+                    pressedState: on
+                    color: on ? Theme.pressedBg : Theme.button; textColor: on ? Theme.pressedInk : Theme.ink
+                    onClicked: { if (win.view !== "modules") { win.view = "modules"; win.menuOpen = true } else win.menuOpen = !win.menuOpen }
+                }
+                NeoButton {
+                    text: "Arreglo"; tip: "Vista Arreglo: pistas con sus clips, curvas de automatización y consola con inserts (F5)"
+                    pressedState: win.view === "arrange"
+                    color: win.view === "arrange" ? Theme.pressedBg : Theme.button; textColor: win.view === "arrange" ? Theme.pressedInk : Theme.ink
+                    onClicked: win.view = "arrange"
+                }
+                NeoButton {
+                    text: "Módulos"; tip: "Vista Módulos: el lienzo con todos los aparatos y sus cables (F6)"
+                    pressedState: win.view === "modules"
+                    color: win.view === "modules" ? Theme.pressedBg : Theme.button; textColor: win.view === "modules" ? Theme.pressedInk : Theme.ink
+                    onClicked: win.view = "modules"
                 }
                 NeoButton {
                     text: "■"; tip: "Detener y volver al principio"
@@ -839,14 +864,22 @@ Las entradas van a la izquierda y las salidas a la derecha. Arrastra para moverl
         studio: win
         z: 4
         anchors { top: header.bottom; bottom: statusBar.top; left: parent.left }
-        width: win.menuOpen ? 290 : 0
-        visible: win.menuOpen
+        width: win.menuOpen && win.view === "modules" ? 290 : 0     // el menú lleva a módulos: solo en esa vista
+        visible: width > 0
     }
 
     // ---------------- lienzo infinito ----------------
+    ArrangeView {
+        id: arrange
+        studio: win
+        anchors { top: header.bottom; left: sideMenu.right; right: parent.right; bottom: statusBar.top }
+        visible: win.view === "arrange"
+        z: 3
+    }
     Item {
         id: viewport
         anchors { top: header.bottom; left: sideMenu.right; right: parent.right; bottom: statusBar.top }
+        visible: win.view === "modules"
         clip: true
         onWidthChanged: if (win.maxId) win.fitMax()
         onHeightChanged: if (win.maxId) win.fitMax()

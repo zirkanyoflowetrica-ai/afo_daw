@@ -584,6 +584,39 @@ class Bridge(QObject):
         except Exception as exc:
             return _err(str(exc))
 
+    @Slot(str, result=str)
+    @_safe
+    def dawLanes(self, ids_json: str) -> str:
+        """Vista Arreglo: por pista (0 = master) su cadena de inserts y las curvas de automatización
+        de cada parámetro automatizado, con nombre, unidad y rango del catálogo. Una llamada por refresco."""
+        if (g := self._guard()):
+            return g
+        eng = self.host.engine
+        cat = {c["key"]: c for c in self.host.effect_catalog()}
+        out = {}
+        for tid in [int(i) for i in json.loads(ids_json or "[]")]:
+            try:
+                chain = self._chain(tid)
+            except Exception:
+                continue
+            inserts, lanes = [], []
+            for e in chain:
+                desc = cat.get(e["key"], {})
+                params = desc.get("params", [])
+                autom = list(e.get("automated", []))
+                inserts.append({"id": e["id"], "key": e["key"], "label": e["label"], "enabled": bool(e["enabled"]),
+                                "auto": e["auto"], "automated": len(autom)})
+                for pid in autom:
+                    pts = eng.effect_automation(e["id"], pid)
+                    if not pts:
+                        continue
+                    p = next((q for q in params if q["id"] == pid), {})
+                    lanes.append({"effect": e["id"], "fx": e["label"], "param": pid, "name": p.get("name", pid),
+                                  "unit": p.get("unit", ""), "min": p.get("min", 0.0), "max": p.get("max", 1.0), "centre": p.get("centre"),
+                                  "points": [[round(t, 3), round(v, 4)] for t, v in pts]})
+            out[str(tid)] = {"inserts": inserts, "lanes": lanes}
+        return _ok(tracks=out)
+
     @Slot(int, str, result=str)
     @_safe
     def fxRestore(self, track_id: int, chain_json: str) -> str:

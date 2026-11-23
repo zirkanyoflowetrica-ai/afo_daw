@@ -45,6 +45,7 @@ QtObject {
         file = r.path; name = r.name
         studio.dirty = false
         studio.fitIds(studio.visibleIds())     // el proyecto abierto se ve entero
+        Qt.callLater(function () { studio.arrangeView.refresh(); studio.arrangeView.fitAll() })
         var miss = r.doc.missing || []
         studio.toast("Proyecto abierto: " + r.name + (miss.length ? " · falta el audio de: " + miss.join(", ") : ""))
         return true

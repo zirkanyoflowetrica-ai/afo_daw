@@ -183,6 +183,28 @@ cableado desde el rack que mide (Efectos o Efectos master). Entre módulos queda
 placas y el cable (`gapX` en `Main.qml`; al arrastrar, un módulo se para antes de pisar las placas
 del vecino).
 
+## Vista Arreglo (estilo Studio One / Ableton, noviembre 2026)
+
+La ventana tiene dos vistas, que se cambian en la cabecera («Arreglo | Módulos», F5 / F6) y se
+recuerdan en el diseño guardado. **Arreglo** es la vista por defecto: muestra la canción entera para
+poder ver qué hizo la mezcla.
+
+- **Regla** de compases (al tempo del proyecto) y segundos; clic para mover el cursor.
+- **Una fila por pista**: color, nombre, tipo del Mezclador (Voz principal, Bajo…), M/S y la cadena de
+  inserts en orden («FX: HPF › De-esser › Compresor…»). Clips de audio con su forma de onda, notas MIDI
+  o el patrón de 16 pasos. El master es la última fila.
+- **Carriles de automatización** bajo cada pista (se pliegan con «▸ ∿ N» o «Curvas: todas / ninguna»):
+  la curva real que reproduce el motor, con el efecto, el parámetro, el rango del catálogo y el
+  **valor que tiene ahora** bajo el cursor (las frecuencias, en la escala sesgada de su perilla).
+  Doble clic abre ese efecto en el módulo Efectos.
+- **Consola** (botón «Consola»): una tira por pista con sus inserts (punto verde activo, tachado si está
+  puenteado, ∿ si tiene parámetros automatizados), paneo, fader, medidores L/R y pico; y la tira master.
+- Datos: el slot `dawLanes(ids)` del puente devuelve en una llamada, por pista, los inserts y las curvas
+  (`effect_automation`) con nombre, unidad, mínimo, máximo y centro del catálogo. Se refresca al cambiar
+  una cadena (`fxRev`), las pistas, al mostrar la vista y cada 2 s.
+- Autoprueba: tras MEZCLAR AUTOMÁTICAMENTE comprueba que la vista muestra todos los inserts y todas las
+  curvas que tiene el motor y guarda `logs/selftest_arreglo.png`.
+
 ## Mezcla y master en vivo (sin WAVs)
 
 - **Mezcla:** `mixer_service._live` (hilo del mezclador) llama a `live_mix.plan`: las mismas

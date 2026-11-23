@@ -292,6 +292,9 @@ def run_native_selftest(app, host, report_path: str | None, screenshot_path: str
     errors = engine._afo[2]
     rep.check("interfaz QML cargada sin avisos", not errors, errors[:5])
     rep.check("fuente Space Grotesk 500/600/700 cargada", len(load_fonts()) >= 3)
+    # Las comprobaciones del lienzo usan la vista Módulos; la vista Arreglo se prueba tras la mezcla
+    window.setProperty("view", "modules")
+    _wait(app, lambda: False, 0.2, host)
 
     panels = prop("panelItems")
     rep.check("14 módulos en el lienzo", len(panels or {}) == 14, sorted(panels or {}))
@@ -392,6 +395,23 @@ def _native_mixer_checks(rep, app, host, window, bridge, prop) -> None:
               len(st["versions"]) == 1 and st["versions"][0]["kind"] == "auto" and st["versionSel"] == 0
               and st["versions"][0]["fx"] == len(st["masterChain"]) >= 4, st["versions"])
     check_mix_run(rep, bridge, st, t0)
+    # Vista Arreglo: lo que hizo la mezcla se ve (inserts por pista y curvas de automatización del motor)
+    lv = QMetaObject.invokeMethod(window, "layoutCommand", Q_RETURN_ARG("QVariant"), Q_ARG("QVariant", "view"),
+                                  Q_ARG("QVariant", "arrange"), Q_ARG("QVariant", None))
+    lv = lv.toVariant() if hasattr(lv, "toVariant") else lv
+    _wait(app, lambda: False, 0.3, host)
+    lanes = json.loads(bridge.dawLanes(json.dumps([i["trackId"] for i in st["items"]] + [0])))
+    n_auto = sum(len(v["lanes"]) for v in lanes.get("tracks", {}).values())
+    n_ins = sum(len(v["inserts"]) for v in lanes.get("tracks", {}).values())
+    rep.check("vista Arreglo: se ven los inserts y las curvas de automatización de la mezcla",
+              lv["visible"] and not lv["modules"] and lv["inserts"] == n_ins > 0 and lv["lanes"] == n_auto > 0
+              and all(len(l["points"]) >= 2 and l["max"] > l["min"] for v in lanes["tracks"].values() for l in v["lanes"]),
+              {"inserts": lv["inserts"], "curvas": lv["lanes"], "filas": lv["rows"]})
+    shot = paths.logs_dir() / "selftest_arreglo.png"
+    window.grabWindow().save(str(shot))
+    rep.add("captura de la vista Arreglo", "info", str(shot))
+    window.setProperty("view", "modules")
+    _wait(app, lambda: False, 0.2, host)
     stems_ids = {i["trackId"] for i in st["items"]}
     faders = [t for t in st["tracks"] if t["id"] in stems_ids]
     moved = [t for t in faders if abs(t["vol"] - 70) > 0.5]
