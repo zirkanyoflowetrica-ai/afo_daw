@@ -23,7 +23,7 @@ Column {
             anchors.verticalCenter: parent.verticalCenter
             wrapMode: Text.Wrap; textFormat: Text.StyledText
             text: "Cada audio crea su <b>pista</b> y, con ella, su <b>tira en la consola</b>. Tipo y rol se deducen del nombre (_L, _R, _B…) y se pueden corregir aquí, en Pistas o en la consola."
-            color: Theme.ink; font.family: Theme.font; font.pixelSize: 12; font.weight: 500; lineHeight: 1.2
+            color: Theme.ink; font.family: Theme.font; font.pixelSize: 13; font.weight: 500; lineHeight: 1.2
         }
     }
 
@@ -50,7 +50,7 @@ Column {
                 id: dropCol
                 y: 12; width: parent.width
                 Text { width: parent.width; horizontalAlignment: Text.AlignHCenter; text: '<font face="Segoe UI Symbol">⬇</font> Arrastra aquí tus audios'; textFormat: Text.RichText
-                       color: root.dropOver ? "#000" : Theme.ink; font.family: Theme.font; font.pixelSize: 14; font.weight: 700 }
+                       color: root.dropOver ? "#000" : Theme.ink; font.family: Theme.font; font.pixelSize: 15; font.weight: 700 }
                 Text { width: parent.width; horizontalAlignment: Text.AlignHCenter; topPadding: 2
                        text: "WAV · AIFF · FLAC · OGG · MP3 — hasta 30"
                        color: root.dropOver ? "#000" : Theme.ink; font.family: Theme.font; font.pixelSize: 11; font.weight: 500 }
@@ -69,8 +69,8 @@ Column {
     Rectangle {                                 // .afo-stems
         width: root.width
         height: Math.min(260, list.height + 6)
-        color: "#16130e"; border.width: Theme.border; border.color: Theme.line
-        Rectangle { anchors.fill: parent; anchors.margins: 3; color: "transparent"; border.width: Theme.buttonBorder; border.color: "#4a4030"; z: 2 }
+        color: Theme.screen; border.width: Theme.border; border.color: Theme.line
+        Rectangle { anchors.fill: parent; anchors.margins: 3; color: "transparent"; border.width: Theme.buttonBorder; border.color: Theme.screenLine; z: 2 }
         Flickable {
             x: 3; y: 3; width: parent.width - 6; height: parent.height - 6
             contentHeight: list.height; clip: true
@@ -85,7 +85,7 @@ Column {
                         required property var modelData
                         required property int index
                         width: list.width; height: 34
-                        color: "#2b2720"
+                        color: Theme.screenCard
                         Rectangle { width: 8; height: parent.height; color: MD.kindColor(stem.modelData.kind) }
                         Rectangle { y: parent.height - 2; width: parent.width; height: 2; color: Theme.line }
                         Row {
@@ -94,34 +94,34 @@ Column {
                             readonly property real nameW: Math.max(80, width - 24 - 136 - 62 - 66 - 26 - 5 * 6)
                             Text { width: 24; anchors.verticalCenter: parent.verticalCenter
                                    text: (stem.index < 9 ? "0" : "") + (stem.index + 1)
-                                   color: "#f3e7c4"; font.family: Theme.font; font.pixelSize: 12; font.weight: 500 }
+                                   color: Theme.screenInk; font.family: Theme.font; font.pixelSize: 13; font.weight: 500 }
                             Row {
                                 width: parent.nameW; spacing: 4; anchors.verticalCenter: parent.verticalCenter
                                 Text { id: nm; width: Math.min(implicitWidth, parent.width - (conv.visible ? conv.width + 4 : 0))
                                        text: stem.modelData.name; elide: Text.ElideRight
-                                       color: "#f3e7c4"; font.family: Theme.font; font.pixelSize: 12; font.weight: 700 }
+                                       color: Theme.screenInk; font.family: Theme.font; font.pixelSize: 13; font.weight: 700 }
                                 Rectangle { id: conv; visible: !!stem.modelData.note; width: ct.implicitWidth + 8; height: 12
                                             anchors.verticalCenter: parent.verticalCenter; color: Theme.lcd
                                             Text { id: ct; anchors.centerIn: parent; text: "conv."; color: "#000"
-                                                   font.family: Theme.font; font.pixelSize: 9; font.weight: 700 } }
+                                                   font.family: Theme.font; font.pixelSize: 11; font.weight: 700 } }
                             }
                             Select {
                                 width: 136; anchors.verticalCenter: parent.verticalCenter
                                 options: root.mixer.data.types; current: stem.modelData.kind
                                 fontSize: 11; fontWeight: 700; padX: 4; padY: 2
-                                fill: "#16130e"; ink: "#f3e7c4"
+                                fill: Theme.screen; ink: Theme.screenInk
                                 onPicked: function (v) { root.mixer.setItemKind(stem.index, v) }
                             }
                             Select {
                                 width: 62; anchors.verticalCenter: parent.verticalCenter
                                 options: MD.ROLES; current: stem.modelData.role || "—"
                                 fontSize: 11; fontWeight: 700; padX: 4; padY: 2
-                                fill: "#16130e"; ink: "#f3e7c4"; tip: MD.roleTip()
+                                fill: Theme.screen; ink: Theme.screenInk; tip: MD.roleTip()
                                 onPicked: function (v) { root.mixer.setItemRole(stem.index, v) }
                             }
                             Text { width: 66; anchors.verticalCenter: parent.verticalCenter; horizontalAlignment: Text.AlignRight
                                    text: stem.modelData.trackId >= 0 ? "▸ pista " + (root.trackNumber(stem.modelData.trackId)) : "sin pista"
-                                   color: "#bdb398"; font.family: Theme.font; font.pixelSize: 11; font.weight: 500 }
+                                   color: Theme.screenDim; font.family: Theme.font; font.pixelSize: 11; font.weight: 500 }
                             NeoButton { text: "✕"; fontSize: 11; padX: 5; padY: 0; shadow: 2; anchors.verticalCenter: parent.verticalCenter
                                         tip: "Quitar " + stem.modelData.name + " de la lista (no borra el archivo)"
                                         onClicked: root.mixer.removeItem(stem.index) }
@@ -131,7 +131,7 @@ Column {
                 DashedBox {
                     visible: root.mixer.items.length === 0
                     x: 8; width: list.width - 16; height: visible ? implicitHeight : 0
-                    strokeColor: "#f3e7c4"; textColor: "#f3e7c4"; fill: "transparent"
+                    strokeColor: Theme.screenInk; textColor: Theme.screenInk; fill: "transparent"
                     text: "Sin audios todavía."
                 }
                 Item { width: 1; height: root.mixer.items.length === 0 ? 8 : 0 }
@@ -143,7 +143,7 @@ Column {
         width: root.width; topPadding: 8 + 10
         wrapMode: Text.Wrap
         text: "Quitar un audio de esta lista no borra nada de tu disco. Si borras su pista, el audio sigue aquí y puedes volver a crearla."
-        color: Theme.ink; font.family: Theme.font; font.pixelSize: 12; font.weight: 500
+        color: Theme.ink; font.family: Theme.font; font.pixelSize: 13; font.weight: 500
     }
 
     property var studio
