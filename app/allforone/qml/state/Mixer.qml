@@ -242,6 +242,12 @@ QtObject {
             if (ev.key && tune.mode !== "Manual") { t.key = ev.key; t.scale = ev.scale || tune.scale }
             if (ev.bpm && tune.mode !== "Manual") t.bpm = Math.round(ev.bpm * 10) / 10
             setTune(t)
+        } else if (ev.type === "bus") {            // bus Aux de reverb compartida creado por la mezcla
+            if (!studio.tracks.some(function (x) { return x.id === ev.track.id })) {
+                var b = studio.seq.mk("aux", ev.track.name)
+                b.id = ev.track.id
+                var a = studio.tracks.slice(); a.push(b); studio.tracks = a
+            }
         } else if (ev.type === "done") {
             runs++
             busy = false; workingTrack = -1; progress = 100

@@ -23,7 +23,7 @@ Estados: `·` libre · `>` en curso · `✓` hecho (+ hash) · `!` bloqueado (mo
 | X3 | X | ✓ 14c731e | `modules/MixBody.qml`, `modules/FxBody.qml` (solo `ToolTipLite … show: false`) | Los tooltips con `show: false` se muestran al pasar el ratón |
 | X4 | X | ✓ 14c731e | `modules/MixBody.qml` (etiqueta «DEMO · sin audio») | La etiqueta solo sale cuando de verdad no hay audio |
 | X5 | X | ✓ 14c731e | `modules/CintaBody.qml` | Los carretes giran solo al reproducir / grabar y su velocidad sigue al transporte |
-| C4 | C | > | `live_mix.py`, `mixer_service.py`, `bridge.py` (mixer), `state/Mixer.qml` | La mezcla automática crea un bus Aux «Reverb voces» y envía las voces a él (una sola reverb, como en consola); probado con proyectos completos |
+| C4 | C | ✓ | `live_mix.py`, `mixer_service.py`, `bridge.py` (mixer), `state/Mixer.qml` | La mezcla automática crea un bus Aux «Reverb voces» y envía las voces a él (una sola reverb, como en consola); probado con proyectos completos |
 | X6 | X | · | `modules/InstBody.qml` | Con un VST3 elegido, en lugar de las perillas ocultas sale una nota: «Velocidad, Brillo y Reverb son del sintetizador interno; ajusta el VST3 en su editor» |
 | X7 | X | · | `modules/DrumsBody.qml` | Cada perilla de Batería cambia el sonido de verdad (prueba: render con dos valores distintos da audio distinto) o se quita |
 | X8 | X | · | `modules/IaBody.qml` | Sus 2 perillas actúan de verdad o se quitan; todo lo que sea demostración lleva la etiqueta DEMO |
@@ -39,4 +39,5 @@ C→X: siguen tuyas X2, X6, X7, X8, X9, en ese orden. No esperes respuesta para 
 
 ## Progreso (para el usuario)
 Hecho hoy: afinador AF-60, pruebas con 4 géneros completos, segunda opinión de tonalidad/tempo, afinación Precisa/En vivo, A/B, ajustes IA en el proyecto, doble flujo (F7), X1/X3/X4/X5.
-En curso: C4 reverb Aux compartida (Claude) · X2…X9 (Codex).
+Hecho también: C4 reverb Aux compartida (2 buses, probada en 4 géneros).
+En curso: X2…X9 (Codex). Siguiente de Claude: automatizar niveles de envío en el motor (para que la voz principal también use el bus).

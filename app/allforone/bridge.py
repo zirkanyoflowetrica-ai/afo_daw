@@ -1283,11 +1283,37 @@ class Bridge(QObject):
     def _mx_mix(self, d):
         return self.mixsvc.mix_async(d)
 
+    def _mix_buses(self, buses: dict) -> dict:
+        """Buses Aux de la mezcla automática: se reutilizan por nombre (también los de un proyecto abierto),
+        se crean si faltan y llevan su reverb como efecto automático. Devuelve {clave: id de la pista}."""
+        from . import live_mix
+        eng, ids = self.host.engine, {}
+        for key, (name, _prefix) in live_mix.BUSES.items():
+            aux = next((k for k, v in self.host.tracks.items() if v.get("name") == name), None)
+            if key not in buses:
+                if aux is not None:
+                    ids[key] = aux                    # sin uso en esta mezcla: sus envíos se quitan
+                continue
+            if aux is None:
+                info = self.host.add_aux(name)
+                aux = info["id"]
+                self._mixer_events.put({"type": "bus", "track": info})
+            chain = buses[key]["chain"]
+            new = live_mix.apply_chain(eng, aux, chain, self._auto.get(aux, []))
+            for old in self._auto.get(aux, []):
+                self._fx_labels.pop(old, None)
+            for eid, fx in zip(new, chain):
+                self._fx_labels[eid] = fx["label"]
+            self._auto[aux] = new
+            ids[key] = aux
+        return ids
+
     def _apply_plan(self, plan: dict) -> None:
         """Hilo principal: las decisiones del V4.2 pasan a la consola y a las cadenas del motor."""
         from . import live_mix
         eng = self.host.engine
         applied = 0
+        bus_ids = self._mix_buses(plan.get("buses") or {})
         for i, t in enumerate(plan["tracks"]):
             tid = t.get("trackId", -1)
             if tid not in self.host.tracks:
@@ -1309,6 +1335,8 @@ class Bridge(QObject):
                 self._auto[tid] = ids
                 eng.set_track_gain_db(tid, t["gain_db"])
                 eng.set_track_pan(tid, t["pan"])
+                for key, aux in bus_ids.items():      # envío a la reverb compartida (o se quita)
+                    eng.set_send(tid, aux, float((t.get("sends") or {}).get(key, -100.0)), False)
                 applied += 1
             except Exception as exc:
                 log.exception("Mezcla en vivo: %s", t.get("name"))

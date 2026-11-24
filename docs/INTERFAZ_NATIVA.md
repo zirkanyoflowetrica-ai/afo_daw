@@ -268,6 +268,12 @@ ventana. La autoprueba abre la ventana, la captura (`logs/selftest_doble_flujo.p
   - **Ecos lanzados:** la mezcla del delay sube a ~3× al final de las frases seguidas de un hueco
     ≥ 0,6 s (como mucho uno cada 6 s), dos tiempos, y vuelve en 0,35 s.
   - **Reverb lanzada:** +22 en la mezcla del espacio antes de los huecos ≥ 1,8 s (uno cada 8 s).
+- **Reverbs compartidas** (`live_mix.shared_reverbs`, como en una consola): la mezcla automática crea
+  (o reutiliza por nombre) dos buses Aux, «Sala instrumentos (IA)» y «Reverb voces (IA)», con una
+  sola Space al 100 % cada uno. Los instrumentos con reverb del V4.2 y los dobles / coros / L-R / _B
+  dejan su reverb y envían a su bus con 20·log10(mezcla) dB (la Space mezcla en lineal: misma
+  cantidad de reverb). La voz principal conserva la suya porque lleva la reverb lanzada y el motor
+  aún no automatiza envíos. Al remezclar sin ese uso, los envíos se quitan.
   - **Ducking:** guitarras, teclados, pads, piano, FX y «Otro» llevan «Ducking bajo la voz
     (automático)»: −1,5 dB (−2 dB «Otro») mientras canta, frases a < 0,8 s unidas para no bombear.
   - **Barrido de filtro:** la música lleva al principio un EQ con el paso alto de 20 a 650 Hz en dos

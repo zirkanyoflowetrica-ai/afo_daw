@@ -210,6 +210,7 @@ def plan(m, stems: list[dict], opts: dict, progress=None) -> dict:
         if lead is None and t.get("kind") == "Voz principal":
             lead = t
     tracks = [t for t in out if t and not t.get("skip")]
+    buses = shared_reverbs(tracks) if opts.get("shared_reverb", True) else {}
     auto = automate(m, tracks, opts) if opts.get("automation", True) else {}
     # Bandas de la mezcla (para el master): suma de potencias de cada pista tras su ganancia
     total = sum(t["power"] for t in tracks) or 1.0
@@ -217,7 +218,42 @@ def plan(m, stems: list[dict], opts: dict, progress=None) -> dict:
     for t in tracks:
         for k, v in t["bands"].items():
             bands[k] = bands.get(k, 0.0) + v * t["power"] / total
-    return {"tracks": out, "mix_bands": bands, "skipped": list(NOT_LIVE), "automation": auto}
+    return {"tracks": out, "mix_bands": bands, "skipped": list(NOT_LIVE), "automation": auto, "buses": buses}
+
+
+# Reverbs compartidas por envío, como en una consola: una sala para los instrumentos (el «send» en dB
+# del V4.2) y una reverb para dobles y coros. La voz principal conserva la suya en la cadena porque
+# lleva «reverb lanzada» automatizada al final de frase (el motor aún no automatiza envíos).
+BUSES = {"sala": ("Sala instrumentos (IA)", "Reverb de instrumentos"),
+         "voces": ("Reverb voces (IA)", "Espacio vocal")}
+
+
+def shared_reverbs(tracks: list[dict]) -> dict:
+    """Saca de cada cadena la reverb que se puede compartir y la cambia por un envío al bus.
+
+    La Space mezcla en lineal (wet × mix), así que un envío de 20·log10(mix) dB a un bus con la misma
+    reverb al 100 % deja la misma cantidad de reverb que el efecto en la pista. Devuelve los buses usados:
+    {clave: {name, chain}}; en cada pista deja t["sends"] = {clave: dB}.
+    """
+    buses = {}
+    for t in tracks:
+        t["sends"] = {}
+        if t.get("kind") == "Voz principal":
+            continue
+        for key, (bus, prefix) in BUSES.items():
+            fx = next((f for f in t["chain"] if f["key"] == "space" and f["label"].startswith(prefix)), None)
+            if fx is None:
+                continue
+            t["chain"].remove(fx)
+            mix = fx["values"].get("mix", 0.0) / 100.0
+            if mix <= 0:
+                continue
+            t["sends"][key] = round(20 * math.log10(mix), 2)
+            if key not in buses:          # la reverb del bus: la primera que aparece, toda húmeda
+                buses[key] = {"name": bus, "chain": [{"key": "space", "label": f"{fx['label']} · bus",
+                                                      "values": dict(fx["values"], mix=100.0)}]}
+            t["notes"].append(f"reverb por envío a «{bus}» ({t['sends'][key]:+.1f} dB)")
+    return buses
 
 
 # ----------------------------------------------------------------------------------------

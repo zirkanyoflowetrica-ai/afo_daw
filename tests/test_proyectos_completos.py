@@ -94,6 +94,20 @@ def test_proyecto_completo(genre, qapp, tmp_path, monkeypatch):
         for s in backs:
             assert lv[lead["trackId"]]["lufs_i"] > lv[s["trackId"]]["lufs_i"] + 2.0, (s["name"], lv[lead["trackId"]], lv[s["trackId"]])
 
+        # Reverbs compartidas como en una consola: dobles y coros por envío a un bus «Reverb voces»,
+        # los instrumentos con reverb a «Sala instrumentos»; la voz principal conserva la suya
+        aux = {v["name"]: k for k, v in h.tracks.items() if v.get("name") in ("Reverb voces (IA)", "Sala instrumentos (IA)")}
+        assert "Reverb voces (IA)" in aux, (genre, aux)
+        for name, a in aux.items():
+            assert [e["key"] for e in eng.effects(a)] == ["space"], (name, eng.effects(a))
+        vb = aux["Reverb voces (IA)"]
+        for s in backs:
+            sends = {x["aux"]: x["db"] for x in eng.sends(s["trackId"])}
+            assert -40 < sends.get(vb, -100) < 0, (s["name"], sends)
+            assert "space" not in chains[s["name"]], (s["name"], chains[s["name"]])
+        assert "space" in chains[lead["name"]] and not [x for x in eng.sends(lead["trackId"]) if x["db"] > -99]
+        print(genre, "buses:", sorted(aux), {s["name"]: [round(x["db"], 1) for x in eng.sends(s["trackId"]) if x["db"] > -99] for s in stems})
+
         # 4. La Mezcla IA afina EN VIVO: AF-60 el primero de la cadena de la voz, con la tonalidad
         #    confirmada y el rango medido de esa voz (grave / media / aguda), sin tocar el audio
         conf = c["confirmed"]
