@@ -888,7 +888,9 @@ def _native_sequencer_checks(rep, app, host, window, prop) -> None:
         rs = host.engine.record_state()
         rep.check("la pista de voz queda armada en una entrada real", rs["armed_track"] == voz["id"], rs["input"])
         cmd("record")
-        _wait(app, lambda: False, 1.2, host)
+        t0 = host.engine.position_seconds()          # con el equipo cargado el transporte arranca tarde:
+        _wait(app, lambda: host.engine.position_seconds() - t0 >= 1.0, 8.0, host)   # se espera a 1 s grabado
+        _wait(app, lambda: False, 0.2, host)
         cmd("recstop")
         take = next(t for t in snap()["tracks"] if t["uid"] == voz["uid"])
         rep.check("grabar y parar: el motor escribe la toma y se ve como onda", take["len"] > 0.5 and take["peaks"] == 600,
