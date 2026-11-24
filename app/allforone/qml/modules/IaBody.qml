@@ -51,7 +51,7 @@ Column {
             Lcd { id: mchip; text: root.midiReady ? "MIDI" : "SIN IA"; anchors.verticalCenter: parent.verticalCenter }
             Text {
                 width: root.width - mchip.width - 10; anchors.verticalCenter: parent.verticalCenter; wrapMode: Text.Wrap
-                color: Theme.ink; font.family: Theme.font; font.pixelSize: 12; font.weight: 500
+                color: Theme.ink; font.family: Theme.font; font.pixelSize: 13; font.weight: 500
                 text: !root.mai.ok && root.mai.error ? root.mai.error
                     : !root.mai.engineOk ? "Falta el motor de composición (motores\\llama junto a AllForOne.exe)."
                     : !root.mai.model.done ? "Motor listo. Falta el modelo MIDI: descárgalo abajo (una sola vez)."
@@ -67,7 +67,7 @@ Column {
                 x: 10; y: 10; width: parent.width - 20; spacing: 8
                 Text { text: "Modelo MIDI · " + root.gb(root.mai.model.size || 0); color: Theme.ink; font.family: Theme.font; font.pixelSize: 13; font.weight: 700 }
                 Text {
-                    width: parent.width; wrapMode: Text.Wrap; color: Theme.ink; font.family: Theme.font; font.pixelSize: 12
+                    width: parent.width; wrapMode: Text.Wrap; color: Theme.ink; font.family: Theme.font; font.pixelSize: 13
                     text: "Se descarga de Hugging Face (mradermacher/MIDI-LLM_Llama-3.2-1B-GGUF) a modelos\\midi junto al programa. "
                           + "Si se corta, «Reanudar» sigue donde quedó."
                 }
@@ -81,7 +81,7 @@ Column {
                 }
                 Bar { width: parent.width; value: root.seq.midiDlProgress; visible: root.seq.midiDownloading }
                 Text { visible: root.seq.midiDlMsg.length > 0; width: parent.width; wrapMode: Text.Wrap; text: root.seq.midiDlMsg
-                       color: Theme.ink; font.family: Theme.font; font.pixelSize: 12 }
+                       color: Theme.ink; font.family: Theme.font; font.pixelSize: 13 }
             }
         }
         Column {
@@ -128,7 +128,7 @@ Column {
             width: root.width; spacing: 4
             Bar { width: parent.width; value: root.seq.midiProgress; visible: root.seq.composing }
             Text { width: parent.width; wrapMode: Text.Wrap; text: root.seq.midiMsg
-                   color: Theme.ink; font.family: Theme.font; font.pixelSize: 12; font.weight: 500 }
+                   color: Theme.ink; font.family: Theme.font; font.pixelSize: 13; font.weight: 500 }
         }
         Text { visible: (root.mai.compositions || []).length > 0; text: "Compuestas (en datos\\media\\ia, .mid)"
                color: Theme.ink; font.family: Theme.font; font.pixelSize: 13; font.weight: 600 }
@@ -139,7 +139,7 @@ Column {
                 Column {
                     width: parent.width - madd.width - 8; spacing: 1; anchors.verticalCenter: parent.verticalCenter
                     Text { width: parent.width; elide: Text.ElideRight; text: modelData.title
-                           color: Theme.ink; font.family: Theme.font; font.pixelSize: 12; font.weight: 700 }
+                           color: Theme.ink; font.family: Theme.font; font.pixelSize: 13; font.weight: 700 }
                     Text { width: parent.width; elide: Text.ElideRight; text: modelData.notes + " notas · " + Math.round(modelData.seconds) + " s"
                            color: Theme.ink; font.family: Theme.font; font.pixelSize: 11 }
                 }
@@ -159,7 +159,7 @@ Column {
         Lcd { id: chip; text: root.ready ? "LOCAL" : "SIN IA"; anchors.verticalCenter: parent.verticalCenter }
         Text {
             width: root.width - chip.width - 10; anchors.verticalCenter: parent.verticalCenter; wrapMode: Text.Wrap
-            color: Theme.ink; font.family: Theme.font; font.pixelSize: 12; font.weight: 500
+            color: Theme.ink; font.family: Theme.font; font.pixelSize: 13; font.weight: 500
             text: !root.ai.ok && root.ai.error ? root.ai.error
                 : !root.ai.engineOk ? "Falta el motor de IA (motores\\acestep junto a AllForOne.exe)."
                 : !root.ai.installed ? "Motor listo. Faltan los modelos: descárgalos abajo (una sola vez)."
@@ -182,7 +182,7 @@ Column {
                 width: parent.width; spacing: 8
                 Text {
                     width: parent.width - eqSel.width - 8; anchors.verticalCenter: parent.verticalCenter; wrapMode: Text.Wrap
-                    color: Theme.ink; font.family: Theme.font; font.pixelSize: 12; font.weight: 700
+                    color: Theme.ink; font.family: Theme.font; font.pixelSize: 13; font.weight: 700
                     text: eqBox.eq ? "Perfil del equipo: " + eqBox.eq.profile.name
                           + " · " + (eqBox.eq.hardware.gpu || "sin gráfica") + " " + eqBox.eq.hardware.vram_gb + " GB"
                           + " · RAM " + Math.round(eqBox.eq.hardware.ram_gb) + " GB" : ""
@@ -198,7 +198,7 @@ Column {
                 }
             }
             Text {
-                width: parent.width; wrapMode: Text.Wrap; color: Theme.ink; font.family: Theme.font; font.pixelSize: 12
+                width: parent.width; wrapMode: Text.Wrap; color: Theme.ink; font.family: Theme.font; font.pixelSize: 13
                 text: eqBox.eq ? eqBox.eq.profile.desc
                       + (root.ai.installed && root.ai.using && root.ai.using !== root.ai.recommended
                          ? ". Este perfil pide el compositor «" + root.packName(root.ai.recommended) + "»; se usa «" + root.packName(root.ai.using) + "» porque es el que está instalado."
@@ -224,7 +224,7 @@ Column {
             x: 10; y: 10; width: parent.width - 20; spacing: 8
             Text { text: "Modelos de IA"; color: Theme.ink; font.family: Theme.font; font.pixelSize: 13; font.weight: 700 }
             Text {
-                width: parent.width; wrapMode: Text.Wrap; color: Theme.ink; font.family: Theme.font; font.pixelSize: 12
+                width: parent.width; wrapMode: Text.Wrap; color: Theme.ink; font.family: Theme.font; font.pixelSize: 13
                 text: "Se descargan de Hugging Face (Serveurperso/ACE-Step-1.5-GGUF) a modelos\\acestep junto al programa. "
                       + "Si se corta, «Reanudar» sigue donde quedó."
             }
@@ -235,8 +235,8 @@ Column {
                     Column {
                         width: parent.width - btn.width - 8; spacing: 2
                         Text { text: modelData.name + " · " + root.gb(modelData.size) + (modelData.id === root.ai.recommended ? "  (recomendado para tu tarjeta)" : "")
-                               color: Theme.ink; font.family: Theme.font; font.pixelSize: 12; font.weight: 700; width: parent.width; wrapMode: Text.Wrap }
-                        Text { text: modelData.desc; color: Theme.ink; font.family: Theme.font; font.pixelSize: 12; width: parent.width; wrapMode: Text.Wrap }
+                               color: Theme.ink; font.family: Theme.font; font.pixelSize: 13; font.weight: 700; width: parent.width; wrapMode: Text.Wrap }
+                        Text { text: modelData.desc; color: Theme.ink; font.family: Theme.font; font.pixelSize: 13; width: parent.width; wrapMode: Text.Wrap }
                     }
                     NeoButton {
                         id: btn
@@ -256,7 +256,7 @@ Column {
                 Row {
                     width: parent.width; spacing: 8
                     Text { width: parent.width - (pause.visible ? pause.width + 8 : 0); wrapMode: Text.Wrap; text: root.seq.dlMsg
-                           color: Theme.ink; font.family: Theme.font; font.pixelSize: 12; anchors.verticalCenter: parent.verticalCenter }
+                           color: Theme.ink; font.family: Theme.font; font.pixelSize: 13; anchors.verticalCenter: parent.verticalCenter }
                     NeoButton { id: pause; visible: root.seq.downloading; text: "Pausar"; onClicked: root.seq.cancelDownload() }
                 }
             }
@@ -355,7 +355,7 @@ Column {
         width: root.width; spacing: 4
         Bar { width: parent.width; value: root.seq.aiProgress; visible: root.seq.generating }
         Text { width: parent.width; wrapMode: Text.Wrap; text: root.seq.aiMsg
-               color: Theme.ink; font.family: Theme.font; font.pixelSize: 12; font.weight: 500 }
+               color: Theme.ink; font.family: Theme.font; font.pixelSize: 13; font.weight: 500 }
     }
 
     // ---------------- parte para el proyecto (ACE-Step «lego», modelo base) ----------------
@@ -368,7 +368,7 @@ Column {
             x: 10; y: 10; width: parent.width - 20; spacing: 8
             Text { text: "Parte para el proyecto"; color: Theme.ink; font.family: Theme.font; font.pixelSize: 13; font.weight: 700 }
             Text {
-                width: parent.width; wrapMode: Text.Wrap; color: Theme.ink; font.family: Theme.font; font.pixelSize: 12
+                width: parent.width; wrapMode: Text.Wrap; color: Theme.ink; font.family: Theme.font; font.pixelSize: 13
                 text: "Escucha lo que ya suena (todas las pistas) y genera un instrumento nuevo encima, al tempo del proyecto ("
                       + root.studio.bpm + " BPM)" + (root.studio.mixer && root.studio.mixer.tune.confirmed
                       ? " y en " + root.studio.mixer.tune.confirmed.key + " " + root.studio.mixer.tune.confirmed.scale : "")
@@ -414,7 +414,7 @@ Column {
             Column {
                 width: parent.width - add.width - 8; spacing: 1; anchors.verticalCenter: parent.verticalCenter
                 Text { width: parent.width; elide: Text.ElideRight; text: modelData.title
-                       color: Theme.ink; font.family: Theme.font; font.pixelSize: 12; font.weight: 700 }
+                       color: Theme.ink; font.family: Theme.font; font.pixelSize: 13; font.weight: 700 }
                 Text {
                     width: parent.width; elide: Text.ElideRight
                     color: Theme.ink; font.family: Theme.font; font.pixelSize: 11
@@ -450,7 +450,7 @@ Column {
             id: te
             x: 10; y: 9; width: parent.width - 20; height: parent.height - 18
             wrapMode: TextEdit.Wrap; selectByMouse: true; clip: true
-            color: "#7dffb0"; font.family: "Consolas"; font.pixelSize: 14
+            color: "#7dffb0"; font.family: "Consolas"; font.pixelSize: 15
             onTextChanged: if (activeFocus) fld.edited(text)
             Text { visible: !te.text.length; text: fld.placeholder; color: "#5fae80"; font: te.font; width: te.width; wrapMode: Text.Wrap }
         }
