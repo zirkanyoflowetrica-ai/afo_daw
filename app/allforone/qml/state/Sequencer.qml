@@ -232,7 +232,10 @@ QtObject {
             type: t.type, cfg: t.cfg, clips: t.clips, roll: t.roll, pat: t.pat, midi: t.midi || null,
             sus: t.type === "inst" && sus, settingsOnly: !!settingsOnly }))
         if (!r.ok) studio.toast(r.error)
-        else if (r.length >= 0 && r.length !== t.len) replace(uid, { len: r.length })
+        else {
+            if (r.warning) studio.toast(r.warning)
+            if (r.length >= 0 && r.length !== t.len) replace(uid, { len: r.length })
+        }
     }
     function rerenderAll(type) {
         studio.tracks.forEach(function (t) { if (isSynth(t) && (!type || t.type === type)) update(t.uid) })
@@ -248,7 +251,16 @@ QtObject {
         audition({ type: "inst", cfg: cfg, note: note, seconds: noteDur(d) })
     }
     function previewMidi(cfg, note, d) { audition({ type: "inst", cfg: cfg, note: note, seconds: noteDur(d) }) }
-    function previewDrum(cfg, i) { audition({ type: "drum", cfg: cfg, lane: i }) }
+    function previewDrum(cfg, i) { var t = active("drum"); audition({ type: "drum", cfg: cfg, lane: i, id: t ? t.id : -1 }) }
+    // Sampler de los pads: una ruta por carril ("" = sonido sintetizado); `paths` sin un carril lo deja como está
+    function setDrumSamples(paths, replaceAll) {
+        var t = active("drum")
+        if (!t) { studio.toast("Crea una pista de batería primero"); return false }
+        var cur = (t.cfg.smp || []).slice()
+        for (var i = 0; i < 8; i++) if (replaceAll || paths[i]) cur[i] = paths[i] || ""
+        setCfg("drum", "smp", cur)
+        return true
+    }
 
     // ---------------- Instrumentos y Piano roll ----------------
     function setCfg(type, key, value) {
@@ -299,6 +311,42 @@ QtObject {
         var r = studio.call("aiStatus")
         if (r.ok) { ai = r; generating = r.generating; downloading = r.downloading }
         else ai = { ok: false, error: r.error, engineOk: false, installed: "", packs: [], generations: [], styles: [], keys: [] }
+    }
+    function setHardwareProfile(name) {
+        var r = studio.call("hardwareSetProfile", name)
+        if (!r.ok) { studio.toast(r.error); return }
+        aiRefresh()
+        studio.toast("Perfil del equipo: " + r.profile.name)
+    }
+    // ---------------- Rehacer con IA una zona de una pista de audio (ACE-Step «repaint») ----------------
+    // La zona es el clip elegido (se acota con «Dividir»). El resultado es el archivo entero, igual fuera
+    // de la zona: la pista pasa a usarlo con los mismos clips, y «Deshacer» vuelve al archivo anterior.
+    signal sourceReplaced(string uid, string previous, var clips)
+    property string repaintUid: ""
+    function repaintClip(uid, clip, prompt) {
+        var t = trackOf(uid)
+        if (!t || !clip) { studio.toast("Elige un clip de una pista de audio"); return false }
+        if (generating) { studio.toast("Ya hay un trabajo de IA en marcha"); return false }
+        var r = studio.call("aiRepaint", t.id, JSON.stringify({ start: clip.offset, end: clip.offset + clip.length,
+                                                                prompt: prompt || "", bpm: studio.bpm, seed: -1 }))
+        if (!r.ok) { studio.toast(r.error); return false }
+        repaintUid = uid
+        generating = true; aiProgress = 0.01; aiMsg = "Rehaciendo " + clip.length.toFixed(1) + " s de " + t.name
+        studio.toast(aiMsg + " con la IA (en tu equipo)")
+        return true
+    }
+    function applyRepaint(ev) {
+        var uid = repaintUid; repaintUid = ""
+        var t = trackOf(uid)
+        if (!t || t.id !== ev.repaint.trackId) { studio.toast("La pista ya no está; el audio rehecho queda en " + ev.path); return }
+        var before = t.aclips || []
+        var r = studio.call("trackSetSource", t.id, ev.path)
+        if (!r.ok) { studio.toast(r.error); return }
+        replace(uid, { aclips: r.clips, peaks: r.track.peaks || [], len: r.track.length_seconds || t.len })
+        sourceReplaced(uid, r.previous, before)
+        studio.markDirty()
+        aiMsg = ev.message
+        studio.toast("Zona " + ev.repaint.start.toFixed(1) + "–" + ev.repaint.end.toFixed(1) + " s rehecha en " + t.name + " · Ctrl+Z vuelve al original")
     }
     function generate() {
         if (generating) return
@@ -450,7 +498,8 @@ QtObject {
             if (ev.phase === "progress") { generating = true; aiProgress = ev.progress; aiMsg = ev.message }
             else {
                 generating = false; aiProgress = 0
-                if (ev.ok) {
+                if (ev.ok && ev.repaint) applyRepaint(ev)
+                else if (ev.ok) {
                     aiMsg = ev.message
                     if (addGenerated(ev.path, ev.title)) studio.toast(ev.message + ": añadida a Pistas")
                 } else { aiMsg = ev.cancelled ? ev.message : ev.error; if (!ev.cancelled) studio.toast(ev.error) }

@@ -46,6 +46,7 @@ struct TrackSlot
     te::LevelMeasurer::Client meter;
     TrackInfo info;
     AfoSynthPlugin* synth = nullptr;         // solo en pistas de Instrumento/Batería
+    AfoSynthPlugin::Kit drumKit;             // golpes grabados de la batería (para escuchar un pad)
     te::Plugin::Ptr instrument;              // instrumento VST3 externo (sustituye al sintetizador)
     std::string instrumentId;
     AfoMeterPlugin* loud = nullptr;          // medidor de sonoridad tras el fader
@@ -86,6 +87,7 @@ struct AfoEngineBehaviour : public te::EngineBehaviour
 struct PreviewPlayer
 {
     juce::AudioFormatManager formats;
+    std::map<std::string, std::shared_ptr<const synth::Sample>> drumSamples;   // ruta|fecha → golpe leído
     juce::AudioTransportSource transport;
     juce::AudioSourcePlayer player;
     std::unique_ptr<juce::PositionableAudioSource> source;   // archivo, o nota sintetizada en memoria
@@ -373,7 +375,7 @@ bool Engine::previewPlay (const std::string& path, double startSeconds)
     return true;
 }
 
-bool Engine::auditionSynth (const SynthSettings& s, int midiNote, double seconds)
+bool Engine::auditionSynth (const SynthSettings& s, int midiNote, double seconds, int trackId)
 {
     requireMessageThread();
     auto& pv = impl->preview;
@@ -381,11 +383,15 @@ bool Engine::auditionSynth (const SynthSettings& s, int midiNote, double seconds
     if (auto* dev = impl->engine->getDeviceManager().deviceManager.getCurrentAudioDevice())
         sr = dev->getCurrentSampleRate();
     const auto p = toParams (s);
-    const int len = synth::hitLengthSamples (p, midiNote, seconds, sr);
+    const synth::Sample* sample = nullptr;
+    const int lane = midiNote - synth::firstDrumNote;
+    if (p.mode == 1 && trackId >= 0 && lane >= 0 && lane < synth::drumLanes)
+        sample = impl->slot (trackId).drumKit[(size_t) lane].get();
+    const int len = synth::hitLengthSamples (p, midiNote, seconds, sr, sample);
     if (len <= 0)
         return false;
     juce::AudioBuffer<float> buf (2, len);
-    synth::renderHit (p, midiNote, seconds, sr, buf.getWritePointer (0), len);
+    synth::renderHit (p, midiNote, seconds, sr, buf.getWritePointer (0), len, sample);
     buf.copyFrom (1, 0, buf, 0, 0, len);
     pv.transport.stop();
     pv.transport.setSource (nullptr);
@@ -499,6 +505,49 @@ TrackInfo Engine::addSynthTrack (const std::string& name, int mode)
     edit.getTransport().ensureContextAllocated();
     impl->attachMasterMeter();
     return info;
+}
+
+int Engine::setDrumSamples (int id, const std::vector<std::string>& paths)
+{
+    requireMessageThread();
+    auto& slot = impl->slot (id);
+    if (slot.synth == nullptr)
+        throw std::invalid_argument ("afo_audio: la pista no es de síntesis");
+    AfoSynthPlugin::Kit kit;
+    int loaded = 0;
+    for (size_t lane = 0; lane < paths.size() && lane < kit.size(); ++lane)
+    {
+        if (paths[lane].empty())
+            continue;
+        const juce::File f (juce::String::fromUTF8 (paths[lane].c_str()));
+        const auto key = paths[lane] + "|" + std::to_string (f.getLastModificationTime().toMilliseconds());
+        auto& cached = impl->preview.drumSamples[key];
+        if (cached == nullptr)
+        {
+            std::unique_ptr<juce::AudioFormatReader> reader (impl->preview.formats.createReaderFor (f));
+            if (reader == nullptr || reader->lengthInSamples <= 1)
+            {
+                impl->preview.drumSamples.erase (key);
+                throw std::runtime_error ("afo_audio: no se pudo leer el golpe " + paths[lane]);
+            }
+            const int n = (int) juce::jmin<juce::int64> (reader->lengthInSamples,
+                                                          (juce::int64) (synth::maxSampleSeconds * reader->sampleRate));
+            juce::AudioBuffer<float> buf ((int) juce::jmax (1u, reader->numChannels), n);
+            reader->read (&buf, 0, n, 0, true, true);
+            auto s = std::make_shared<synth::Sample>();
+            s->sampleRate = reader->sampleRate;
+            s->data.assign ((size_t) n, 0.0f);
+            for (int c = 0; c < buf.getNumChannels(); ++c)
+                juce::FloatVectorOperations::addWithMultiply (s->data.data(), buf.getReadPointer (c),
+                                                              1.0f / (float) buf.getNumChannels(), n);
+            cached = std::move (s);
+        }
+        kit[lane] = cached;
+        ++loaded;
+    }
+    slot.synth->setKit (kit);
+    slot.drumKit = kit;
+    return loaded;
 }
 
 void Engine::setSynthSettings (int id, const SynthSettings& s)

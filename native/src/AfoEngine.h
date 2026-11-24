@@ -259,13 +259,17 @@ public:
     // Pistas de Instrumento/Batería: sintetizador del motor que toca un clip MIDI
     TrackInfo addSynthTrack (const std::string& name, int mode);
     void setSynthSettings (int id, const SynthSettings&);
+    // Sampler de la batería: un WAV/AIFF/FLAC por carril ("" = el sonido sintetizado). Se pasa a mono
+    // y se corta a 10 s. Devuelve cuántos carriles quedan con golpe grabado; lanza si un archivo no se lee.
+    int setDrumSamples (int id, const std::vector<std::string>& paths);
     // (tiempo en negras, nota MIDI); batería: nota 36 + carril. Devuelve la duración del clip en segundos.
     double setSynthNotes (int id, const std::vector<std::pair<double, int>>& notes, double lengthBeats);
     // Notas con duración y velocidad propias (MIDI importado o compuesto por la IA):
     // (inicio en negras, duración en negras, nota 0..127, velocidad 1..127)
     double setSynthMidi (int id, const std::vector<std::tuple<double, double, int, int>>& notes, double lengthBeats);
     // Escucha de una nota o golpe suelto por el reproductor de escucha (no toca el transporte)
-    bool auditionSynth (const SynthSettings&, int midiNote, double seconds);
+    // trackId ≥ 0 en la batería: el pad suena con el golpe grabado de esa pista si lo tiene
+    bool auditionSynth (const SynthSettings&, int midiNote, double seconds, int trackId = -1);
 
     // Efectos nativos: trackId 0 = master (antes de la sección master). index -1 = al final de la cadena.
     static std::vector<EffectTypeInfo> effectCatalog();

@@ -191,9 +191,24 @@ class EngineHost:
         self.tracks[info["id"]] = info
         return info
 
+    def drum_samples(self, track_id: int, track: dict) -> list[str]:
+        """Sampler de la batería: `cfg.smp` = una ruta por carril ("" = sonido sintetizado). Solo se
+        recarga si cambió; un archivo que ya no existe vuelve al sonido sintetizado (y se dice)."""
+        want = [str(x or "") for x in ((track.get("cfg") or {}).get("smp") or [])][:8]
+        want += [""] * (8 - len(want))
+        ok = [p if p and Path(p).is_file() else "" for p in want]
+        if getattr(self, "_drum_samples", None) is None:
+            self._drum_samples = {}
+        if self._drum_samples.get(track_id) != ok:
+            self.engine.set_drum_samples(track_id, ok)
+            self._drum_samples[track_id] = ok
+        return [p for p, k in zip(want, ok) if p and not k]
+
     def update_synth(self, track_id: int, track: dict) -> float:
         """Parámetros y patrón; el clip MIDI se rehace entero. Devuelve su duración en segundos."""
         self.engine.set_synth_settings(track_id, **synth_settings(track))
+        if track["type"] == "drum":
+            self.drum_samples(track_id, track)
         if track.get("settingsOnly"):            # perillas: no hace falta rehacer el clip
             return -1.0
         if track.get("midi"):                    # MIDI importado o compuesto por la IA: notas con duración
@@ -204,7 +219,11 @@ class EngineHost:
     def audition(self, data: dict) -> bool:
         s = synth_settings(data)
         if data["type"] == "drum":
-            return self.engine.audition_synth(FIRST_DRUM_NOTE + int(data["lane"]), 0.0, **s)
+            tid = int(data.get("id", -1))
+            if tid >= 0 and tid in self.tracks:
+                self.drum_samples(tid, data)
+            return self.engine.audition_synth(FIRST_DRUM_NOTE + int(data["lane"]), 0.0, **s,
+                                              track_id=tid if tid in self.tracks else -1)
         return self.engine.audition_synth(int(data["note"]), float(data.get("seconds", 0.4)), **s)
 
     # --- dispositivo de audio --------------------------------------------------

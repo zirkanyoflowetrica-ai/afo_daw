@@ -27,7 +27,7 @@ import urllib.request
 from datetime import datetime
 from pathlib import Path
 
-from . import paths
+from . import hardware as H, paths
 
 log = logging.getLogger("allforone.ia")
 
@@ -130,38 +130,9 @@ def output_dir() -> Path:
 
 
 def gpu_info() -> dict:
-    """Nombre y memoria de la tarjeta gráfica (registro de Windows; el valor de 64 bits es el real
-    en tarjetas de más de 4 GB). Sin dato devuelve vram_gb = 0."""
-    best = {"name": "", "vram_gb": 0.0}
-    if os.name != "nt":
-        return best
-    try:
-        import winreg
-        base = r"SYSTEM\CurrentControlSet\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}"
-        with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, base) as k:
-            for i in range(32):
-                try:
-                    sub = winreg.EnumKey(k, i)
-                except OSError:
-                    break
-                if not sub.isdigit():
-                    continue
-                try:
-                    with winreg.OpenKey(k, sub) as s:
-                        name = str(winreg.QueryValueEx(s, "DriverDesc")[0])
-                        try:
-                            mem = int(winreg.QueryValueEx(s, "HardwareInformation.qwMemorySize")[0])
-                        except OSError:
-                            raw = winreg.QueryValueEx(s, "HardwareInformation.MemorySize")[0]
-                            mem = int.from_bytes(raw, "little") if isinstance(raw, bytes) else int(raw)
-                except OSError:
-                    continue
-                gb = round(mem / 2 ** 30, 1)
-                if gb > best["vram_gb"]:
-                    best = {"name": name, "vram_gb": gb}
-    except Exception:
-        log.exception("No se pudo leer la tarjeta gráfica")
-    return best
+    """Nombre y memoria de la tarjeta gráfica (hardware.py). Sin dato devuelve vram_gb = 0."""
+    hw = H.hardware()
+    return {"name": hw["gpu"], "vram_gb": hw["vram_gb"]}
 
 
 def pack_files(pack: str) -> list[str]:
@@ -193,8 +164,28 @@ def installed_pack(mdir: Path | None = None) -> str | None:
     return None
 
 
-def recommended_pack(vram_gb: float) -> str:
-    return "calidad" if vram_gb >= 11.5 or vram_gb == 0 else "ligero"
+def recommended_pack(vram_gb: float | None = None) -> str:
+    """El compositor del perfil del equipo (hardware.py): 4B solo en el perfil alto. Con `vram_gb`,
+    el de una tarjeta de esa memoria con RAM holgada (para las pruebas)."""
+    if vram_gb is None:
+        return H.profile()["lm"]
+    return H.PROFILES[H.auto_profile({"vram_gb": vram_gb, "ram_gb": 64})]["lm"]
+
+
+def pack_for_use(mdir: Path | None = None) -> str | None:
+    """El compositor que se usa: el del perfil si está instalado; si no, el otro instalado (el 4B
+    solo si la tarjeta tiene memoria para él). None si no hay ninguno que sirva."""
+    want = recommended_pack()
+    if pack_status(want, mdir)["installed"]:
+        return want
+    other = "ligero" if want == "calidad" else "calidad"
+    if pack_status(other, mdir)["installed"] and (other == "ligero" or H.hardware()["vram_gb"] >= H.NEED_GB["lm:calidad"]):
+        return other
+    return None
+
+
+def max_seconds() -> int:
+    return int(H.profile()["max_seconds"])
 
 
 # ---------------- petición ---------------------------------------------------------------------
@@ -210,7 +201,7 @@ def build_part_request(opts: dict) -> dict:
         "task_type": "lego", "track": PARTS[part],
         "caption": ", ".join(x for x in (tags, desc or part.lower()) if x),
         "lyrics": "[Instrumental]",
-        "duration": int(max(5, min(240, float(opts.get("duration", 30))))),
+        "duration": int(max(5, min(max_seconds(), float(opts.get("duration", 30))))),
         "seed": int(opts.get("seed", -1)), "guidance_scale": 7.0,
         "output_format": "wav16", "synth_model": BASE_MODEL,
     }
@@ -222,6 +213,35 @@ def build_part_request(opts: dict) -> dict:
         req["keyscale"] = key
     return req
 
+
+
+def build_repaint_request(opts: dict, src_seconds: float) -> dict:
+    """Petición «repaint» de ace-synth: rehace la zona [start, end) (segundos del archivo) y deja el
+    resto igual. Va con el sintetizador turbo; sin descripción, pide seguir el estilo de la canción."""
+    start, end = float(opts.get("start", 0)), float(opts.get("end", 0))
+    if not (0 <= start < end <= src_seconds + 0.05):
+        raise ValueError(f"La zona a rehacer ({start:.2f}–{end:.2f} s) está fuera del audio ({src_seconds:.2f} s)")
+    if end - start < 1.0:
+        raise ValueError("Elige al menos 1 s para rehacer")
+    if end - start > max_seconds():
+        raise ValueError(f"Con el perfil de tu equipo se rehacen como mucho {max_seconds()} s seguidos")
+    tags = STYLES.get(str(opts.get("style") or "Libre"), "")
+    desc = str(opts.get("prompt") or "").strip()
+    req = {
+        "task_type": "repaint",
+        "caption": ", ".join(x for x in (tags, desc) if x) or "same instruments and style as the rest of the song",
+        "lyrics": "[Instrumental]",
+        "repainting_start": round(start, 3), "repainting_end": round(min(end, src_seconds), 3),
+        "duration": int(max(1, round(src_seconds))),        # ace-synth usa el largo del audio; esto es para el avance
+        "seed": int(opts.get("seed", -1)), "output_format": "wav16", "synth_model": SYNTH_MODEL,
+    }
+    bpm = int(float(opts.get("bpm") or 0))
+    if bpm > 0:
+        req["bpm"] = max(40, min(220, bpm))
+    key = str(opts.get("key") or "Auto")
+    if key != "Auto":
+        req["keyscale"] = key
+    return req
 
 
 def build_request(opts: dict, pack: str) -> dict:
@@ -237,7 +257,7 @@ def build_request(opts: dict, pack: str) -> dict:
     req = {
         "caption": caption,
         "lyrics": lyrics,                       # "" = el compositor escribe la letra
-        "duration": int(max(10, min(240, float(opts.get("duration", 60))))),
+        "duration": int(max(10, min(max_seconds(), float(opts.get("duration", 60))))),
         "timesignature": "4",
         "vocal_language": "unknown" if instrumental else str(opts.get("language") or "es"),
         "seed": int(opts.get("seed", -1)),
@@ -326,6 +346,7 @@ class AiMusic:
         self._gen_cancel = threading.Event()
         self._proc: subprocess.Popen | None = None
         self._gpu: dict | None = None
+        self._prog = 0.0                         # último avance enviado (el aviso de descanso no lo hace retroceder)
         self.last_log: list[str] = []
 
     # --- estado ---
@@ -346,7 +367,8 @@ class AiMusic:
         eng, mdir, g = engine_dir(), models_dir(), self.gpu()
         return {
             "engine": str(eng) if eng else "", "engineOk": eng is not None, "models": str(mdir),
-            "gpu": g, "recommended": recommended_pack(g["vram_gb"]), "installed": installed_pack(mdir) or "",
+            "gpu": g, "recommended": recommended_pack(), "installed": installed_pack(mdir) or "",
+            "using": pack_for_use(mdir) or "", "equipo": H.status(), "maxSeconds": max_seconds(),
             "packs": [pack_status(p, mdir) for p in PACKS], "downloading": self.downloading,
             "generating": self.generating, "styles": list(STYLES), "keys": KEYS, "parts": list(PARTS),
             "partsReady": pack_status("partes", mdir)["installed"],
@@ -435,7 +457,7 @@ class AiMusic:
         eng = engine_dir()
         if eng is None:
             raise RuntimeError("Falta el motor de IA (motores/acestep junto a AllForOne.exe).")
-        pack = installed_pack()
+        pack = pack_for_use()
         if pack is None:
             raise RuntimeError("Faltan los modelos: instálalos en «Modelos de IA» de este módulo.")
         req = build_request(opts, pack)
@@ -472,6 +494,30 @@ class AiMusic:
         self._gen.start()
         return {"name": name}
 
+    def repaint(self, opts: dict, src: Path, seconds: float) -> dict:
+        """Rehace una zona del audio `src` (archivo de una pista). El resultado (el archivo entero,
+        igual fuera de la zona) llega por `aiEvent` con `repaint` = {trackId, start, end, source}."""
+        if self.generating:
+            raise RuntimeError("Ya se está generando una pista.")
+        eng = engine_dir()
+        if eng is None:
+            raise RuntimeError("Falta el motor de IA (motores/acestep junto a AllForOne.exe).")
+        if not (models_dir() / SYNTH_MODEL).is_file():
+            raise RuntimeError("Falta el sintetizador: instala los modelos en «Modelos de IA».")
+        req = build_repaint_request(opts, seconds)
+        stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        name = f"{stamp}_rehecho_{slug(Path(src).stem, 24)}"
+        meta = {"title": f"{Path(src).stem} (rehecho {req['repainting_start']:.1f}–{req['repainting_end']:.1f} s)",
+                "style": opts.get("style") or "Libre", "prompt": str(opts.get("prompt") or ""), "created": stamp,
+                "request": req, "source": str(src),
+                "repaint": {"trackId": int(opts.get("trackId", -1)), "start": req["repainting_start"],
+                            "end": req["repainting_end"], "source": str(src)}}
+        self._gen_cancel.clear()
+        self._gen = threading.Thread(target=self._part, args=(eng, req, Path(src), name, meta), name="ia-rehacer",
+                                     daemon=True)
+        self._gen.start()
+        return {"name": name}
+
     def _part(self, eng: Path, req: dict, src: Path, name: str, meta: dict) -> None:
         work = output_dir() / f".trabajo_{name}"
         t0 = time.monotonic()
@@ -479,6 +525,7 @@ class AiMusic:
             work.mkdir(parents=True, exist_ok=True)
             (work / "req.json").write_text(json.dumps(req, ensure_ascii=False, indent=1), encoding="utf-8")
             self.last_log = []
+            self._prog = 0.05
             self.emit({"type": "aiGenerate", "phase": "progress", "progress": 0.05,
                        "message": "Escuchando el proyecto"})
             self._run(eng / ENGINE_EXES[1], ["--models", str(models_dir()), "--request", "req.json",
@@ -492,7 +539,7 @@ class AiMusic:
             out.with_suffix(".json").write_text(json.dumps(meta, ensure_ascii=False, indent=1), encoding="utf-8")
             _rmtree(work)
             self.emit({"type": "aiGenerate", "phase": "done", "ok": True, "progress": 1.0, "path": str(out),
-                       "title": meta["title"], "meta": meta, "part": meta["part"],
+                       "title": meta["title"], "meta": meta, "part": meta.get("part", ""), "repaint": meta.get("repaint"),
                        "message": f"«{meta['title']}» lista en {meta['seconds']:.0f} s"})
         except _Cancelled:
             _rmtree(work)
@@ -513,8 +560,13 @@ class AiMusic:
         self.cancel()
         self.cancel_download()
 
-    def _run(self, exe: Path, args: list[str], stage: str, duration: float, cwd: Path) -> None:
-        cmd = [str(exe), *args]
+    def _run(self, exe: Path, args: list[str], stage: str, duration: float, cwd: Path, job: str = "synth") -> None:
+        H.GUARD.before(job, self._gen_cancel,
+                       lambda m: self.emit({"type": "aiGenerate", "phase": "progress", "progress": self._prog, "message": m}))
+        if self._gen_cancel.is_set():
+            raise _Cancelled()
+        cmd = [str(exe), *args, *H.engine_args(stage)]
+        t0 = time.monotonic()
         log.info("IA: %s", " ".join(cmd))
         self._proc = subprocess.Popen(cmd, cwd=str(cwd), stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                                       stdin=subprocess.DEVNULL, creationflags=_NO_WINDOW,
@@ -526,9 +578,11 @@ class AiMusic:
                 self.last_log = (self.last_log + [line])[-40:]
                 pr = progress_of(line, stage, duration)
                 if pr:
-                    self.emit({"type": "aiGenerate", "phase": "progress", "progress": pr[0], "message": pr[1]})
+                    self._prog = max(self._prog, pr[0])
+                    self.emit({"type": "aiGenerate", "phase": "progress", "progress": self._prog, "message": pr[1]})
         code = self._proc.wait()
         self._proc = None
+        H.GUARD.after(time.monotonic() - t0)
         if self._gen_cancel.is_set():
             raise _Cancelled()
         if code != 0:
@@ -542,9 +596,11 @@ class AiMusic:
             work.mkdir(parents=True, exist_ok=True)
             (work / "req.json").write_text(json.dumps(req, ensure_ascii=False, indent=1), encoding="utf-8")
             self.last_log = []
+            self._prog = 0.02
             self.emit({"type": "aiGenerate", "phase": "progress", "progress": 0.02, "message": "Cargando el compositor"})
             mdir = str(models_dir())
-            self._run(eng / ENGINE_EXES[0], ["--models", mdir, "--request", "req.json"], "lm", req["duration"], work)
+            self._run(eng / ENGINE_EXES[0], ["--models", mdir, "--request", "req.json"], "lm", req["duration"], work,
+                      "lm:" + meta["pack"])
             if not (work / "req0.json").is_file():
                 raise RuntimeError("El compositor no escribió su resultado.")
             self._run(eng / ENGINE_EXES[1], ["--models", mdir, "--request", "req0.json"], "synth", req["duration"], work)

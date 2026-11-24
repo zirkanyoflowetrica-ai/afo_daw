@@ -138,7 +138,8 @@ class _Cancelled(Exception):
 def threads_for(seconds: float) -> int:
     """Hilos para un audio de `seconds`: uno por cada 5 s, de 1 a 8. Medido con demucs.cpp: 10,7 s con
     8 hilos se cae y 16 s con 3 hilos tarda 56 s (con 8, 85–99 s)."""
-    return max(1, min(THREADS, int(seconds // SECONDS_PER_THREAD)))
+    from . import hardware
+    return max(1, min(THREADS, hardware.profile()["demucs_threads"], int(seconds // SECONDS_PER_THREAD)))
 
 
 def separate(exe: Path, x: np.ndarray, work: Path, cancel: threading.Event, progress, hold=None,

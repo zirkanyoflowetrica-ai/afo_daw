@@ -13,6 +13,8 @@
 #include <array>
 #include <atomic>
 #include <cmath>
+#include <memory>
+#include <vector>
 
 namespace afo
 {
@@ -67,7 +69,8 @@ public:
                 if (m.isNoteOn())
                 {
                     auto& v = freeVoice();
-                    if (p.mode == 1)  v.startDrum (p, m.getNoteNumber() - synth::firstDrumNote, sampleRate, at);
+                    if (p.mode == 1)  v.startDrum (p, m.getNoteNumber() - synth::firstDrumNote, sampleRate, at,
+                                                   laneSample (m.getNoteNumber() - synth::firstDrumNote));
                     else if (held)    v.startHeldNote (p, m.getNoteNumber(), (float) m.getVelocity(), sampleRate, at);
                     else              v.startNote (p, m.getNoteNumber(), synth::noteSeconds (p), sampleRate, at);
                     if (p.mode == 1 && held)
@@ -111,7 +114,27 @@ public:
     // true: el clip trae duraciones y velocidades propias (setSynthMidi); false: rejilla de 16 pasos
     std::atomic<bool> heldNotes { false };
 
+    // Sampler de la batería: un golpe grabado por carril (nullptr = el sonido sintetizado).
+    // Hilo de mensajes: setKit guarda el juego nuevo y lo publica con un atómico. Los juegos
+    // anteriores se conservan hasta destruir el plugin (una voz puede estar leyendo uno), así el
+    // hilo de audio nunca libera memoria.
+    using Kit = std::array<std::shared_ptr<const synth::Sample>, synth::drumLanes>;
+    void setKit (const Kit& k)
+    {
+        auto owned = std::make_unique<Kit> (k);
+        kit.store (owned.get());
+        kits.push_back (std::move (owned));
+    }
+    const synth::Sample* laneSample (int lane) const noexcept
+    {
+        const auto* k = kit.load();
+        return (k != nullptr && lane >= 0 && lane < synth::drumLanes) ? (*k)[(size_t) lane].get() : nullptr;
+    }
+
 private:
+    std::atomic<const Kit*> kit { nullptr };
+    std::vector<std::unique_ptr<Kit>> kits;
+
     synth::Voice& freeVoice()
     {
         synth::Voice* oldest = &voices[0];

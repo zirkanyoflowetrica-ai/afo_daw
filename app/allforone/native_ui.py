@@ -161,6 +161,9 @@ def _native_daw_checks(rep, app, host, window, bridge, track_id) -> None:
     st = json.loads(bridge.stemsStatus())
     rep.check("Dividir en pistas: el estado del separador Demucs se lee sin fallar", st.get("ok") is True,
               f"motor {'sí' if st.get('engineOk') else 'no'} · modelo {'sí' if st.get('modelOk') else 'no'}")
+    hw = json.loads(bridge.hardwareStatus())
+    rep.check("Perfil del equipo: gráfica, RAM y perfil de IA detectados", hw.get("ok") is True and hw["profile"]["id"] in ("alto", "medio", "bajo", "cpu"),
+              f"{hw.get('hardware')} → {hw.get('profile', {}).get('name')}")
     lb = json.loads(bridge.labStatus())
     rep.check("Instrumental Lab: el estado del laboratorio se lee sin fallar", lb.get("ok") is True and len(lb.get("families", [])) >= 9,
               f"compositor {'sí' if lb.get('textOk') else 'no'} · modelo base {'sí' if lb.get('legoOk') else 'no'} · Demucs {'sí' if lb.get('demucsOk') else 'no'}")
@@ -235,6 +238,63 @@ def _native_daw_checks(rep, app, host, window, bridge, track_id) -> None:
         low = [(what, round(r, 2)) for what, fg, bg in lay("contrast") if (r := contrast_ratio(fg, bg)) < 4.5]
         rep.check(f"contraste del tema {name}: todo el texto ≥ 4,5:1 (WCAG AA)", not low, low)
     lay("theme", "AllForOne")
+
+
+def _native_lab_checks(rep, app, host, window, bridge) -> None:
+    """Instrumental Lab desde la interfaz (state/Lab.qml): sesión, preescucha con pistas borrador,
+    cambiar de variante en la misma pista y enviar al proyecto. Variantes de audio sintético (sin IA)."""
+    import numpy as np
+    from PySide6.QtCore import QMetaObject, Q_ARG, Q_RETURN_ARG
+
+    from . import lab as L
+
+    lab = window.property("lab")
+    rep.check("Instrumental Lab: estado de la vista cargado (state/Lab.qml)", lab is not None)
+    if lab is None:
+        return
+
+    def inv(fn, *args):
+        v = QMetaObject.invokeMethod(lab, fn, Q_RETURN_ARG("QVariant"), *[Q_ARG("QVariant", a) for a in args])
+        app.processEvents()
+        return v.toVariant() if hasattr(v, "toVariant") else v
+
+    def tracks():
+        v = QMetaObject.invokeMethod(window, "mixerSnapshot", Q_RETURN_ARG("QVariant"))
+        return (v.toVariant() if hasattr(v, "toVariant") else v)["tracks"]
+
+    bpm = int(window.property("bpm") or 96)
+    inv("create", {"style": "House", "bpm": bpm, "bars": 4, "families": ["Batería", "Bajo"], "name": "Autoprueba"})
+    st = bridge.lab.public()
+    if st is None:
+        rep.check("Instrumental Lab: sesión creada desde la interfaz", False)
+        return
+    n = L.n_samples(st["context"])
+    t = np.arange(n) / L.SR
+    beat = 60.0 / bpm
+    kick = (np.sin(2 * np.pi * 55 * t) * np.exp(-((t % beat) * 18))).astype("float32")
+    hat = (np.random.default_rng(1).standard_normal(n) * np.exp(-((t % (beat / 2)) * 60)) * 0.2).astype("float32")
+    bass = (0.3 * np.sin(2 * np.pi * 82.4 * t)).astype("float32")
+    bridge.lab._add_variant("Batería", np.stack([kick, kick], 1) * 0.5, "autoprueba", 0, None)
+    v2 = bridge.lab._add_variant("Batería", np.stack([hat, hat], 1), "autoprueba", 0, None)["id"]
+    bridge.lab._add_variant("Bajo", np.stack([bass, bass], 1), "autoprueba", 0, None)
+    before = len(tracks())
+    inv("preview")
+    drafts = [x for x in tracks() if x["name"].endswith("Lab (borrador)")]
+    rep.check("Instrumental Lab: preescuchar crea una pista borrador por familia", len(drafts) == 2 and len(tracks()) == before + 2,
+              [x["name"] for x in drafts])
+    drum = next((x for x in drafts if x["name"].startswith("Batería")), None)
+    inv("choose", "Batería", v2)
+    same = next((x for x in tracks() if drum and x["id"] == drum["id"]), None)
+    rep.check("Instrumental Lab: elegir otra variante cambia el audio de la misma pista",
+              same is not None and len(tracks()) == before + 2 and host.tracks[same["id"]]["originalPath"].endswith(f"_{v2}.wav"),
+              same and host.tracks[same["id"]]["originalPath"])
+    inv("send")
+    names = [x["name"] for x in tracks()]
+    rep.check("Instrumental Lab: enviar al proyecto quita la marca de borrador",
+              "Batería (Lab)" in names and "Bajo (Lab)" in names and not any("borrador" in x for x in names), names[-2:])
+    for i in range(len(tracks()) - 1, before - 1, -1):          # deja el proyecto como estaba
+        QMetaObject.invokeMethod(window, "removeTrackAt", Q_ARG("QVariant", i))
+    app.processEvents()
 
 
 def _native_project_checks(rep, app, host, window) -> None:
@@ -331,6 +391,7 @@ def run_native_selftest(app, host, report_path: str | None, screenshot_path: str
 
     _native_fx_checks(rep, app, host, window, bridge, tone["track"]["id"])
     _native_daw_checks(rep, app, host, window, bridge, tone["track"]["id"])
+    _native_lab_checks(rep, app, host, window, bridge)
 
     dev = host.engine.device_info()
     if dev.get("open"):

@@ -29,7 +29,7 @@ def test_peticion_desde_lo_que_elige_el_usuario():
         ai_music.build_request({"prompt": " ", "style": "Libre"}, "calidad")
     # Límites: duración 10..240 s, tempo 40..220
     r = ai_music.build_request({"prompt": "x", "duration": 9999, "bpm": 999}, "calidad")
-    assert r["duration"] == 240 and r["bpm"] == 220
+    assert r["duration"] == ai_music.max_seconds() and r["bpm"] == 220
 
 
 def test_avance_desde_el_registro_del_motor():

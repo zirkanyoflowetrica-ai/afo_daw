@@ -89,9 +89,13 @@ Column {
         var e = fromStack[fromStack.length - 1], t = seq.trackOf(e.uid)
         if (!t) return null
         var back = { uid: e.uid, clips: t.aclips || [] }
-        var r = studio.call("clipEdit", t.id, JSON.stringify({ op: "set", clips: e.clips }))
+        if (e.source) back.source = e.now                  // deshacer / rehacer un «Rehacer con IA»
+        var op = { op: "set", clips: e.clips }
+        if (e.source) op.source = e.source
+        var r = studio.call("clipEdit", t.id, JSON.stringify(op))
         if (!r.ok) { studio.toast(r.error); return null }
-        seq.replace(e.uid, { aclips: r.clips })
+        if (e.source) { back.now = r.source; back.source = e.now; seq.replace(e.uid, { aclips: r.clips, peaks: r.peaks || [] }) }
+        else seq.replace(e.uid, { aclips: r.clips })
         clipSel = 0
         return back
     }
@@ -124,6 +128,15 @@ Column {
     function seekTo(s) { if (studio && studio.engineOk) studio.call("seek", Math.max(0, s)) }
 
     Shortcut { sequence: "S"; enabled: root.visible && !!root.clipUid; onActivated: root.splitAt(root.clipUid, root.clipSel, root.posSec) }
+    // «Rehacer con IA»: la pista cambió de archivo; Deshacer vuelve al anterior con sus clips
+    Connections {
+        target: root.seq
+        function onSourceReplaced(uid, previous, clips) {
+            var t = root.seq.trackOf(uid)
+            root.undoStack = root.undoStack.concat([{ uid: uid, clips: clips, source: previous, now: "" }]).slice(-60)
+            root.redoStack = []
+        }
+    }
     Shortcut { sequences: [StandardKey.Delete, "Backspace"]; enabled: root.visible && !!root.selInfo; onActivated: root.removeSel() }
     Shortcut { sequence: "Ctrl+D"; enabled: root.visible && !!root.selInfo; onActivated: root.dupSel() }
     Shortcut { sequences: [StandardKey.Undo]; enabled: root.visible && root.undoStack.length > 0; onActivated: root.undo() }
@@ -159,6 +172,9 @@ Column {
                  onClicked: root.splitAt(root.clipUid, root.clipSel, root.posSec) }
             Tb { text: "Duplicar"; active: !!root.selInfo; tip: "Copia el clip detrás del último de la pista (Ctrl+D)"; onClicked: root.dupSel() }
             Tb { text: "Borrar"; active: !!root.selInfo; tip: "Quita el clip (Supr)"; onClicked: root.removeSel() }
+            Tb { text: root.seq.repaintUid ? "Rehaciendo…" : "Rehacer con IA"; active: !!root.selInfo && !root.seq.generating
+                 tip: "La IA (en tu equipo) vuelve a tocar el trozo del clip elegido con el mismo estilo; el resto de la pista no cambia. Acota el trozo con «Dividir». Ctrl+Z vuelve al original"
+                 onClicked: root.seq.repaintClip(root.clipUid, root.selInfo, "") }
             Tb { text: "Normalizar"; active: !!root.selInfo; tip: "Sube o baja el clip para que su pico quede en −1 dBFS"
                  onClicked: root.edit(root.clipUid, { op: "normalize", clip: root.clipSel, target: -1 }) }
             Sep {}

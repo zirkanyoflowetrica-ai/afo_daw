@@ -102,7 +102,7 @@ void Voice::noteOff (int atSample) noexcept
     offAt = delay > 0 ? std::max (1, atSample - delay) : t + std::max (0, atSample);
 }
 
-void Voice::startDrum (const Params& p, int drumLane, double sampleRate, int delaySamples)
+void Voice::startDrum (const Params& p, int drumLane, double sampleRate, int delaySamples, const Sample* s)
 {
     *this = Voice();
     active = true; delay = std::max (0, delaySamples); sr = sampleRate; mode = 1;
@@ -127,6 +127,12 @@ void Voice::startDrum (const Params& p, int drumLane, double sampleRate, int del
         filter.set (lane == 4 ? Biquad::Type::bandpass : Biquad::Type::highpass, fq[lane] * k, sr);
         useFilter = true;
     }
+    if (s != nullptr && s->data.size() > 1 && s->sampleRate > 0)    // sampler: el golpe grabado, tal cual
+    {
+        sample = s; useFilter = false; g0 = v;
+        sstep = s->sampleRate / sr * k;
+        length = (int64_t) ((double) (s->data.size() - 1) / sstep);
+    }
 }
 
 float Voice::next() noexcept
@@ -134,6 +140,14 @@ float Voice::next() noexcept
     if (! active) return 0.0f;
     if (delay > 0) { --delay; return 0.0f; }
     if (t >= length) { active = false; return 0.0f; }
+    if (sample != nullptr)
+    {
+        const auto i = (size_t) spos;
+        const float fr = (float) (spos - (double) i), a = sample->data[i], b = sample->data[i + 1];
+        spos += sstep;
+        ++t;
+        return (float) g0 * (a + (b - a) * fr);
+    }
     const double sec = (double) t / sr;
     float x;
     if (mode == 0)
@@ -175,19 +189,20 @@ float Voice::next() noexcept
     return x * (float) envelope (g0, decay, sec);
 }
 
-int hitLengthSamples (const Params& p, int midiNote, double seconds, double sampleRate)
+int hitLengthSamples (const Params& p, int midiNote, double seconds, double sampleRate, const Sample* s)
 {
     Voice v;
     if (p.mode == 0) v.startNote (p, midiNote, seconds, sampleRate, 0);
-    else v.startDrum (p, midiNote - firstDrumNote, sampleRate, 0);
+    else v.startDrum (p, midiNote - firstDrumNote, sampleRate, 0, s);
     return (int) v.length;
 }
 
-void renderHit (const Params& p, int midiNote, double seconds, double sampleRate, float* out, int numSamples)
+void renderHit (const Params& p, int midiNote, double seconds, double sampleRate, float* out, int numSamples,
+                const Sample* s)
 {
     Voice v;
     if (p.mode == 0) v.startNote (p, midiNote, seconds, sampleRate, 0);
-    else v.startDrum (p, midiNote - firstDrumNote, sampleRate, 0);
+    else v.startDrum (p, midiNote - firstDrumNote, sampleRate, 0, s);
     for (int i = 0; i < numSamples; ++i)
         out[i] = v.next();
 }

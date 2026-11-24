@@ -108,6 +108,7 @@ class Bridge(QObject):
         self.stems = StemSeparator(self._mixer_events.put)
         from .lab import Lab
         self.lab = Lab(self._mixer_events.put, lambda: self.ai.generating or self.stems.busy)
+        self._lab_tracks: dict[str, dict] = {}     # familia → pista borrador del laboratorio {tid, vid, folder}
         app = QCoreApplication.instance()
         if app is not None:
             app.aboutToQuit.connect(self.ai.shutdown)   # no dejar procesos del motor de IA huérfanos
@@ -814,6 +815,53 @@ class Bridge(QObject):
 
     @Slot(int, str, result=str)
     @_safe
+    def aiRepaint(self, track_id: int, payload: str) -> str:
+        """Rehace con IA una zona de una pista de audio: {start, end} en segundos DEL ARCHIVO (la
+        interfaz los saca del clip elegido), prompt y estilo opcionales. Llega por `aiEvent`."""
+        if (g := self._guard()):
+            return g
+        t = self.host.tracks.get(int(track_id)) or {}
+        src = t.get("originalPath") or t.get("source_path") or ""
+        if not src or not Path(src).is_file():
+            return _err("Elige un clip de una pista de audio")
+        if self.lab.busy or self.stems.busy:
+            return _err("Otro trabajo de IA está en marcha: espera a que termine.")
+        opts = {**json.loads(payload or "{}"), "trackId": int(track_id)}
+        try:
+            import soundfile as sf
+            return _ok(**self.ai.repaint(opts, Path(src), float(sf.info(src).duration)))
+        except Exception as exc:
+            return _err(str(exc))
+
+    def _set_source(self, track_id: int, path: str) -> dict:
+        """Cambia el archivo de una pista conservando sus clips (posición, recorte, ganancia, fundidos)."""
+        eng = self.host.engine
+        clips = eng.clips(track_id)
+        info = dict(eng.set_track_audio(track_id, path, 0.0))
+        eng.set_clips(track_id, clips)
+        info = next((x for x in eng.tracks() if x["id"] == track_id), info)
+        info = dict(info)
+        info["peaks"] = [round(v, 4) for v in eng.track_peaks(track_id, 600)]
+        self.host.tracks[track_id] = {**self.host.tracks.get(track_id, {}), **info, "originalPath": path}
+        return info
+
+    @Slot(int, str, result=str)
+    @_safe
+    def trackSetSource(self, track_id: int, path: str) -> str:
+        """Pone otro archivo en la pista sin tocar sus clips (rehacer con IA y su deshacer)."""
+        if (g := self._guard()):
+            return g
+        if not Path(path).is_file():
+            return _err(f"No se encuentra {Path(path).name}")
+        prev = (self.host.tracks.get(int(track_id)) or {}).get("originalPath", "")
+        try:
+            info = self._set_source(int(track_id), path)
+        except Exception as exc:
+            return _err(f"No se pudo cambiar el audio de la pista: {exc}")
+        return _ok(track=info, clips=self.host.engine.clips(int(track_id)), previous=prev)
+
+    @Slot(int, str, result=str)
+    @_safe
     def clipEdit(self, track_id: int, op_json: str) -> str:
         """Una edición de clip: range (mover/recortar), split, dup, remove, gain, fades, normalize o set
         (sustituir todos: deshacer y abrir proyecto). Devuelve los clips de la pista y su duración."""
@@ -842,12 +890,21 @@ class Bridge(QObject):
                     return _err("El clip está en silencio: no se puede normalizar")
                 eng.set_clip_gain(cid, float(op.get("target", -1.0)) - peak)
             elif kind == "set":
+                src = op.get("source") or ""           # deshacer un «Rehacer con IA»: vuelve el archivo anterior
+                if src and src != (self.host.tracks.get(int(track_id)) or {}).get("originalPath"):
+                    if not Path(src).is_file():
+                        return _err(f"No se encuentra {Path(src).name}")
+                    self._set_source(int(track_id), src)
                 eng.set_clips(int(track_id), op["clips"])
             else:
                 return _err(f"Edición desconocida: {kind}")
             info = next((t for t in eng.tracks() if t["id"] == int(track_id)), {})
+            extra = {}
+            if kind == "set" and op.get("source"):
+                extra = {"peaks": self.host.tracks[int(track_id)].get("peaks", []),
+                         "source": self.host.tracks[int(track_id)].get("originalPath", "")}
             return _ok(clips=eng.clips(int(track_id)), start=info.get("start_seconds", 0.0),
-                       length=info.get("length_seconds", 0.0))
+                       length=info.get("length_seconds", 0.0), **extra)
         except Exception as exc:
             return _err(f"No se pudo editar el clip: {exc}")
 
@@ -1012,7 +1069,11 @@ class Bridge(QObject):
                 want = cfg.get("plugin") or ""
                 if self.host.engine.track_instrument(int(track_id)) != want:
                     self.host.engine.set_track_instrument(int(track_id), want, cfg.get("pluginState") or "")
-            return _ok(length=self.host.update_synth(int(track_id), data))
+            length = self.host.update_synth(int(track_id), data)
+            missing = self.host.drum_samples(int(track_id), data) if data.get("type") == "drum" else []
+            if missing:
+                return _ok(length=length, warning=f"No se encuentra {Path(missing[0]).name}: ese pad vuelve al sonido sintetizado")
+            return _ok(length=length)
         except Exception as exc:
             return _err(f"Sintetizador: {exc}")
 
@@ -1023,6 +1084,23 @@ class Bridge(QObject):
         """Motor, modelos instalados, tarjeta gráfica y generaciones guardadas."""
         from .ai_music import list_generations
         return _ok(**self.ai.status(), generations=list_generations())
+
+    @Slot(result=str)
+    @_safe
+    def hardwareStatus(self) -> str:
+        """Equipo detectado (gráfica, RAM, hilos) y perfil de IA en uso (hardware.py)."""
+        from . import hardware
+        return _ok(**hardware.status())
+
+    @Slot(str, result=str)
+    @_safe
+    def hardwareSetProfile(self, name: str) -> str:
+        """Fija el perfil («auto», «alto», «medio», «bajo», «cpu»); se guarda en equipo.json."""
+        from . import hardware
+        if self.ai.generating or self.lab.busy or self.stems.busy:
+            return _err("Espera a que termine el trabajo de IA para cambiar el perfil")
+        hardware.set_override(name)
+        return _ok(**hardware.status())
 
     @Slot(str, result=str)
     @_safe
@@ -1212,6 +1290,92 @@ class Bridge(QObject):
     @_safe
     def labRemove(self, family: str, vid: str) -> str:
         return self._lab(self.lab.remove, family, vid)
+
+    # Preescucha con pistas reales (C9): una pista «Lab (borrador)» por familia con su variante elegida,
+    # desde el compás 1. Cambiar de variante cambia el audio de la misma pista (no se crea otra).
+    def _drafts(self) -> dict[str, dict]:
+        folder = str(self.lab.folder or "")
+        live = {f: d for f, d in self._lab_tracks.items() if d["tid"] in self.host.tracks and d["folder"] == folder}
+        stale = [d["tid"] for f, d in self._lab_tracks.items() if f not in live and d["tid"] in self.host.tracks]
+        self._lab_tracks = live
+        return {"live": live, "stale": stale}
+
+    @Slot(result=str)
+    @_safe
+    def labPreview(self) -> str:
+        """Crea o actualiza las pistas borrador. Devuelve qué pistas se crearon (la interfaz las añade),
+        cuáles cambiaron de audio y cuáles sobran (`stale`: de otra sesión o de una familia vacía)."""
+        if (g := self._guard()):
+            return g
+        d = self._drafts()
+        live, out = d["live"], []
+        want = {c["family"]: c for c in self.lab.chosen()}
+        stale = d["stale"] + [x["tid"] for f, x in live.items() if f not in want]
+        for f in [f for f in live if f not in want]:
+            self._lab_tracks.pop(f)
+        try:
+            for fam, c in want.items():
+                cur = self._lab_tracks.get(fam)
+                if cur and cur["vid"] == c["id"]:
+                    out.append({"family": fam, "id": cur["tid"], "vid": c["id"], "change": "same"})
+                    continue
+                if cur:
+                    info = dict(self.host.engine.set_track_audio(cur["tid"], c["path"], 0.0))
+                    info["peaks"] = [round(v, 4) for v in self.host.engine.track_peaks(cur["tid"], 600)]
+                    self.host.tracks[cur["tid"]] = {**info, "originalPath": c["path"], "note": ""}
+                    cur["vid"] = c["id"]
+                    out.append({"family": fam, "id": cur["tid"], "vid": c["id"], "change": "audio", "track": info})
+                else:
+                    info = self.host.add_audio(c["path"], f"{fam} · Lab (borrador)")
+                    self._lab_tracks[fam] = {"tid": info["id"], "vid": c["id"], "folder": str(self.lab.folder)}
+                    out.append({"family": fam, "id": info["id"], "vid": c["id"], "change": "new", "track": info})
+        except Exception as exc:
+            return _err(f"No se pudo preparar la preescucha: {exc}")
+        return _ok(tracks=out, stale=stale, bpm=(self.lab.state or {}).get("context", {}).get("bpm"))
+
+    @Slot(result=str)
+    @_safe
+    def labSend(self) -> str:
+        """Las pistas borrador pasan al proyecto: su audio se copia a `enviadas/` (así no depende de
+        regenerar o tirar variantes) y dejan de ser borrador. La interfaz les quita la marca."""
+        if (g := self._guard()):
+            return g
+        live, out = self._drafts()["live"], []
+        try:
+            for fam, d in live.items():
+                path = str(self.lab.send_copy(fam, d["vid"]))
+                info = dict(self.host.engine.set_track_audio(d["tid"], path, 0.0))
+                info["peaks"] = [round(v, 4) for v in self.host.engine.track_peaks(d["tid"], 600)]
+                self.host.tracks[d["tid"]] = {**info, "originalPath": path, "note": ""}
+                out.append({"family": fam, "id": d["tid"], "track": info, "name": f"{fam} (Lab)"})
+        except Exception as exc:
+            return _err(f"No se pudo enviar al proyecto: {exc}")
+        self._lab_tracks = {}
+        return _ok(tracks=out)
+
+    @Slot(result=str)
+    @_safe
+    def labDiscard(self) -> str:
+        """Ids de las pistas borrador para que la interfaz las quite (con su canal)."""
+        d = self._drafts()
+        ids = [x["tid"] for x in d["live"].values()] + d["stale"]
+        self._lab_tracks = {}
+        return _ok(ids=ids)
+
+    @Slot(result=str)
+    @_safe
+    def labHitLanes(self) -> str:
+        """Rutas de los golpes sueltos por carril de la Batería (para el sampler de los pads)."""
+        lanes = self.lab.hit_lanes()
+        if not any(lanes):
+            return _err("Primero corta los golpes sueltos de la batería elegida en el laboratorio")
+        return _ok(lanes=lanes)
+
+    @Slot(str, result=str)
+    @_safe
+    def labOneShots(self, family: str) -> str:
+        """Golpes sueltos de la batería elegida (WAV en `golpes/` de la sesión)."""
+        return self._lab(self.lab.one_shots, family or "Batería")
 
     @Slot(result=str)
     @_safe

@@ -88,7 +88,7 @@ variante nunca desplaza el ritmo.
 | ID | Dueño | Qué |
 |---|---|---|
 | C8 | Claude | `lab.py`: sesión, contexto, cola cancelable (un motor de IA a la vez), guía (`text2music`) + Demucs → V1, variantes `lego`, bloquear, regenerar, «parecida», historial y `lab.json`. Slots `lab*` en `bridge.py`. Pruebas con proyectos completos de hip-hop, trap, lo-fi, house y cinematográfica: longitud exacta, variantes distintas, alineadas con el contexto, bloqueadas conservadas al regenerar y recarga desde disco |
-| C9 | Claude | Preescucha con pistas reales «Lab (borrador)»: cambiar de variante, solo y mute por familia, «Enviar al proyecto» (quita la marca de borrador) y «Descartar». Golpes sueltos para los pads de Batería |
+| C9 ✓ | Claude | Preescucha con pistas reales «Lab (borrador)»: cambiar de variante, solo y mute por familia, «Enviar al proyecto» (quita la marca de borrador) y «Descartar». Golpes sueltos para los pads de Batería (en `golpes/` de la sesión; «Golpes del laboratorio» en Batería los carga en el sampler nativo de los pads, C10 ✓) |
 | X18 | Codex | `LabView.qml`: los tres paneles de la referencia con los colores del tema, discos dibujados del audio que giran al sonar, filas por familia, «Regenerar (N variantes)», barra de preescucha, y arrastrar un disco a una pista, a una pista nueva o a una posición del Arreglo |
 | X19 | Codex | Editar variante: solo controles que actúen de verdad (efectos nativos y clip); MIDI al Piano Roll |
 

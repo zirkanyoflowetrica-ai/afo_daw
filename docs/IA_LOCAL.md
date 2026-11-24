@@ -44,10 +44,37 @@ paso queda en `datos\media\ia\.trabajo_<nombre>\` (`lm.log`, `synth.log`).
 
 | Paquete | Archivos | Tamaño | Para |
 |---|---|---|---|
-| Calidad | Qwen3-Embedding-0.6B-Q8_0, acestep-5Hz-lm-4B-Q8_0, acestep-v15-turbo-Q8_0, vae-BF16 | 7,6 GB | tarjetas de 12 GB o más |
-| Ligero | igual, con acestep-5Hz-lm-1.7B-Q8_0 | 5,3 GB | tarjetas de 8 GB |
+| Calidad | Qwen3-Embedding-0.6B-Q8_0, acestep-5Hz-lm-4B-Q8_0, acestep-v15-turbo-Q8_0, vae-BF16 | 7,6 GB | perfil Alto |
+| Ligero | igual, con acestep-5Hz-lm-1.7B-Q8_0 | 5,3 GB | perfiles Medio, Bajo y Solo procesador |
 
-El módulo recomienda uno según la memoria de la tarjeta (registro de Windows). La descarga escribe en
+### Perfil del equipo (`hardware.py`, 23-11-2026)
+
+El programa detecta la tarjeta (nombre y memoria, registro de Windows), la RAM y los hilos del
+procesador, y elige un perfil que decide el compositor y cuánto se carga la gráfica:
+
+| Perfil | Cuándo | Compositor | `--vae-chunk` | Descanso tras cada trabajo | Duración máx. |
+|---|---|---|---|---|---|
+| Alto | gráfica ≥ 16 GB y RAM ≥ 32 GB | 4B (Calidad) | 1024 | 25 % de lo que tardó | 4 min |
+| Medio | gráfica ≥ 10 GB y RAM ≥ 16 GB | 1,7B (Ligero) | 512 | 50 % | 2 min 30 s |
+| Bajo | gráfica de 6 a 10 GB y RAM ≥ 12 GB | 1,7B | 256 | 100 % | 1 min |
+| Solo procesador | lo demás | 1,7B (`--device CPU`) | 256 | — | 30 s |
+
+* Un solo trabajo de IA en la gráfica a la vez (`GUARD`, compartido por Pistas con IA y el Laboratorio).
+  Tras cada paso de `ace-lm` o `ace-synth`, la gráfica descansa la fracción del perfil (en una tanda de
+  variantes también); la barra de estado dice «La gráfica descansa N s».
+* Antes de cada paso se lee la memoria de vídeo ya ocupada (contador de Windows «GPU Adapter Memory»):
+  si no caben el modelo y su margen (4B ≈ 6 GB, 1,7B ≈ 3,5 GB, sintetizador ≈ 4,5 GB), no se lanza y
+  se pide cerrar lo que la esté usando.
+* Si el compositor del perfil no está instalado se usa el otro (el 4B solo si la tarjeta tiene memoria
+  para él) y la vista de IA ofrece descargar el recomendado.
+* Demucs usa como mucho los hilos del procesador menos dos (y nunca más de 8).
+* El perfil se puede fijar a mano en la vista de IA («Perfil del equipo»); se guarda en `equipo.json`.
+* Medido en el equipo de desarrollo (RX 7800 XT de 16 GB, Ryzen 5 5600X, 16 GB de RAM): perfil Medio.
+  No hay lectura de temperatura (AMD no la da sin su SDK): la protección es el descanso y la memoria.
+* Pruebas: `tests/test_hardware.py` (perfiles por memoria, compositor según lo instalado, opciones
+  del motor, descanso medido, memoria de vídeo ocupada).
+
+El módulo recomienda el compositor del perfil. La descarga escribe en
 `<archivo>.parte` y, si se corta o la pausas, «Reanudar» pide solo lo que falta (cabecera `Range`);
 al terminar se comprueba el tamaño exacto. `package.ps1` conserva `EXE\modelos` al actualizar.
 
@@ -102,12 +129,17 @@ vuelta, render del motor con notas largas, release y velocidad, y el puente) y `
 
 ## Pendiente
 
-- Separar una instrumental en pistas (batería, bajo…) con el modo `extract` de ACE-Step: necesita el
-  modelo DiT *base* (2,4 GB más).
-- Rehacer un fragmento (`repaint`) o hacer una versión de un audio (`cover`) desde Pistas.
+- Hacer una versión de un audio (`cover`) desde Pistas.
 - Un editor de piano roll libre (notas de cualquier duración) para las pistas MIDI: hoy se ven en
   Pistas y suenan, pero se cambian con un VST3 o regenerando.
 - MIDI-LLM no sabe de tempo ni de compases: sus notas no caen en la rejilla del proyecto.
+
+## Rehacer con IA (ACE-Step «repaint», 24-11-2026)
+Pistas › clip elegido › «Rehacer con IA»: `ace-synth` (tarea `repaint`, sintetizador turbo, campos
+`repainting_start` / `repainting_end` en segundos del archivo, `--src-audio` el archivo de la pista)
+vuelve a tocar ese trozo con el estilo de la canción y deja el resto igual. El trozo es el clip: se
+acota con «Dividir» (S). La pista pasa al archivo rehecho con sus mismos clips; Ctrl+Z vuelve al
+original. Máximo seguido: el del perfil del equipo. `tests/test_repaint.py` lo mide con un rock completo.
 
 ## Partes para el proyecto (ACE-Step «lego», 23-11-2026)
 Módulo IA › «Parte para el proyecto»: renderiza lo que suena y `ace-synth` (tarea `lego`, campo

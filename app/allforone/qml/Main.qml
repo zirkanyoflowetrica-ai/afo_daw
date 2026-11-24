@@ -119,6 +119,8 @@ Window {
     property alias project: pj
     Mixer { id: mx; studio: win }
     Sequencer { id: sq; studio: win }
+    Lab { id: lb; studio: win; seq: sq }        // Instrumental Lab (lab.py): estado para su vista
+    property var lab: lb
     Project { id: pj; studio: win }
     Shortcut { sequences: [StandardKey.Open]; onActivated: pj.open("") }
     Shortcut { sequences: [StandardKey.Save]; onActivated: pj.save(false) }
@@ -726,7 +728,9 @@ Las entradas van a la izquierda y las salidas a la derecha. Arrastra para moverl
     }
     Connections {
         target: afo
-        function onAiEvent(s) { try { sq.onAiEvent(JSON.parse(s)) } catch (e) { console.warn(e) } }
+        function onAiEvent(s) {
+            try { var ev = JSON.parse(s); if (!lb.onAiEvent(ev)) sq.onAiEvent(ev) } catch (e) { console.warn(e) }
+        }
         function onPluginScanEvent(s) { try { win.onScanEvent(JSON.parse(s)) } catch (e) { console.warn(e) } }
         function onStateChanged(s) {
             var st; try { st = JSON.parse(s) } catch (e) { return }

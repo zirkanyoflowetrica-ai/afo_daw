@@ -9,6 +9,9 @@ Column {
     property var seq
     property int curStep: -1                     // paso que suena ahora (-1 = parado)
     readonly property var t: seq.active("drum")
+    property var studio: seq ? seq.studio : null
+    // carriles con golpe grabado (sampler del motor)
+    readonly property var sampled: t && t.cfg.smp ? t.cfg.smp.map(function (p, i) { return p ? i : -1 }).filter(function (i) { return i >= 0 }) : []
     readonly property var groupColor: ["#ff4d3d", "#ff9b3d", "#ffe14d", "#fff4d6"]
     width: parent ? parent.width : 700
     spacing: 0
@@ -71,6 +74,18 @@ Column {
             }
             Text { text: "Teclas 1–8 o clic"; color: Theme.ink; opacity: 0.7; anchors.verticalCenter: parent.verticalCenter
                    font.family: Theme.font; font.pixelSize: 11; font.weight: 600 }
+            NeoButton {                 // sampler (C10): golpes sueltos cortados en el Instrumental Lab
+                visible: !!(root.studio && root.studio.lab && root.studio.lab.state && root.studio.lab.state.oneshots)
+                text: "Golpes del laboratorio"; fontSize: 11; padX: 6; padY: 2; shadow: 2
+                tip: "Bombo, caja y platillo suenan con los golpes cortados de la batería elegida en el laboratorio"
+                onClicked: root.studio.lab.hitsToPads()
+            }
+            NeoButton {
+                visible: root.sampled.length > 0
+                text: "Sonido sintetizado"; fontSize: 11; padX: 6; padY: 2; shadow: 2
+                tip: "Quita los golpes grabados: los 8 pads vuelven al sonido del sintetizador"
+                onClicked: root.seq.setDrumSamples([], true)
+            }
         }
         Grid {
             id: pads
@@ -94,6 +109,10 @@ Column {
                         Rectangle { x: 4; y: 4; width: 8; height: 8; radius: 4; color: root.groupColor[pad.index % 4] }
                         Text { x: 18; y: 6; text: pad.modelData; color: pad.lit ? "#000" : "#f3e7c4"
                                font.family: Theme.font; font.pixelSize: 12; font.weight: 700 }
+                        Text { x: 6; anchors.bottom: parent.bottom; anchors.bottomMargin: 4
+                               visible: root.sampled.indexOf(pad.index) >= 0
+                               text: "GOLPE GRABADO"; color: pad.lit ? "#000" : "#bdb398"
+                               font.family: Theme.font; font.pixelSize: 10; font.weight: 700 }
                         Text { anchors.right: parent.right; anchors.rightMargin: 6; anchors.bottom: parent.bottom; anchors.bottomMargin: 4
                                text: String(pad.index + 1); color: pad.lit ? "#000" : "#bdb398"
                                font.family: Theme.font; font.pixelSize: 16; font.weight: 700 }

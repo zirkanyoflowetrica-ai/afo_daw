@@ -168,6 +168,52 @@ Column {
         }
     }
 
+    // ---------------- perfil del equipo (hardware.py): modelo, memoria y descansos de la gráfica ----------------
+    Rectangle {
+        id: eqBox
+        readonly property var eq: root.ai.equipo || null
+        visible: !!eq
+        width: root.width; height: eqCol.implicitHeight + 20
+        color: "transparent"; border.width: Theme.buttonBorder; border.color: Theme.line; radius: Theme.radius
+        Column {
+            id: eqCol
+            x: 10; y: 10; width: parent.width - 20; spacing: 6
+            Row {
+                width: parent.width; spacing: 8
+                Text {
+                    width: parent.width - eqSel.width - 8; anchors.verticalCenter: parent.verticalCenter; wrapMode: Text.Wrap
+                    color: Theme.ink; font.family: Theme.font; font.pixelSize: 12; font.weight: 700
+                    text: eqBox.eq ? "Perfil del equipo: " + eqBox.eq.profile.name
+                          + " · " + (eqBox.eq.hardware.gpu || "sin gráfica") + " " + eqBox.eq.hardware.vram_gb + " GB"
+                          + " · RAM " + Math.round(eqBox.eq.hardware.ram_gb) + " GB" : ""
+                }
+                Select {
+                    id: eqSel
+                    width: 190
+                    options: eqBox.eq ? [["auto", "Automático (" + eqBox.eq.profiles.filter(function (p) { return p.id === eqBox.eq.profile.auto })[0].name + ")"]]
+                                  .concat(eqBox.eq.profiles.map(function (p) { return [p.id, p.name] })) : []
+                    current: eqBox.eq ? eqBox.eq.profile.override : "auto"
+                    tip: "El perfil decide el compositor, la memoria y cuánto descansa la gráfica entre trabajos"
+                    onPicked: function (v) { root.seq.setHardwareProfile(v) }
+                }
+            }
+            Text {
+                width: parent.width; wrapMode: Text.Wrap; color: Theme.ink; font.family: Theme.font; font.pixelSize: 12
+                text: eqBox.eq ? eqBox.eq.profile.desc
+                      + (root.ai.installed && root.ai.using && root.ai.using !== root.ai.recommended
+                         ? ". Este perfil pide el compositor «" + root.packName(root.ai.recommended) + "»; se usa «" + root.packName(root.ai.using) + "» porque es el que está instalado."
+                         : "") : ""
+            }
+            NeoButton {
+                visible: !!root.ai.installed && !!root.ai.recommended && root.ai.using !== root.ai.recommended && !root.seq.downloading
+                text: "Descargar «" + root.packName(root.ai.recommended) + "» (recomendado)"
+                color: root.accent
+                tip: "Descarga el compositor que corresponde a tu equipo"
+                onClicked: root.seq.download(root.ai.recommended)
+            }
+        }
+    }
+
     // ---------------- modelos (solo si faltan o se están descargando) ----------------
     Rectangle {
         visible: !!root.ai.engineOk && (!root.ai.installed || root.seq.downloading)
@@ -252,8 +298,12 @@ Column {
         Column {
             width: (root.width - 10) / 2; spacing: 4
             Text { text: "Duración"; color: Theme.ink; font.family: Theme.font; font.pixelSize: 13; font.weight: 600 }
-            Select { width: parent.width; options: [[30, "30 s"], [60, "1 min"], [90, "1 min 30 s"], [120, "2 min"], [180, "3 min"]]
-                     current: String(root.c.dur); onPicked: function (v) { root.set("dur", Number(v)) } }
+            Select { width: parent.width
+                     options: [[30, "30 s"], [60, "1 min"], [90, "1 min 30 s"], [120, "2 min"], [180, "3 min"]]
+                         .filter(function (o) { return !root.ai.maxSeconds || o[0] <= root.ai.maxSeconds })
+                     current: String(Math.min(root.c.dur, root.ai.maxSeconds || root.c.dur))
+                     tip: root.ai.maxSeconds ? "Hasta " + root.ai.maxSeconds + " s con el perfil de tu equipo" : ""
+                     onPicked: function (v) { root.set("dur", Number(v)) } }
         }
         Column {
             width: (root.width - 10) / 2; spacing: 4

@@ -31,6 +31,7 @@ from pathlib import Path
 import numpy as np
 
 from . import ai_music as A
+from . import hardware as H
 from . import paths
 from . import stems as S
 
@@ -151,6 +152,36 @@ def grid_score(x: np.ndarray, bpm: float, div: int = 2) -> float:
     return round(best, 2)
 
 
+HIT_LANES = {"Bombo": 0, "Caja / Clap": 1, "Platos": 6}   # golpe suelto → carril de la Batería (Sequencer.dn)
+
+
+def cut_hit(x: np.ndarray, max_s: float = 0.8) -> np.ndarray | None:
+    """El golpe más fuerte de una parte de batería: desde 5 ms antes de su ataque hasta el siguiente
+    ataque (o `max_s`), con fundido de salida de 20 ms y pico a −1 dBFS. None si no hay golpes."""
+    m = np.abs(x).max(axis=1)
+    hop = 441
+    n = len(m) // hop
+    if n < 4:
+        return None
+    env = m[: n * hop].reshape(n, hop).max(axis=1)
+    if env.max() < 10 ** (S.SILENT_DB / 20):
+        return None
+    rise = np.diff(env, prepend=0.0)
+    thr = 0.3 * rise.max()
+    onsets = [i for i in range(1, n) if rise[i] >= thr and rise[i] >= rise[i - 1] and (i + 1 >= n or rise[i] >= rise[i + 1])]
+    if not onsets:
+        return None
+    best = max(onsets, key=lambda i: env[i:i + 5].max())
+    nxt = [i for i in onsets if i > best + 2]
+    start = max(0, best * hop - int(0.005 * SR))
+    end = min(len(x), start + int(max_s * SR), (nxt[0] * hop) if nxt else len(x))
+    y = x[start:end].copy()
+    fo = min(len(y), int(0.02 * SR))
+    y[len(y) - fo:] *= np.linspace(1, 0, fo, dtype="float32")[:, None]
+    peak = float(np.abs(y).max())
+    return (y * (10 ** (-1 / 20) / peak)).astype("float32") if peak > 0 else None
+
+
 def _write(path: Path, x: np.ndarray) -> None:
     import soundfile as sf
     sf.write(str(path), x, SR, subtype="FLOAT")
@@ -187,7 +218,7 @@ class Lab:
         return bool(self._running) or not self._jobs.empty()
 
     def status(self) -> dict:
-        return {"engineOk": A.engine_dir() is not None, "textOk": A.installed_pack() is not None,
+        return {"engineOk": A.engine_dir() is not None, "textOk": A.pack_for_use() is not None,
                 "legoOk": A.pack_status("partes")["installed"],
                 "demucsOk": S.status()["engineOk"] and S.status()["modelOk"],
                 "families": list(FAMILIES), "defaults": DEFAULT_FAMILIES, "styles": list(A.STYLES),
@@ -210,6 +241,8 @@ class Lab:
                 v["chosen"] = v["id"] == fam.get("chosen")
         for v in st["history"]:
             absp(v)
+        if st.get("oneshots"):
+            st["oneshots"]["hits"] = {k: str(root / p) for k, p in st["oneshots"]["hits"].items()}
         if st.get("guide"):
             st["guide"]["path"] = str(root / st["guide"]["path"])
         st.update(folder=str(root), busy=self.busy, running=self._running)
@@ -354,6 +387,60 @@ class Lab:
         self._changed()
         return self.public()
 
+    # --- preescucha y envío al proyecto (C9) ---
+    def chosen(self) -> list[dict]:
+        """Variante elegida de cada familia que tenga alguna: {family, id, path}."""
+        with self._lock:
+            if self.state is None:
+                return []
+            return [{"family": f["name"], "id": f["chosen"], "path": str(self.folder / self._variant(f, f["chosen"])["path"])}
+                    for f in self.state["families"] if f["chosen"]]
+
+    def send_copy(self, family: str, vid: str) -> Path:
+        """Copia la variante a `enviadas/` de la sesión: lo que va al proyecto no depende de que la
+        variante se regenere o vaya a la papelera."""
+        v = self._variant(self._family(family), vid)
+        dest = self.folder / "enviadas" / Path(v["path"]).name
+        dest.parent.mkdir(exist_ok=True)
+        if not dest.is_file():
+            shutil.copy2(self.folder / v["path"], dest)
+        return dest
+
+    def one_shots(self, family: str = "Batería") -> dict:
+        """Golpes sueltos (bombo, caja / clap, platos) cortados de la batería elegida: el golpe más
+        fuerte de cada parte, del ataque al siguiente (máx. 0,8 s), con fundido y pico a −1 dBFS."""
+        with self._lock:
+            fam = self._family(family)
+            if not fam["chosen"]:
+                raise RuntimeError(f"Elige una variante de {family}")
+            v = self._variant(fam, fam["chosen"])
+            if not v.get("parts"):
+                raise RuntimeError(f"La variante de {family} no está dividida en partes")
+            out = {}
+            folder = self.folder / "golpes"
+            folder.mkdir(exist_ok=True)
+            for label, rel in v["parts"].items():
+                hit = cut_hit(_read(self.folder / rel))
+                if hit is None:
+                    continue
+                dest = folder / f"{A.slug(label)}_{v['id']}.wav"
+                _write(dest, hit)
+                out[label] = str(dest.relative_to(self.folder)).replace("\\", "/")
+            self.state["oneshots"] = {"from": v["id"], "family": family, "hits": out}
+        self._changed()
+        return {k: str(self.folder / p) for k, p in out.items()}
+
+    def hit_lanes(self) -> list[str]:
+        """Los golpes sueltos en los carriles de la Batería (Bombo → Bombo, Caja / Clap → Caja,
+        Platos → Platillo); "" en los carriles sin golpe."""
+        lanes = [""] * 8
+        with self._lock:
+            hits = ((self.state or {}).get("oneshots") or {}).get("hits") or {}
+            for label, rel in hits.items():
+                if label in HIT_LANES:
+                    lanes[HIT_LANES[label]] = str(self.folder / rel)
+        return lanes
+
     # --- trabajos (cola) ---
     def _check_engines(self, need: str) -> None:
         if self.state is None:
@@ -469,7 +556,12 @@ class Lab:
              family: str = "") -> None:
         if self._cancel.is_set():
             raise _Cancelled()
-        cmd = [str(exe), *args]
+        job = "synth" if stage == "synth" else "lm:" + (A.pack_for_use() or "ligero")
+        H.GUARD.before(job, self._cancel, lambda m: self._progress(base, m, family))
+        if self._cancel.is_set():
+            raise _Cancelled()
+        cmd = [str(exe), *args, *H.engine_args(stage)]
+        t0 = time.monotonic()
         log.info("Lab: %s", " ".join(cmd))
         self._proc = subprocess.Popen(cmd, cwd=str(cwd), stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                                       stdin=subprocess.DEVNULL, creationflags=_NO_WINDOW,
@@ -487,6 +579,7 @@ class Lab:
                     self._progress(base + span * max(0.0, min(1.0, frac)), pr[1], family)
         code = self._proc.wait()
         self._proc = None
+        H.GUARD.after(time.monotonic() - t0)
         if self._cancel.is_set():
             raise _Cancelled()
         if code != 0:
@@ -548,7 +641,7 @@ class Lab:
 
     def _job_guide_text(self, work: Path) -> str:
         ctx = self.state["context"]
-        pack = A.installed_pack()
+        pack = A.pack_for_use()
         opts = {"prompt": ctx["prompt"], "style": ctx["style"], "bpm": ctx["bpm"], "key": ctx["key"],
                 "duration": math.ceil(ctx["seconds"]), "instrumental": True, "seed": random.randint(1, 2 ** 31 - 1)}
         if not ctx["prompt"] and ctx["style"] == "Libre":
