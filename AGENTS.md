@@ -46,3 +46,11 @@ python tools/native_compare.py         # diferencia píxel a píxel entre la pla
 ```
 Linux (desarrollo): `cmake -G Ninja -B build/linux -DPython_EXECUTABLE=$(which python) && ninja -C build/linux`,
 pruebas con `xvfb-run python -m pytest tests`.
+Pruebas de mezcla, afinación y master: **proyectos completos** de varios géneros y voces
+(`tests/song_factory.py`, `tests/test_proyectos_completos.py`), no solo tonos.
+
+## Reparto entre IA (Claude y Codex)
+
+El tablero es `docs/TAREAS.md`, una línea por tarea: `ID | dueño | estado | archivos | hecho cuando`.
+Cada IA solo toca los archivos de sus tareas abiertas; para tocar otros, primero se apunta en el
+tablero. Una tarea se cierra con commit en `main` («ID: …») y la prueba de su línea pasada.
