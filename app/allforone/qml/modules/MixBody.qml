@@ -17,7 +17,7 @@ Column {
     Row {
         spacing: 8; bottomPadding: 10
         Text { anchors.verticalCenter: parent.verticalCenter; text: "Mezcla IA y Master IA: en el Inspector › Asistente IA"
-               color: Theme.ink; font.family: Theme.font; font.pixelSize: 12; font.weight: 600 }
+               color: Theme.ink; font.family: Theme.font; font.pixelSize: 13; font.weight: 600 }
         NeoButton { text: "Abrir"; fontSize: 12; padX: 8; padY: 2; shadow: 2; tip: "Muestra el Asistente IA en el Inspector"
                     onClicked: root.studio.goTo("asist") }
     }
@@ -25,14 +25,14 @@ Column {
     Rectangle {
         width: root.width
         height: console_.height + 6
-        color: Theme.dark ? "#1b1822" : "#ffffff"
+        color: Theme.panelBody
         border.width: Theme.border; border.color: Theme.line
         Column {
             id: console_
             x: 3; y: 3; width: parent.width - 6
             Rectangle {                              // cabecera: título, canal en el rack y medidores
                 width: parent.width; height: 40
-                color: Theme.dark ? "#1b1822" : "#ffffff"
+                color: Theme.panelBody
                 Text { x: 12; anchors.verticalCenter: parent.verticalCenter; text: "CANALES / MIXER"; color: Theme.ink
                        font.family: Theme.font; font.pixelSize: 15; font.weight: 700; font.letterSpacing: 0.6 }
                 Row {
@@ -40,7 +40,7 @@ Column {
                     spacing: 6
                     Chip {
                         visible: !!root.rackName
-                        text: root.rackName.toUpperCase(); fill: "#ffc233"
+                        text: root.rackName.toUpperCase(); fill: Theme.accent; ink: "#000"
                         tip: "Canal cuyo rack se ve en Efectos (clic en el nombre de una tira para cambiarlo)"
                         onClicked: root.studio.goTo("fx")
                     }
@@ -49,7 +49,7 @@ Column {
                         Chip {
                             required property var modelData
                             text: modelData[0]; tip: "Medidores: " + modelData[1]
-                            fill: root.studio.meterMode === modelData[0] ? Theme.pc.mezcla : (Theme.dark ? "#2a2533" : "#ffffff")
+                            fill: root.studio.meterMode === modelData[0] ? Theme.pc.mezcla : Theme.button; ink: root.studio.meterMode === modelData[0] ? "#000" : Theme.ink
                             onClicked: root.studio.meterMode = modelData[0]
                         }
                     }
@@ -80,20 +80,20 @@ Column {
                     Item {                           // tira del master
                         id: ms
                         width: 96; height: stripH
-                        Rectangle { x: 3; y: 3; width: parent.width; height: parent.height; color: "#000"; visible: Theme.buttonShadow > 0 }
+                        Rectangle { x: 3; y: 3; width: parent.width; height: parent.height; color: Theme.shadowColor; visible: Theme.buttonShadow > 0 }
                         Rectangle {
                             anchors.fill: parent
-                            color: Theme.dark ? "#26222e" : "#ffffff"; border.width: Theme.buttonBorder; border.color: Theme.line
+                            color: Theme.device; border.width: Theme.buttonBorder; border.color: Theme.line
                             Rectangle {
                                 x: 2; y: 2; width: parent.width - 4; height: 30; color: Theme.pc.mezcla
                                 Text { anchors.centerIn: parent; text: "MASTER"; color: "#000"
-                                       font.family: Theme.font; font.pixelSize: 12; font.weight: 700 }
+                                       font.family: Theme.font; font.pixelSize: 13; font.weight: 700 }
                                 Rectangle { y: parent.height; width: parent.width; height: 2; color: Theme.line }
                             }
                             Column {
                                 x: 6; y: 40; width: parent.width - 12; spacing: 6
                                 Text { width: parent.width; horizontalAlignment: Text.AlignHCenter; text: "SALIDA"; color: Theme.ink
-                                       font.family: Theme.font; font.pixelSize: 10; font.weight: 700; topPadding: 22; bottomPadding: 22 }
+                                       font.family: Theme.font; font.pixelSize: 11; font.weight: 700; topPadding: 22; bottomPadding: 22 }
                                 Text { width: parent.width; horizontalAlignment: Text.AlignHCenter
                                        text: MD.faderDbText(root.studio.masterPos); color: Theme.ink
                                        font.family: Theme.font; font.pixelSize: 13; font.weight: 700 }
@@ -109,7 +109,7 @@ Column {
                                        readonly property real val: root.studio.meterMode === "dB" ? Math.max(root.studio.masterDb[0], root.studio.masterDb[1])
                                                                    : root.studio.meterMode === "RMS" ? root.studio.masterLoud[1] : root.studio.masterLoud[3]
                                        text: (root.studio.playing && val > -99 ? val.toFixed(1) : "—") + " " + root.studio.meterMode
-                                       color: "#c98f00"; font.family: Theme.font; font.pixelSize: 10; font.weight: 700 }
+                                       color: Theme.knobValue; font.family: Theme.font; font.pixelSize: 11; font.weight: 700 }
                             }
                         }
                     }
@@ -146,10 +146,10 @@ Column {
             SequentialAnimation on opacity { running: strip.working; loops: Animation.Infinite
                 NumberAnimation { from: 1; to: 0.45; duration: 700 } NumberAnimation { from: 0.45; to: 1; duration: 700 } }
         }
-        Rectangle { x: 3; y: 3; width: parent.width; height: parent.height; color: "#000"; visible: Theme.buttonShadow > 0 }
+        Rectangle { x: 3; y: 3; width: parent.width; height: parent.height; color: Theme.shadowColor; visible: Theme.buttonShadow > 0 }
         Rectangle {
             anchors.fill: parent
-            color: strip.racked ? (Theme.dark ? "#4a3d1c" : "#ffe7a6") : (Theme.dark ? "#26222e" : "#ffffff")
+            color: strip.racked ? Theme.pn2 : Theme.device
             border.width: strip.racked ? 3 : 2; border.color: Theme.line
             Rectangle {                          // cabecera con el nombre
                 x: 2; y: 2; width: parent.width - 4; height: 30; color: strip.cc
@@ -171,7 +171,7 @@ Column {
                         visible: strip.track.type === "ia" && !(strip.track.aclips || []).length && !(strip.track.len > 0)
                         anchors.fill: parent; color: "#000"
                         Text { anchors.centerIn: parent; text: "DEMO · sin audio"; color: Theme.lcd
-                               font.family: Theme.font; font.pixelSize: 9; font.weight: 700 }
+                               font.family: Theme.font; font.pixelSize: 11; font.weight: 700 }
                     }
                     Row {
                         visible: !!strip.item && strip.track.type !== "ia"
@@ -181,12 +181,12 @@ Column {
                             color: MD.kindColor(strip.item ? strip.item.kind : ""); border.width: Theme.buttonBorder; border.color: Theme.line
                             Text { x: 3; width: parent.width - 6; anchors.verticalCenter: parent.verticalCenter; elide: Text.ElideRight
                                    text: MD.kindShort(strip.item ? strip.item.kind : ""); color: "#000"
-                                   font.family: Theme.font; font.pixelSize: 9; font.weight: 700 }
+                                   font.family: Theme.font; font.pixelSize: 11; font.weight: 700 }
                         }
                         Select {
                             width: 44; options: MD.ROLES; current: strip.item ? strip.item.role : "—"
                             fontSize: 10; fontWeight: 700; padX: 2; padY: 0; centered: true
-                            fill: "#fff"; ink: "#000"; tip: MD.roleTip()
+                            fill: Theme.input; ink: Theme.ink; tip: MD.roleTip()
                             onPicked: function (v) { root.mixer.setTrackRole(strip.tid, v) }
                         }
                     }
@@ -214,16 +214,16 @@ Column {
                        readonly property real val: root.studio.stripValue(strip.tid)
                        text: (root.studio.playing && val > -99 ? val.toFixed(1) : "—") + " " + root.studio.meterMode
                               + (strip.live ? " · " + (strip.live.chain || []).length + " FX" + ((strip.live.automated || []).length ? " ∿" : "") : "")
-                       color: "#c98f00"; font.family: Theme.font; font.pixelSize: 9; font.weight: 700
+                       color: Theme.knobValue; font.family: Theme.font; font.pixelSize: 11; font.weight: 700
                        HoverHandler { id: lh }
                        ToolTipLite { text: strip.live ? ((strip.live.chain || []).join(" → ") + "\n" + (strip.live.note || "")
                                                           + ((strip.live.automated || []).length ? "\n∿ Automatizado: " + strip.live.automated.join(", ") : "")).trim() : ""
                                      show: lh.hovered && text.length > 0 } }
                 Row {
                     spacing: 6; anchors.horizontalCenter: parent.horizontalCenter
-                    Chip { text: "S"; fill: strip.track.solo ? Theme.pc.mezcla : (Theme.dark ? "#2a2533" : "#ffffff"); tip: "Solo"
+                    Chip { text: "S"; fill: strip.track.solo ? Theme.pc.mezcla : Theme.button; ink: strip.track.solo ? "#000" : Theme.ink; tip: "Solo"
                            onClicked: root.studio.toggleTrackFlag(strip.track.uid, "solo") }
-                    Chip { text: "M"; fill: strip.track.mute ? "#ff7a70" : (Theme.dark ? "#2a2533" : "#ffffff"); tip: "Silenciar"
+                    Chip { text: "M"; fill: strip.track.mute ? Theme.pc.inst : Theme.button; ink: strip.track.mute ? "#000" : Theme.ink; tip: "Silenciar"
                            onClicked: root.studio.toggleTrackFlag(strip.track.uid, "mute") }
                 }
             }
@@ -234,7 +234,7 @@ Column {
         id: sm
         property real l: 0
         property real r: 0
-        property color color2: "#5ee0b0"
+        property color color2: Theme.pc.mezcla
         width: 22; height: 150
         color: "#120f0a"; border.width: Theme.buttonBorder; border.color: Theme.line
         Repeater {
@@ -257,11 +257,12 @@ Column {
         id: ch
         property string text
         property string tip
-        property color fill: "#ffffff"
+        property color fill: Theme.button
+        property color ink: Theme.ink
         signal clicked()
         width: Math.max(26, ct.implicitWidth + 16); height: 24
         color: fill; border.width: Theme.buttonBorder; border.color: Theme.line
-        Text { id: ct; anchors.centerIn: parent; text: ch.text; color: Qt.colorEqual(ch.fill, "#2a2533") ? "#efe9ff" : "#000"
+        Text { id: ct; anchors.centerIn: parent; text: ch.text; color: ch.ink
                font.family: Theme.font; font.pixelSize: 11; font.weight: 700 }
         MouseArea { id: chm; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: ch.clicked() }
         ToolTipLite { text: ch.tip; show: chm.containsMouse && ch.tip.length > 0 }
