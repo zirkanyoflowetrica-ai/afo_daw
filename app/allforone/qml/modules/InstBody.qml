@@ -15,7 +15,7 @@ Column {
         Lcd { id: one; text: "1 instancia"; anchors.verticalCenter: parent.verticalCenter }
         Text { width: root.width - one.width - 10; anchors.verticalCenter: parent.verticalCenter; wrapMode: Text.Wrap
                text: "El instrumento se carga una sola vez. Cada pista guarda solo su preset."
-               color: Theme.ink; font.family: Theme.font; font.pixelSize: 12; font.weight: 500 }
+               color: Theme.ink; font.family: Theme.font; font.pixelSize: 13; font.weight: 500 }
     }
     TrackTabs { seq: root.seq; type: "inst" }
     DashedBox { visible: !root.t; width: root.width; height: visible ? implicitHeight : 0
@@ -27,7 +27,7 @@ Column {
         readonly property var studio: root.seq.studio
         readonly property var insts: studio.plugins.filter(function (p) { return p.instrument })
         Text { text: "Sonido"; anchors.verticalCenter: parent.verticalCenter; color: Theme.ink
-               font.family: Theme.font; font.pixelSize: 12; font.weight: 700 }
+               font.family: Theme.font; font.pixelSize: 13; font.weight: 700 }
         Select {
             width: Math.min(260, root.width - 220)
             options: [["", "Sintetizador del motor (preset abajo)"]].concat(parent.insts.map(function (p) { return [p.id, p.name + " · " + p.vendor] }))
@@ -62,7 +62,7 @@ Column {
                 Rectangle {
                     x: cm.pressed ? 3 : 0; y: cm.pressed ? 3 : 0
                     width: parent.width; height: parent.height
-                    color: "#2b2720"; border.width: Theme.buttonBorder; border.color: Theme.line
+                    color: Theme.screenCard; border.width: Theme.buttonBorder; border.color: Theme.line
                     Column {
                         id: col
                         x: 12; y: 7; width: parent.width - 24; spacing: 2
@@ -74,9 +74,9 @@ Column {
                                         color: card.on ? "#ff4d3d" : "#4a1d1a" }
                         }
                         Text { width: parent.width; elide: Text.ElideRight; text: card.modelData[0]
-                               color: "#f3e7c4"; font.family: Theme.font; font.pixelSize: 14; font.weight: 700 }
+                               color: Theme.screenInk; font.family: Theme.font; font.pixelSize: 15; font.weight: 700 }
                         Text { width: parent.width; elide: Text.ElideRight; text: card.modelData[1]
-                               color: "#bdb398"; font.family: Theme.font; font.pixelSize: 12; font.weight: 500 }
+                               color: Theme.screenDim; font.family: Theme.font; font.pixelSize: 13; font.weight: 500 }
                     }
                 }
                 MouseArea {
