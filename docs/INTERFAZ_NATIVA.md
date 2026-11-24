@@ -199,6 +199,12 @@ La ventana tiene dos vistas, que se cambian en la cabecera («Arreglo | Módulos
 recuerdan en el diseño guardado. **Arreglo** es la vista por defecto: muestra la canción entera para
 poder ver qué hizo la mezcla.
 
+**Doble flujo** (⧉ en la cabecera, F7): el Arreglo se abre en una ventana aparte (para un segundo
+monitor) con su transporte, y la principal pasa a los módulos. Es otra vista del mismo proyecto, no
+una copia. La ventana crea su propio Arreglo: Qt 6.12 no deja mover a otra ventana un árbol ya
+dibujado (usa texturas de la ventana de origen y se cierra), por eso el lienzo de módulos no cambia de
+ventana. La autoprueba abre la ventana, la captura (`logs/selftest_doble_flujo.png`) y la cierra.
+
 - **Regla** de compases (al tempo del proyecto) y segundos; clic para mover el cursor.
 - **Una fila por pista**: color, nombre, tipo del Mezclador (Voz principal, Bajo…), M/S y la cadena de
   inserts en orden («FX: HPF › De-esser › Compresor…»). Clips de audio con su forma de onda, notas MIDI

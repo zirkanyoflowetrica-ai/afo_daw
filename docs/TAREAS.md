@@ -16,8 +16,8 @@ Estados: `·` libre · `>` en curso · `✓` hecho (+ hash) · `!` bloqueado (mo
 | ID | dueño | estado | archivos | hecho cuando |
 |---|---|---|---|---|
 | C1 | C | ✓ | `tests/song_factory.py`, `tests/test_proyectos_completos.py` | 4 géneros × voces de punta a punta en verde |
-| C2 | C | · | `state/Mixer.qml`, `mixer_service.py`, `live_mix.py`, `bridge.py` (mixer), `modules/TuneBody.qml`, `modules/MasteringBody.qml` | Mezcla IA usa AF-60 con la tonalidad analizada, Aux de reverb compartido, A/B no puentea el master, ajustes de Afinador y Mezcla IA en el proyecto |
-| C3 | C | · | `Main.qml`, `modules/ArrangeView.qml`, `state/layout.js` | Doble vista: Arreglo principal y flujo modular en ventana aparte |
+| C2 | C | ✓ | `state/Mixer.qml`, `mixer_service.py`, `live_mix.py`, `bridge.py` (mixer), `modules/TuneBody.qml`, `modules/MasteringBody.qml` | Hecho: afinación Precisa (PSOLA) / En vivo (AF-60) comparadas en 4 géneros, A/B sin master, ajustes en el proyecto, plantilla en «Solo guía» explicada. Queda: Aux de reverb compartido desde la mezcla automática |
+| C3 | C | ✓ | `Main.qml`, `modules/ArrangeView.qml`, `state/layout.js` | Doble flujo: Arreglo en ventana aparte (⧉ / F7) y módulos en la principal |
 | X1 | X | > | `modules/InstBody.qml` | Con un VST3 elegido, Velocidad / Brillo / Reverb se ocultan o actúan de verdad (nada de adorno) |
 | X2 | X | · | `modules/PianoBody.qml`, `state/Sequencer.qml`, `engine_host.py` | Octava transpone las notas que suenan (no solo el teclado dibujado); prueba en `tests/test_engine_synth.py` |
 | X3 | X | > | `modules/MixBody.qml`, `modules/FxBody.qml` (solo `ToolTipLite … show: false`) | Los tooltips con `show: false` se muestran al pasar el ratón |

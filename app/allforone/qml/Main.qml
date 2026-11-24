@@ -28,6 +28,15 @@ Window {
     // o «modules» (el lienzo de módulos). Se recuerda en el diseño guardado.
     property string view: savedLayout.view === "modules" ? "modules" : "arrange"
     onViewChanged: if (!loading) saveLayout()
+    // Doble flujo: el Arreglo (línea de tiempo) en una ventana aparte, para un segundo monitor, y los
+    // módulos en la principal. Es otra vista del MISMO proyecto (pistas, clips y automatización del
+    // motor). Se crea dentro de su ventana: Qt no deja mover lo ya dibujado de una ventana a otra.
+    property bool dualWindow: false
+    readonly property var flowWindow: flowWin                       // para la autoprueba (captura)
+    onDualWindowChanged: {
+        if (dualWindow) { view = "modules"; flowWin.show(); flowWin.raise() }
+        else flowWin.hide()
+    }
     // Llamadas al motor que cambian el proyecto (las de leer y medir no cuentan)
     readonly property var editCalls: ["fxAdd", "fxAddPlugin", "fxApplyPreset", "fxEnable", "fxMove", "fxParam", "fxRemove",
         "fxRestore", "fxSetAutomation", "clipEdit", "masterLoad", "setMasterCeiling", "setMasterProcessing", "setMasterVolume",
@@ -116,6 +125,7 @@ Window {
     Shortcut { sequence: "Ctrl+Shift+S"; onActivated: pj.save(true) }
     Shortcut { sequence: "F5"; onActivated: win.view = "arrange" }
     Shortcut { sequence: "F6"; onActivated: win.view = "modules" }
+    Shortcut { sequence: "F7"; onActivated: win.dualWindow = !win.dualWindow }
     property alias arrangeView: arrange
     // Para la autoprueba: guardar y abrir proyectos sin diálogo
     function projectCommand(what, path) {
@@ -802,6 +812,13 @@ Las entradas van a la izquierda y las salidas a la derecha. Arrastra para moverl
                     onClicked: win.view = "modules"
                 }
                 NeoButton {
+                    text: "⧉"; tip: win.dualWindow ? "Cerrar la ventana del Arreglo (F7)"
+                                                   : "Doble flujo: el Arreglo en una ventana aparte (otro monitor) y los módulos aquí (F7)"
+                    pressedState: win.dualWindow
+                    color: win.dualWindow ? Theme.pressedBg : Theme.button; textColor: win.dualWindow ? Theme.pressedInk : Theme.ink
+                    onClicked: win.dualWindow = !win.dualWindow
+                }
+                NeoButton {
                     text: "■"; tip: "Detener y volver al principio"
                     onClicked: { if (win.engineOk) win.call("stop"); win.step = -1 }
                 }
@@ -1261,6 +1278,45 @@ Las entradas van a la izquierda y las salidas a la derecha. Arrastra para moverl
                 }
             }
         }
+    }
+
+    // ---------------- ventana aparte: Arreglo (doble flujo) ----------------
+    Window {
+        id: flowWin
+        title: "AllForOne · Arreglo (línea de tiempo)"
+        width: 1400; height: 820
+        minimumWidth: 640; minimumHeight: 420
+        color: Theme.canvas
+        onClosing: win.dualWindow = false
+        Rectangle {
+            id: flowBar
+            width: parent.width; height: 46; color: Theme.header; z: 2
+            Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: Theme.border; color: Theme.line }
+            Row {
+                x: 12; anchors.verticalCenter: parent.verticalCenter; spacing: 6
+                Text { anchors.verticalCenter: parent.verticalCenter; rightPadding: 8
+                       text: "Arreglo"; color: Theme.ink; font.family: Theme.font; font.pixelSize: 15; font.weight: 700 }
+                NeoButton {
+                    text: win.playing ? "❚❚ Pausa" : "▶ Reproducir"; tip: "Reproducir o pausar (Espacio)"
+                    color: Theme.accent; textColor: "#000"
+                    onClicked: { var r = win.call("togglePlay"); if (!r.ok) win.toast(r.error) }
+                }
+                NeoButton { text: "■"; tip: "Detener y volver al principio"; onClicked: { if (win.engineOk) win.call("stop"); win.step = -1 } }
+                NeoButton { text: "Volver a una ventana"; tip: "Cierra esta ventana; el Arreglo sigue en la principal (F7)"
+                            onClicked: { win.dualWindow = false; win.view = "arrange" } }
+                Text { anchors.verticalCenter: parent.verticalCenter; leftPadding: 10
+                       text: "Mismo proyecto que la ventana principal · ahí quedan los módulos"
+                       color: Theme.ink; font.family: Theme.font; font.pixelSize: 12 }
+            }
+        }
+        Loader {                                    // solo existe con la ventana abierta
+            id: flowArrange
+            anchors { top: flowBar.bottom; left: parent.left; right: parent.right; bottom: parent.bottom }
+            active: win.dualWindow
+            sourceComponent: ArrangeView { studio: win }
+        }
+        Shortcut { sequence: "F7"; onActivated: win.dualWindow = false }
+        Shortcut { sequence: "Space"; enabled: win.engineOk; onActivated: { var r = win.call("togglePlay"); if (!r.ok) win.toast(r.error) } }
     }
 
     // ---------------- ayuda y aviso ----------------

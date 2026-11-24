@@ -341,6 +341,7 @@ def run_native_selftest(app, host, report_path: str | None, screenshot_path: str
 
     _native_mixer_checks(rep, app, host, window, bridge, prop)
     _native_project_checks(rep, app, host, window)
+    _native_dual_checks(rep, app, host, window, prop)
 
     QMetaObject.invokeMethod(window, "setDark", Q_ARG("QVariant", True))
     QMetaObject.invokeMethod(window, "saveLayout")
@@ -355,6 +356,26 @@ def run_native_selftest(app, host, report_path: str | None, screenshot_path: str
     rep.add("captura de la interfaz nativa", "info", str(shot))
     window.close()
     return _finish(rep, report_path)
+
+
+def _native_dual_checks(rep, app, host, window, prop) -> None:
+    """Doble flujo: el Arreglo en una ventana aparte y los módulos en la principal, mismo proyecto."""
+    from .selftest import _wait
+    before = prop("view")
+    window.setProperty("dualWindow", True)
+    _wait(app, lambda: False, 1.0, host)
+    flow = prop("flowWindow")
+    shown = bool(flow is not None and flow.isVisible())
+    rep.check("Doble flujo: Arreglo en su ventana y módulos en la principal",
+              shown and prop("view") == "modules", {"ventana": shown, "vista": prop("view")})
+    if shown:
+        shot = paths.logs_dir() / "selftest_doble_flujo.png"
+        flow.grabWindow().save(str(shot))
+        rep.add("captura de la ventana del Arreglo", "info", str(shot))
+    window.setProperty("dualWindow", False)
+    window.setProperty("view", before)
+    _wait(app, lambda: False, 0.4, host)
+    rep.check("Doble flujo: cerrar deja una sola ventana", not (flow is not None and flow.isVisible()), prop("view"))
 
 
 def _native_mixer_checks(rep, app, host, window, bridge, prop) -> None:
