@@ -152,7 +152,7 @@ Column {
         text: !root.studio || !root.studio.engineOk ? "Motor nativo no disponible: el afinador corre en el motor."
               : root.trackId < 0 ? "Sin pistas: carga o graba una voz y elígela aquí."
               : "«" + root.trackName() + "» no tiene afinador. «Insertar afinador» lo pone al principio de su cadena; corrige mientras suena y al exportar."
-        color: Theme.ink; font.family: Theme.font; font.pixelSize: 12
+        color: Theme.ink; font.family: Theme.font; font.pixelSize: 13
     }
 
     // ---------------- pantalla ----------------
@@ -205,7 +205,7 @@ Column {
             }
             Text { y: -8; text: "CORRECCIÓN"; color: Theme.lcdSoft; font.family: Theme.font; font.pixelSize: 11; font.weight: 700 }
         }
-        Text { x: 180; y: 134; color: Theme.lcdSoft; font.family: Theme.font; font.pixelSize: 12; font.weight: 600
+        Text { x: 180; y: 134; color: Theme.lcdSoft; font.family: Theme.font; font.pixelSize: 13; font.weight: 600
                text: (screen.corr >= 0 ? "+" : "") + Math.round(screen.corr) + " cents aplicados" }
         // nota destino
         Column {
@@ -267,7 +267,7 @@ Column {
                text: !root.fx ? "Sin afinador en la pista"
                      : root.hist.length && root.studio.playing ? "Sin voz en este tramo"
                      : "Pulsa Reproducir: aquí se dibuja el tono de la voz y su corrección"
-               color: Theme.lcdSoft; font.family: Theme.font; font.pixelSize: 12 }
+               color: Theme.lcdSoft; font.family: Theme.font; font.pixelSize: 13 }
     }
 
     // ---------------- teclado de la escala ----------------
@@ -286,7 +286,7 @@ Column {
                 border.width: 1; border.color: Theme.line
                 Text { anchors.centerIn: parent; text: root.noteNames[index]
                        color: parent.now ? "#000" : parent.on && !parent.black ? "#000" : "#e8e8e8"
-                       font.family: Theme.font; font.pixelSize: 12; font.weight: 700 }
+                       font.family: Theme.font; font.pixelSize: 13; font.weight: 700 }
                 MouseArea { anchors.fill: parent; enabled: !!root.fx; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
                             onClicked: root.setP("key", parent.index)
                             ToolTipLite { text: "Clic: tónica = " + root.noteNames[parent.parent.index]; show: parent.containsMouse } }
@@ -329,7 +329,7 @@ Column {
                 }
                 Text { anchors.horizontalCenter: parent.horizontalCenter
                        text: parent.modelData[0] === "speed" ? (parent.v < 1 ? "robot" : Math.round(parent.v) + " ms") : Math.round(parent.v) + " %"
-                       color: Theme.ink; font.family: Theme.font; font.pixelSize: 14; font.weight: 800 }
+                       color: Theme.ink; font.family: Theme.font; font.pixelSize: 15; font.weight: 800 }
             }
         }
     }
@@ -356,7 +356,7 @@ Column {
                    text: root.tn.method !== "psola"
                          ? "<b>Al mezclar con IA · en vivo</b>: pone este afinador (AF-60) en las voces marcadas con la tonalidad confirmada, la intensidad elegida, velocidad según el tempo y rango según la voz. No toca el audio y se ajusta aquí después."
                          : "<b>Al mezclar con IA · precisa</b>: afina las voces marcadas sin conexión (PSOLA, la más exacta en las pruebas) y pone en su pista una copia <i>_afinada</i>; el original queda intacto."
-                   color: Theme.deviceInk; font.family: Theme.font; font.pixelSize: 12 }
+                   color: Theme.deviceInk; font.family: Theme.font; font.pixelSize: 13 }
             Row {                              // la Mezcla IA solo afina con una tonalidad confirmada
                 spacing: 8
                 NeoButton {
@@ -398,13 +398,13 @@ Column {
                     }
                 }
                 Text { anchors.verticalCenter: parent.verticalCenter; leftPadding: 10; text: "Intensidad"; color: Theme.deviceInk
-                       font.family: Theme.font; font.pixelSize: 12; font.weight: 600 }
+                       font.family: Theme.font; font.pixelSize: 13; font.weight: 600 }
                 Rectangle {
                     anchors.verticalCenter: parent.verticalCenter
                     width: 120; height: 24; color: Theme.input; border.width: 1; border.color: Theme.line
                     Rectangle { x: 1; y: 1; height: 22; width: (parent.width - 2) * root.mixer.tuneStrength / 100; color: Theme.pc.afina }
                     Text { anchors.centerIn: parent; text: Math.round(root.mixer.tuneStrength) + " %"; color: Theme.ink
-                           font.family: Theme.font; font.pixelSize: 12; font.weight: 700 }
+                           font.family: Theme.font; font.pixelSize: 13; font.weight: 700 }
                     MouseArea { anchors.fill: parent; preventStealing: true
                                 function at(x) { root.mixer.tuneStrength = Math.round(Math.max(0, Math.min(100, x / width * 100))) }
                                 onPressed: function (m) { at(m.x) }
