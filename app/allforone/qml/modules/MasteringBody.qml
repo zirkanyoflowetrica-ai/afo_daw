@@ -34,7 +34,7 @@ Column {
                 width: (root.width - 12) / 3; spacing: 2
                 Lcd { text: root.f(root.ml[modelData[1]]); fontSize: 16; width: parent.width }
                 Text { text: modelData[0] + " · " + modelData[2]; width: parent.width; elide: Text.ElideRight; color: Theme.ink
-                       font.family: Theme.font; font.pixelSize: 10; font.weight: 700 }
+                       font.family: Theme.font; font.pixelSize: 11; font.weight: 700 }
             }
         }
     }
@@ -87,7 +87,7 @@ Column {
     }
     Flow {
         width: root.width; spacing: 6; bottomPadding: 8
-        NeoButton { text: "Guardar versión → Rebobinado"; fontWeight: 700; color: "#7ad6ff"; textColor: "#000"
+        NeoButton { text: "Guardar versión → Rebobinado"; fontWeight: 700; color: Theme.accent; textColor: "#000"
                     tip: "Guarda el master tal como suena ahora (efectos, fader, saturación, tono, limitador) como versión manual"
                     onClicked: root.mixer.saveVersion("", "manual", null) }
         NeoButton { text: "Quitar master auto"; opacity: root.st ? 1 : 0.5; onClicked: if (root.st) root.mixer.unmaster() }
