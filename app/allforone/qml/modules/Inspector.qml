@@ -48,9 +48,10 @@ Column {
     Rectangle {
         visible: !!root.track
         width: root.width; height: 40; radius: Theme.radius
-        color: root.cc; border.width: Theme.buttonBorder; border.color: Theme.line
-        Text { x: 10; width: parent.width - 20; anchors.verticalCenter: parent.verticalCenter; elide: Text.ElideRight
-               text: root.track ? root.track.name : ""; color: Theme.headInk(root.cc)
+        color: Theme.chip; border.width: Theme.buttonBorder; border.color: Theme.line
+        Rectangle { width: 6; height: parent.height; radius: Theme.radius; color: root.cc }
+        Text { x: 14; width: parent.width - 24; anchors.verticalCenter: parent.verticalCenter; elide: Text.ElideRight
+               text: root.track ? root.track.name : ""; color: Theme.chipInk
                font.family: Theme.font; font.pixelSize: 16; font.weight: 700 }
     }
     Text {

@@ -130,6 +130,7 @@ Window {
     Shortcut { sequence: "F5"; onActivated: win.view = "arrange" }
     Shortcut { sequence: "F6"; onActivated: win.view = "mixer" }
     Shortcut { sequence: "F7"; onActivated: win.dualWindow = !win.dualWindow }
+    Shortcut { sequence: "F8"; onActivated: win.view = "lab" }
     property alias arrangeView: arrange
     // Para la autoprueba: guardar y abrir proyectos sin diálogo
     // Para la autoprueba: Inicio (biblioteca). a/b según la acción
@@ -569,6 +570,12 @@ Window {
                     onClicked: win.view = "mixer"
                 }
                 NeoButton {
+                    text: "Crear IA"; tip: "Vista Crear IA: el laboratorio de instrumentales por piezas, con variantes y preescucha (F8)"
+                    pressedState: win.view === "lab"
+                    color: win.view === "lab" ? Theme.pressedBg : Theme.button; textColor: win.view === "lab" ? Theme.pressedInk : Theme.ink
+                    onClicked: win.view = "lab"
+                }
+                NeoButton {
                     text: "⧉"; tip: win.dualWindow ? "Cerrar la ventana del Arreglo (F7)"
                                                    : "Doble flujo: el Arreglo en una ventana aparte (otro monitor) y el Mezclador aquí (F7)"
                     pressedState: win.dualWindow
@@ -777,6 +784,7 @@ Window {
                 MixBody { id: mixBody; width: Math.max(mixFlick.width, 700); mixer: mx; studio: win }
             }
         }
+        LabView { id: labView; objectName: "labView"; studio: win; anchors.fill: parent; visible: win.view === "lab" }
         DropArea {                                  // arrastrar audios desde el Explorador
             anchors.fill: parent
             z: 11
@@ -981,7 +989,7 @@ Window {
     Timer { id: firstFit; interval: 60; onTriggered: win.loading = false }
     // Tab cambia Arreglo ⇄ Mezclador (no mientras se escribe en un campo de texto)
     readonly property bool typing: !!activeFocusItem && activeFocusItem.cursorPosition !== undefined
-    Shortcut { sequence: "Tab"; enabled: !win.typing && !win.dualWindow && win.view !== "home"; onActivated: win.view = win.view === "arrange" ? "mixer" : "arrange" }
+    Shortcut { sequence: "Tab"; enabled: !win.typing && !win.dualWindow && win.view !== "home"; onActivated: win.view = win.view === "mixer" ? "arrange" : "mixer" }
     Shortcut { sequence: "Ctrl+B"; onActivated: navZ.folded = !navZ.folded }
     Shortcut { sequence: "Ctrl+I"; onActivated: inspZ.folded = !inspZ.folded }
     Shortcut { sequence: "Ctrl+E"; onActivated: detZ.folded = !detZ.folded }

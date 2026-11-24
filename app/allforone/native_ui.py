@@ -350,6 +350,40 @@ def _native_lab_checks(rep, app, host, window, bridge) -> None:
     rep.check("Instrumental Lab: elegir otra variante cambia el audio de la misma pista",
               same is not None and len(tracks()) == before + 2 and host.tracks[same["id"]]["originalPath"].endswith(f"_{v2}.wav"),
               same and host.tracks[same["id"]]["originalPath"])
+    # Vista Crear IA (X18): discos dibujados de cada variante y arrastrar uno a una pista nueva
+    from PySide6.QtQuick import QQuickItem
+    QMetaObject.invokeMethod(window, "layoutCommand", Q_RETURN_ARG("QVariant"), Q_ARG("QVariant", "view"),
+                             Q_ARG("QVariant", "lab"), Q_ARG("QVariant", None))
+    from .selftest import _wait
+    _wait(app, lambda: False, 0.4, host)
+    lv = window.findChild(QQuickItem, "labView")
+    def walk(it):                                  # los delegados de un Repeater solo son hijos visuales
+        for c in it.childItems():
+            yield c
+            yield from walk(c)
+    items = list(walk(lv)) if lv else []
+    discs = [d for d in items if d.objectName() == "labDisc" and d.isVisible()]
+    rows = [d for d in items if d.objectName() == "labFamily" and d.isVisible()]
+    rep.check("Crear IA: una fila por familia y un disco por variante", lv is not None and lv.isVisible() and len(rows) == 2 and len(discs) == 3,
+              {"filas": len(rows), "discos": len(discs)})
+    shot = paths.logs_dir() / "selftest_lab.png"
+    window.grabWindow().save(str(shot))
+    rep.add("captura de Crear IA", "INFO", str(shot))
+    bajo = next(f for f in bridge.lab.public()["families"] if f["name"] == "Bajo")["variants"][0]
+    n0 = len(tracks())
+    v = QMetaObject.invokeMethod(lv, "dropNew", Q_RETURN_ARG("QVariant"), Q_ARG("QVariant", "Bajo"), Q_ARG("QVariant", bajo))
+    added = tracks()[n0:] if len(tracks()) > n0 else []
+    rep.check("Crear IA: soltar un disco en «Pista nueva» crea una pista con ese audio",
+              len(added) == 1 and added[0]["type"] == "audio" and added[0]["name"] == "Bajo " + bajo["label"],
+              [x["name"] for x in added])
+    QMetaObject.invokeMethod(lv, "edit", Q_RETURN_ARG("QVariant"), Q_ARG("QVariant", "Batería"))
+    app.processEvents()
+    drum_id = int(lab.property("drafts").toVariant()["Batería"]) if hasattr(lab.property("drafts"), "toVariant") else int(lab.property("drafts")["Batería"])
+    rep.check("Crear IA: «Editar» elige la pista borrador y abre su cadena de efectos y el Inspector (X19)",
+              window.property("rackTrack") == drum_id and window.findChild(QQuickItem, "inspector").property("tid") == drum_id,
+              {"rack": window.property("rackTrack"), "borrador": drum_id})
+    QMetaObject.invokeMethod(window, "layoutCommand", Q_RETURN_ARG("QVariant"), Q_ARG("QVariant", "view"),
+                             Q_ARG("QVariant", "arrange"), Q_ARG("QVariant", None))
     inv("send")
     names = [x["name"] for x in tracks()]
     rep.check("Instrumental Lab: enviar al proyecto quita la marca de borrador",
