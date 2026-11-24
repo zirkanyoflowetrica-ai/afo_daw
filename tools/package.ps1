@@ -46,8 +46,11 @@ function Run-Native($exe, [string[]]$argList) {
 
 # Cierra instancias de AllForOne lanzadas desde esta carpeta (bloquean afo_audio.pyd / dist)
 function Stop-AllForOne {
-    $procs = Get-CimInstance Win32_Process -Filter "Name='python.exe' OR Name='pythonw.exe' OR Name='AllForOne.exe' OR Name='QtWebEngineProcess.exe'" -ErrorAction SilentlyContinue |
-        Where-Object { $_.ExecutablePath -and ($_.ExecutablePath -like "$Root\*" -or $_.CommandLine -like '*-m allforone*') }
+    # Solo la aplicacion (AllForOne.exe o «python -m allforone»), nunca otros Python del proyecto:
+    # el 23-11-2026 esto cerro una bateria de pytest a medias.
+    $procs = Get-CimInstance Win32_Process -Filter "Name='python.exe' OR Name='pythonw.exe' OR Name='AllForOne.exe'" -ErrorAction SilentlyContinue |
+        Where-Object { $_.ExecutablePath -and (($_.Name -eq 'AllForOne.exe' -and $_.ExecutablePath -like "$Root\*") -or
+                       ($_.CommandLine -like '*-m allforone*' -and $_.CommandLine -notlike '*pytest*')) }
     foreach ($p in $procs) {
         Write-Host "    Cerrando AllForOne en ejecucion: PID $($p.ProcessId) $($p.ExecutablePath)"
         Stop-Process -Id $p.ProcessId -Force -ErrorAction SilentlyContinue
@@ -189,6 +192,12 @@ Ok "$zip"
 
 Step "Instalar en $Exe (se conservan tus datos de EXE\datos)"
 Stop-AllForOne
+# Un motor de IA de EXE en uso (pruebas, otra copia) bloquearia el borrado a medias: parar antes de tocar nada
+$busy = Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object { $_.ExecutablePath -like "$Exe\*" }
+if ($busy) {
+    $list = ($busy | ForEach-Object { "$($_.Name) (PID $($_.ProcessId))" }) -join ', '
+    Fail "Hay programas de $Exe en uso: $list. Espera a que terminen (por ejemplo, las pruebas) y vuelve a empaquetar; $Exe queda intacto."
+}
 $keep = Join-Path $Cache "tmp\datos_conservados_$Stamp"
 if (Test-Path (Join-Path $Exe 'datos')) { Move-Item (Join-Path $Exe 'datos') $keep }
 # Modelos de IA descargados (gigas): se conservan tal cual

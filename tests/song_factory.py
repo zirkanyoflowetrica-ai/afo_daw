@@ -76,6 +76,23 @@ GENRES = {
                       ["kick", "snare", "hats", "bass", "synth"], [0, 5, 2, 6]),
 }
 
+# Más géneros (laboratorio de instrumentales y pruebas que no recorren GENRES enteros)
+MAS_GENEROS = {
+    # Hip hop boom bap: batería completa a 90, bajo y piano, voz media
+    "hiphop": Genre("D", True, 90.0, [Voice("Voz_Lead", 48, 62, 0.26, seed=12)],
+                    ["drums", "bass", "piano"], [0, 3, 5, 4]),
+    # Lo-fi: tempo lento, piano y pad, bajo suave, voz susurrada
+    "lofi": Genre("F", False, 75.0, [Voice("Voz_Lead", 57, 69, 0.18, seed=13, vowel="o")],
+                  ["drums", "bass", "piano", "pad"], [0, 5, 3, 4]),
+    # House: bombo a negras, clap, charles, bajo y sintetizador
+    "house": Genre("G", True, 124.0, [Voice("Voz_Lead", 55, 69, 0.24, seed=14)],
+                   ["kick", "clap", "hats", "bass", "synth"], [0, 5, 2, 6]),
+    # Cinematográfica: pad de cuerdas, piano, bajo y batería, coros graves
+    "cinematico": Genre("D", True, 80.0, [Voice("Coros", 50, 65, 0.15, seed=15, vowel="o")],
+                        ["drums", "pad", "piano", "bass"], [0, 5, 3, 4]),
+}
+TODOS = {**GENRES, **MAS_GENEROS}
+
 
 def hz(m):
     return 440.0 * 2 ** ((np.asarray(m, dtype=float) - 69) / 12)
@@ -123,7 +140,7 @@ def _sing(freq, formants, rng):
 
 def melody(g: Genre, v: Voice, beats: float):
     """Frases de la voz: notas de la escala dentro del registro, siguiendo los acordes; silencios para respirar."""
-    rng = np.random.default_rng(100 + 7 * list(GENRES.values()).index(g))     # misma melodía para todas las voces
+    rng = np.random.default_rng(100 + 7 * list(TODOS.values()).index(g))     # misma melodía para todas las voces
     beat = 60.0 / g.bpm
     notes, t = [], 0.5 * beat
     bar = 0
@@ -290,7 +307,7 @@ def tonal(g: Genre, n: int, parts: set):
 
 def write_song(genre: str, folder: Path) -> dict:
     """Escribe los stems de un género en `folder`. Devuelve {paths, genre, truth (por voz)}."""
-    g = GENRES[genre]
+    g = TODOS[genre]
     folder.mkdir(parents=True, exist_ok=True)
     n = int(g.seconds * SR)
     stems = {}

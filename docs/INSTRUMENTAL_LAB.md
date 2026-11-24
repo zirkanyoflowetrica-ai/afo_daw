@@ -47,7 +47,11 @@ hacer de verdad. Si choca con `AGENTS.md`, manda `AGENTS.md`.
 2. **Variantes V2…Vn de una familia.** Se generan con ACE-Step `lego` (modelo base) de esa clase
    sobre el **contexto**: la mezcla de las variantes elegidas en las demás familias, o la guía sin
    esa familia. Cada variante usa otra semilla, así que el resultado es distinto de verdad. La
-   prueba lo mide: correlación < 0,5 entre variantes.
+   prueba lo mide: correlación < 0,5 entre variantes (medido: |r| ≤ 0,09).
+   **A tempo.** El tempo va también en la descripción. Cada variante guarda cuánto caen sus ataques
+   en la rejilla de corcheas del contexto (1 = azar; batería real 3–10). Batería y Percusión se
+   reintentan con otra semilla hasta 2 veces si quedan por debajo de 2. Sin esto, la batería de trap
+   a 140 salía a 122 y a 50 BPM; con esto, todas las de la prueba salen a tempo (2,1–5,6).
 3. **Regenerar.** Se hace lo mismo para las variantes no bloqueadas, con semillas nuevas. Las
    anteriores pasan al historial.
 4. **«Parecida a esta».** Se usa ACE-Step `cover` con la variante como fuente y una fuerza
@@ -63,8 +67,9 @@ completan a la longitud exacta (compases × compás × 60 / BPM) y empiezan en e
 variante nunca desplaza el ritmo.
 
 **Tiempos medidos en este equipo (RX 7800 XT):**
-- `lego`: unos 10 s por cada 16–30 s de audio.
-- Demucs (CPU): unos 5 s por cada segundo de audio.
+- `lego`: unos 7–12 s por variante de 7–13 s (más si hay que reintentar).
+- Guía compuesta (`text2music`, 11 s): 75–95 s con su separación.
+- Demucs (CPU): 16 s de audio en 58 s. Un hilo por cada 5 s (con más hilos que trozos se cae).
 - Por eso la guía avisa de cuánto tardará, y cada variante aparece en cuanto está lista.
 
 ## 4. Persistencia

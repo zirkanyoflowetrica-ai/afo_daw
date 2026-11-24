@@ -106,10 +106,13 @@ class Bridge(QObject):
         self.ai = AiMusic(self._mixer_events.put)
         from .stems import StemSeparator
         self.stems = StemSeparator(self._mixer_events.put)
+        from .lab import Lab
+        self.lab = Lab(self._mixer_events.put, lambda: self.ai.generating or self.stems.busy)
         app = QCoreApplication.instance()
         if app is not None:
             app.aboutToQuit.connect(self.ai.shutdown)   # no dejar procesos del motor de IA huérfanos
             app.aboutToQuit.connect(self.stems.shutdown)
+            app.aboutToQuit.connect(self.lab.shutdown)
             app.aboutToQuit.connect(self._midi_shutdown)
         self._midi = None
         self._mixer_timer = QTimer(self)
@@ -133,7 +136,7 @@ class Bridge(QObject):
             if ev.get("type") == "_converted":      # interno: la conversión terminó en su hilo
                 self._finish_import(ev)
                 continue
-            if str(ev.get("type", "")).startswith(("ai", "stems")):   # IA local (ai_music.py, stems.py)
+            if str(ev.get("type", "")).startswith(("ai", "stems", "lab")):   # IA local (ai_music.py, stems.py, lab.py)
                 self.aiEvent.emit(_json(ev))
                 continue
             if ev.get("type") == "_plan":           # interno: la mezcla decidida se aplica en el motor aquí
@@ -1041,6 +1044,8 @@ class Bridge(QObject):
     @_safe
     def aiGenerate(self, payload: str) -> str:
         """Genera una instrumental en otro proceso; el WAV llega por `aiEvent` y se carga con addAudioPath."""
+        if self.lab.busy:
+            return _err("El laboratorio está generando: espera a que termine.")
         try:
             return _ok(**self.ai.generate(json.loads(payload or "{}")))
         except Exception as exc:
@@ -1055,6 +1060,8 @@ class Bridge(QObject):
         opts = json.loads(payload or "{}")
         if self.ai.generating:
             return _err("Ya se está generando una pista.")
+        if self.lab.busy:
+            return _err("El laboratorio está generando: espera a que termine.")
         eng = self.host.engine
         if eng is None:
             return _err("Motor de audio no disponible")
@@ -1099,6 +1106,8 @@ class Bridge(QObject):
         t = self.host.tracks.get(track_id)
         if not t:
             return _err("Elige una pista de audio")
+        if self.lab.busy:
+            return _err("El laboratorio está generando: espera a que termine.")
         try:
             return _ok(**self.stems.split(t.get("source_path") or "", t.get("name") or "Pista", track_id, drums))
         except Exception as exc:
@@ -1108,6 +1117,106 @@ class Bridge(QObject):
     @_safe
     def stemsCancel(self) -> str:
         self.stems.cancel()
+        return _ok()
+
+    # --- Instrumental Lab (lab.py, docs/INSTRUMENTAL_LAB.md) -----------------------------
+    # El estado completo llega también por `aiEvent` (type "labState"); el avance, con type "labJob".
+    def _lab(self, fn, *args) -> str:
+        try:
+            r = fn(*args)
+        except Exception as exc:
+            return _err(str(exc))
+        return _ok(state=self.lab.public(), **(r if isinstance(r, dict) and "families" not in r else {}))
+
+    @Slot(result=str)
+    @_safe
+    def labStatus(self) -> str:
+        return _ok(**self.lab.status(), state=self.lab.public())
+
+    @Slot(result=str)
+    @_safe
+    def labSessions(self) -> str:
+        return _ok(sessions=self.lab.sessions(), favorites=self.lab.favorites())
+
+    @Slot(str, result=str)
+    @_safe
+    def labNew(self, payload: str) -> str:
+        """Sesión nueva: {prompt, style, bpm, key, beats, bars, variants, families, name}."""
+        return self._lab(self.lab.new, json.loads(payload or "{}"))
+
+    @Slot(str, result=str)
+    @_safe
+    def labOpen(self, folder: str) -> str:
+        return self._lab(self.lab.open, folder)
+
+    @Slot(result=str)
+    @_safe
+    def labGuideText(self) -> str:
+        """Guía compuesta por ACE-Step con el contexto; Demucs la separa en las V1."""
+        return self._lab(self.lab.guide_text)
+
+    @Slot(result=str)
+    @_safe
+    def labGuideProject(self) -> str:
+        """Guía = lo que suena ahora en el proyecto (render); Demucs la separa en las V1."""
+        eng = self.host.engine
+        if eng is None:
+            return _err("Motor de audio no disponible")
+        if self.lab.folder is None:
+            return _err("Abre o crea una sesión del laboratorio")
+        if not [t for t in self.host.tracks if t != 0]:
+            return _err("El proyecto está vacío")
+        src = self.lab.folder / "proyecto.wav"
+        if not eng.render_to_wav(str(src)):
+            return _err("No se pudo escuchar el proyecto (render)")
+        return self._lab(self.lab.guide_audio, str(src))
+
+    @Slot(str, result=str)
+    @_safe
+    def labGuideFile(self, path: str) -> str:
+        return self._lab(self.lab.guide_audio, path)
+
+    @Slot(str, int, result=str)
+    @_safe
+    def labGenerate(self, family: str, n: int) -> str:
+        """`n` variantes nuevas de una familia (0 = hasta completar las del contexto)."""
+        return self._lab(self.lab.generate, family, n)
+
+    @Slot(str, result=str)
+    @_safe
+    def labRegenerate(self, family: str) -> str:
+        return self._lab(self.lab.regenerate, family)
+
+    @Slot(str, str, float, result=str)
+    @_safe
+    def labSimilar(self, family: str, vid: str, strength: float) -> str:
+        return self._lab(self.lab.similar, family, vid, strength)
+
+    @Slot(str, str, str, bool, result=str)
+    @_safe
+    def labSet(self, family: str, vid: str, field: str, value: bool) -> str:
+        """Elegir, bloquear o marcar como favorita una variante (field: chosen, locked, favorite)."""
+        return self._lab(self.lab.set_flag, family, vid, field, value)
+
+    @Slot(str, bool, result=str)
+    @_safe
+    def labReference(self, family: str, value: bool) -> str:
+        return self._lab(self.lab.set_reference, family, value)
+
+    @Slot(str, result=str)
+    @_safe
+    def labAddFamily(self, family: str) -> str:
+        return self._lab(self.lab.add_family, family)
+
+    @Slot(str, str, result=str)
+    @_safe
+    def labRemove(self, family: str, vid: str) -> str:
+        return self._lab(self.lab.remove, family, vid)
+
+    @Slot(result=str)
+    @_safe
+    def labCancel(self) -> str:
+        self.lab.cancel()
         return _ok()
 
     # --- IA local: composición MIDI con MIDI-LLM (midi_ai.py) --------------------------

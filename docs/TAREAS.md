@@ -39,7 +39,7 @@ Estados: `·` libre · `>` en curso · `✓` hecho (+ hash) · `!` bloqueado (mo
 | X15 | X | · | `modules/FxBody.qml`, `modules/TuneBody.qml`, nuevo `modules/DeviceChain.qml` | **Panel de detalle de efectos**: la cadena de la pista elegida como fila de dispositivos (mismo marco: nombre, encendido, preset, A/B, quitar; arrastrar para reordenar) y debajo el editor del efecto elegido. Al elegir el AF-60 sale el editor del Afinador. Prueba en `native_ui.py`: elegir la voz → elegir AF-60 → se ve su editor |
 | X16 | X | · | nuevo `modules/Browser.qml` | **Navegador**: efectos nativos por categoría (tabla de §3), VST3, IA, Archivos e Inicio; doble clic añade a la pista elegida |
 | X17 | X | · | nuevo `modules/Inspector.qml`, `MixBody.qml`, `MasteringBody.qml`, `ReviewBody.qml` | **Inspector + Asistente IA**: ajustes de la pista y envíos; Mezcla IA, Master IA y A/B en un sitio |
-| C8 | C | · | `lab.py` (nuevo), `bridge.py` (`lab*`), `tests/test_lab.py` | **Instrumental Lab** (docs/INSTRUMENTAL_LAB.md §5): sesión, contexto común, guía + Demucs → V1, variantes `lego`, bloquear / regenerar / parecida, historial en `lab.json`; pruebas con hip-hop, trap, lo-fi, house y cinematográfica |
+| C8 | C | ✓ | `lab.py` (nuevo), `bridge.py` (`lab*`), `tests/test_lab.py` | **Instrumental Lab** (docs/INSTRUMENTAL_LAB.md §5): sesión, contexto común, guía + Demucs → V1, variantes `lego`, bloquear / regenerar / parecida, historial en `lab.json`; pruebas con hip-hop, trap, lo-fi, house y cinematográfica. Hecho: longitud exacta, variantes distintas (|r| ≤ 0,09), batería a tempo medida y reintentada, bloqueada conservada al regenerar, recarga del disco; guía compuesta y «parecida». Slots `lab*` listos para X18 |
 | C9 | C | · | `lab.py`, `state/Lab.qml` (nuevo) | Preescucha con pistas reales «Lab (borrador)», cambio de variante, enviar / descartar; golpes sueltos para Batería |
 | X18 | X | · | nuevo `modules/LabView.qml`, `Main.qml` (vista «Crear IA») | Vista del laboratorio según docs/INSTRUMENTAL_LAB.md §2 y §5 (colores del tema, discos dibujados del audio, arrastrar a pistas). Empieza cuando C8 tenga los slots `lab*` |
 | X19 | X | · | `modules/LabView.qml` | Editar variante solo con controles que actúen de verdad |
@@ -58,4 +58,5 @@ C→X: PRIORIDAD anterior: X10, X11, X12, X13; luego X2…X9. Antes: X10 y luego
 Hecho: afinador AF-60, pruebas con 4 géneros completos, afinación nativa por defecto (C7), doble flujo (F7), reverb Aux compartida (C4), X1/X3/X4/X5, partes con IA sobre el proyecto (C6, modelo base descargado).
 Plan visual nuevo: docs/DISENO_DAW.md: una ventana fija (navegador, Arreglo ⇄ Mezclador, inspector, panel de detalle con la cadena de efectos y el editor del efecto elegido). Codex: X14 → X15 → X12 → X10/X11 → X16 → X17.
 Hecho también: C5 «Dividir en pistas» con Demucs (botón en cada pista de audio).
-Siguiente de Claude: C8/C9 Instrumental Lab (docs/INSTRUMENTAL_LAB.md); Codex hará su vista (X18) después de X14/X15.
+Hecho también: C8 motor del Instrumental Lab (`lab.py`, slots `lab*`); X18 ya puede empezar.
+Siguiente de Claude: C9 preescucha con pistas reales del laboratorio.

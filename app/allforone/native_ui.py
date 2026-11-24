@@ -161,6 +161,9 @@ def _native_daw_checks(rep, app, host, window, bridge, track_id) -> None:
     st = json.loads(bridge.stemsStatus())
     rep.check("Dividir en pistas: el estado del separador Demucs se lee sin fallar", st.get("ok") is True,
               f"motor {'sí' if st.get('engineOk') else 'no'} · modelo {'sí' if st.get('modelOk') else 'no'}")
+    lb = json.loads(bridge.labStatus())
+    rep.check("Instrumental Lab: el estado del laboratorio se lee sin fallar", lb.get("ok") is True and len(lb.get("families", [])) >= 9,
+              f"compositor {'sí' if lb.get('textOk') else 'no'} · modelo base {'sí' if lb.get('legoOk') else 'no'} · Demucs {'sí' if lb.get('demucsOk') else 'no'}")
 
     def call(fn, *args):
         v = QMetaObject.invokeMethod(window, fn, Q_RETURN_ARG("QVariant"), *[Q_ARG("QVariant", a) for a in args])

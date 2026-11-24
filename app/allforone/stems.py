@@ -34,6 +34,7 @@ MODEL_URL = "https://huggingface.co/datasets/Retrobear/demucs.cpp/resolve/main/"
 EXE = "afo-demucs.exe" if os.name == "nt" else "afo-demucs"
 SR = 44100                                # Demucs trabaja a 44,1 kHz estéreo
 THREADS = 8                               # con 12 hilos demucs.cpp se cae (medido); 8 es estable
+SECONDS_PER_THREAD = 5.0                  # cada hilo necesita su trozo: 10,7 s con 8 hilos se cae (medido)
 # Orden de salida de htdemucs_6s → nombre en la interfaz
 SOURCES = [("drums", "Batería"), ("bass", "Bajo"), ("other", "Otros"), ("vocals", "Voz"),
            ("guitar", "Guitarra"), ("piano", "Piano")]
@@ -132,6 +133,68 @@ def split_drums(x: np.ndarray, sr: int = SR) -> dict[str, np.ndarray]:
 # ---------------- servicio ---------------------------------------------------------------------
 class _Cancelled(Exception):
     pass
+
+
+def threads_for(seconds: float) -> int:
+    """Hilos para un audio de `seconds`: uno por cada 5 s, de 1 a 8. Medido con demucs.cpp: 10,7 s con
+    8 hilos se cae y 16 s con 3 hilos tarda 56 s (con 8, 85–99 s)."""
+    return max(1, min(THREADS, int(seconds // SECONDS_PER_THREAD)))
+
+
+def separate(exe: Path, x: np.ndarray, work: Path, cancel: threading.Event, progress, hold=None,
+             last_log: list | None = None) -> dict[str, np.ndarray]:
+    """Separa `x` ((muestras, 2) a 44,1 kHz) en las 6 fuentes de SOURCES, a la misma escala que `x`.
+    Si el pico pasa de 0,99 se baja antes (el WAV de entrada es PCM de 24 bits) y se devuelve igual."""
+    import soundfile as sf
+    peak = float(np.max(np.abs(x))) if x.size else 0.0
+    gain = 0.99 / peak if peak > 0.99 else 1.0
+    sf.write(str(work / "entrada.wav"), x * gain, SR, subtype="PCM_24")
+    files = run_demucs(exe, work / "entrada.wav", work, cancel, progress, hold, last_log,
+                       threads_for(x.shape[0] / SR))
+    out = {}
+    for (src, label), f in zip(SOURCES, files):
+        if not f.is_file():
+            raise RuntimeError(f"El separador no escribió «{label}»")
+        y, _ = sf.read(str(f), always_2d=True, dtype="float32")
+        if not np.isfinite(y).all():
+            raise RuntimeError(f"El separador devolvió audio no válido en «{label}»")
+        out[src] = y / gain
+    return out
+
+
+def run_demucs(exe: Path, wav: Path, work: Path, cancel: threading.Event, progress, hold=None,
+               last_log: list | None = None, threads: int = THREADS) -> list[Path]:
+    """Ejecuta el separador sobre `wav` (44,1 kHz estéreo) y deja `target_{i}_{fuente}.wav` en `work`.
+    `progress(0..1)` recibe el avance; `hold(proc)` guarda el proceso para poder cancelarlo."""
+    cmd = [str(exe), str(models_dir() / MODEL), str(wav), str(work), str(threads)]
+    log.info("Stems: %s", " ".join(cmd))
+    proc = subprocess.Popen(cmd, cwd=str(work), stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                            stdin=subprocess.DEVNULL, creationflags=_NO_WINDOW,
+                            env={**os.environ, "PATH": str(exe.parent) + os.pathsep + os.environ.get("PATH", "")})
+    if hold:
+        hold(proc)
+    per: dict[str, float] = {}
+    last = 0.0
+    with open(work / "demucs.log", "w", encoding="utf-8", errors="replace") as logf:
+        for raw in proc.stdout:
+            line = raw.decode("utf-8", errors="replace").rstrip()
+            logf.write(line + "\n")
+            if last_log is not None:
+                last_log[:] = (last_log + [line])[-30:]
+            m = _RE_PCT.search(line)
+            if m:
+                per[m.group(1)] = float(m.group(2))
+                if time.monotonic() - last > 0.3:
+                    last = time.monotonic()
+                    progress(sum(per.values()) / (100.0 * max(len(per), threads)))
+    code = proc.wait()
+    if hold:
+        hold(None)
+    if cancel.is_set():
+        raise _Cancelled()
+    if code != 0:
+        raise RuntimeError(f"El separador terminó con el código {code}")
+    return [work / f"target_{i}_{src}.wav" for i, (src, _) in enumerate(SOURCES)]
 
 
 class StemSeparator:
@@ -244,40 +307,15 @@ class StemSeparator:
             self._progress(0.02, "Preparando el audio")
             x = _load_44k(path)
             secs = x.shape[0] / SR
-            sf.write(str(work / "entrada.wav"), x, SR, subtype="PCM_24")
-            cmd = [str(exe), str(models_dir() / MODEL), str(work / "entrada.wav"), str(work), str(THREADS)]
-            log.info("Stems: %s", " ".join(cmd))
-            self._proc = subprocess.Popen(cmd, cwd=str(work), stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                                          stdin=subprocess.DEVNULL, creationflags=_NO_WINDOW,
-                                          env={**os.environ, "PATH": str(exe.parent) + os.pathsep + os.environ.get("PATH", "")})
-            per: dict[str, float] = {}
-            last = 0.0
+            def hold(proc):
+                self._proc = proc
             self.last_log = []
-            with open(work / "demucs.log", "w", encoding="utf-8", errors="replace") as logf:
-                for raw in self._proc.stdout:
-                    line = raw.decode("utf-8", errors="replace").rstrip()
-                    logf.write(line + "\n")
-                    self.last_log = (self.last_log + [line])[-30:]
-                    m = _RE_PCT.search(line)
-                    if m:
-                        per[m.group(1)] = float(m.group(2))
-                        if time.monotonic() - last > 0.3:
-                            last = time.monotonic()
-                            done = sum(per.values()) / (100.0 * max(len(per), THREADS))
-                            self._progress(0.05 + 0.85 * done, "Separando con Demucs")
-            code = self._proc.wait()
-            self._proc = None
-            if self._cancel.is_set():
-                raise _Cancelled()
-            if code != 0:
-                raise RuntimeError(f"El separador terminó con el código {code}")
+            sep = separate(exe, x, work, self._cancel, lambda d: self._progress(0.05 + 0.85 * d, "Separando con Demucs"),
+                           hold, self.last_log)
             self._progress(0.92, "Guardando las pistas")
             stems, silent = [], []
-            for i, (src, label) in enumerate(SOURCES):
-                f = work / f"target_{i}_{src}.wav"
-                if not f.is_file():
-                    raise RuntimeError(f"El separador no escribió «{label}»")
-                y, _ = sf.read(str(f), always_2d=True, dtype="float32")
+            for src, label in SOURCES:
+                y = sep[src]
                 db = rms_db(y)
                 if db < SILENT_DB:
                     silent.append(label)

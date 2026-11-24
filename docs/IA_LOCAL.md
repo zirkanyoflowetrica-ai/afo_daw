@@ -119,8 +119,21 @@ el turbo no hace `lego` ni `extract`. `tests/test_partes_ia.py` lo mide con un r
 
 ## Dividir en pistas (Demucs, 23-11-2026)
 Botón «Dividir» de cada pista de audio: `motores/demucs/afo-demucs.exe` (demucs.cpp, Demucs v4 de 6
-fuentes, CPU con OpenMP, 8 hilos: con 12 se cae) y el modelo `modelos/demucs/ggml-model-htdemucs-6s-f16.bin`
+fuentes, CPU con OpenMP; un hilo por cada 5 s de audio, de 1 a 8: con más hilos que trozos se cae) y el modelo `modelos/demucs/ggml-model-htdemucs-6s-f16.bin`
 (55 MB, se descarga desde la app). Salen Batería (dividida en Bombo, Caja / Clap y Platos por bandas
 complementarias), Bajo, Voz, Guitarra, Piano y Otros; las que salen en silencio no se cargan y la
-original queda silenciada. Unos 5 s por cada segundo de audio. Compilar: `tools/build_demucs.ps1`.
+original queda silenciada. 16 s de canción tardan 58 s (3 hilos). Compilar: `tools/build_demucs.ps1`.
 `tests/test_stems.py` lo mide con trap y rock completos.
+
+## Instrumental Lab (23-11-2026)
+`lab.py` (diseño en `docs/INSTRUMENTAL_LAB.md`): sesiones en `datos/media/lab/<fecha>_<nombre>/lab.json`
+con el contexto (tempo, compás, tonalidad, compases, estilo), una fila por familia y sus variantes.
+- Guía: ACE-Step `text2music` (unos 75–95 s para 11 s) o el audio del proyecto; Demucs da la V1 de
+  Batería, Bajo, Piano y Guitarra.
+- Variantes: ACE-Step `lego` (modelo base) sobre las variantes elegidas de las demás familias, con el
+  tempo también en la descripción. Unos 7–12 s por variante de 7–13 s.
+- «A tempo»: cada variante guarda cuánto caen sus ataques en la rejilla de corcheas (1 = azar; la
+  batería real da 3–10). Batería y Percusión se reintentan hasta 2 veces si quedan por debajo de 2.
+- Bloquear, regenerar (lo no bloqueado pasa al historial), «parecida» (`cover`), favoritas y papelera.
+- `tests/test_lab.py`: hip-hop, trap, lo-fi, house y cinematográfica completos; guía compuesta y
+  «parecida» (similitud del espectro 0,89).
