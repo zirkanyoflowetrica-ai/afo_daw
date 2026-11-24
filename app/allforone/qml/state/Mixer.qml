@@ -249,7 +249,8 @@ QtObject {
             studio.refreshRacks()
             status = "Mezcla en vivo #" + runs + " (" + ev.profile + ") aplicada a " + ev.applied + " pistas en " + ev.seconds + " s" +
                      (lastTuned ? " · voces afinadas" : "") + ". " + autoText(ev.automation || {}) +
-                     " No se reproduce en vivo: " + ev.skipped.join(", ") + "."
+                     " No se reproduce en vivo: " + ev.skipped.join(", ") + "." +
+                     (ev.template_note ? " " + ev.template_note + "." : "")
             studio.toast("Mezcla automática aplicada: faders, paneo, efectos y automatizaciones que se mueven al reproducir")
         } else if (ev.type === "error") {
             busy = false; workingTrack = -1; status = "Error: " + ev.error

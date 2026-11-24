@@ -308,6 +308,12 @@ class MixerService:
             result["reference_lufs"] = lufs if math.isfinite(lufs) else None
         result["seconds"] = round(time.monotonic() - t0, 2)
         result["profile_name"] = tpl.PROFILES[opts["profile"]]["name"]
+        # La plantilla en «Solo guía» no cambia el audio (V4.2): se dice y se da su guía de escucha
+        prof = tpl.PROFILES[opts["profile"]]
+        trims = sum(1 for t in result["tracks"] if any(n.startswith("guía de estilo") for n in t.get("notes", [])))
+        result["template_note"] = (f"Plantilla «{prof['name']}» solo como guía (no cambia el sonido): {prof['voice'].rstrip('.')}"
+                                   if opts["template_mode"] == tpl.GUIDE_ONLY else
+                                   f"Plantilla «{prof['name']}»: ajuste sutil de volumen en {trims} pista(s)")
         result["master"] = payload.get("master")
         for t in result["tracks"]:
             for k in ("power", "bands"):

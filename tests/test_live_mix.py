@@ -65,6 +65,7 @@ def test_decisiones_como_faders_y_cadenas_reales(mixed):
     unity = h.engine.measure_mix()["tracks"][kick["trackId"]]["lufs_i"]
     assert with_gain - unity == pytest.approx(kick["gain_db"], abs=0.3)
     assert done["skipped"], "lo que no se reproduce en vivo se informa"
+    assert "solo como guía (no cambia el sonido)" in done["template_note"], "la plantilla en «Solo guía» lo dice"
 
 
 def test_master_en_vivo_sin_archivos(mixed, tmp_path):
@@ -82,6 +83,11 @@ def test_master_en_vivo_sin_archivos(mixed, tmp_path):
     assert not any(e["enabled"] for e in h.engine.effects(0))
     json.loads(b.mixer("bypass", json.dumps({"bypass": False, "track": 0})))
     assert all(e["enabled"] for e in h.engine.effects(0))
+    # A/B de Mezcla (sin pista): puentea las pistas, el master sigue sonando
+    json.loads(b.mixer("bypass", json.dumps({"bypass": True})))
+    assert all(e["enabled"] for e in h.engine.effects(0)), "el A/B de Mezcla no toca el master"
+    assert not any(e["enabled"] for t in b._auto if t != 0 for e in h.engine.effects(t))
+    json.loads(b.mixer("bypass", json.dumps({"bypass": False})))
     # Quitar el master IA deja el master como estaba
     json.loads(b.mixer("unmaster", "{}"))
     assert h.engine.effects(0) == [] and h.engine.master_ceiling() == pytest.approx(-1.0)

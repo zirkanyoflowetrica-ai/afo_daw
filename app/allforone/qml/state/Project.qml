@@ -16,6 +16,11 @@ QtObject {
             bpm: s.bpm, sus: sq.sus, oct: sq.oct, hidden: s.hidden,
             master: { pos: s.masterPos, drive: s.masterDrive, tone: s.masterTone, limiter: s.limiter },
             masterVersions: mx.versions, versionSel: mx.versionSel,
+            // Ajustes de la Mezcla IA y del Afinador (la tonalidad confirmada vuelve confirmada)
+            ai: { profile: mx.profile, mode: mx.mode, stepKnob: mx.stepKnob, space: mx.spaceKnob, masterSel: mx.masterSel,
+                  tuneStrength: mx.tuneStrength,
+                  tune: { mode: mx.tune.mode, key: mx.tune.key, scale: mx.tune.scale, bpm: mx.tune.bpm, method: mx.tune.method,
+                          voices: mx.tune.voices, confirmed: mx.tune.confirmed, status: mx.tune.status } },
             tracks: s.tracks.map(function (t) {
                 var it = t.id >= 0 ? mx.itemOfTrack(t.id) : null
                 return { uid: t.uid, id: t.id, type: t.type, name: t.name, vol: t.vol, pan: t.pan, mute: t.mute, solo: t.solo,
@@ -127,6 +132,24 @@ QtObject {
         if (!mf.ok) s.toast(mf.error)
         s.call("setMasterCeiling", doc.master_ceiling === undefined ? -1 : doc.master_ceiling)
         mx.masterStats = null
+        var ai = doc.ai
+        if (ai) {
+            if (ai.profile) mx.profile = ai.profile
+            if (ai.mode) mx.mode = ai.mode
+            if (ai.stepKnob !== undefined) mx.stepKnob = ai.stepKnob
+            if (ai.space !== undefined) mx.spaceKnob = ai.space
+            if (ai.masterSel !== undefined) mx.masterSel = ai.masterSel
+            mx.tuneStrength = ai.tuneStrength || 0
+            if (ai.tune) {
+                var c = ai.tune.confirmed
+                mx.setTune(ai.tune)
+                // La confirmación también vive en Python (mixsvc.approval): se repite con esa tonalidad
+                if (c) {
+                    mx.setTune({ mode: "Manual", key: c.key, scale: c.scale, bpm: c.bpm, confirmed: null })
+                    Qt.callLater(mx.confirmTune)
+                }
+            }
+        }
         mx.versions = doc.masterVersions || []
         mx.versionSel = doc.versionSel === undefined ? -1 : doc.versionSel
         s.syncTrackStates()

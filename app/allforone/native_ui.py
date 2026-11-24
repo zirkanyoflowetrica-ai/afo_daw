@@ -242,6 +242,7 @@ def _native_project_checks(rep, app, host, window) -> None:
     call("fxCommand", "target", 0, None)
     call("fxCommand", "add", "gain", None)
     call("fxCommand", "auto", "output", [[0, -6], [4, 0]])
+    call("setTuneStrength", 35)
     before = call("projectCommand", "snapshot", "")
     shape = lambda snap: [(t["type"], t["name"]) for t in snap["tracks"]]   # noqa: E731
     path = paths.user_data_dir() / "proyectos" / "autoprueba.afo"
@@ -259,6 +260,11 @@ def _native_project_checks(rep, app, host, window) -> None:
     rep.check("Proyecto: efectos del master y su automatización recuperados en el motor",
               [e["key"] for e in master][-1:] == ["gain"] and master[-1]["automated"] == ["output"],
               [(e["key"], e["automated"]) for e in master])
+    ai = lambda snap: (lambda a: (a.get("profile"), a.get("tuneStrength"), (a.get("tune") or {}).get("method"),  # noqa: E731
+                                  (a.get("tune") or {}).get("voices")))(snap.get("ai") or {})
+    rep.check("Proyecto: ajustes de la Mezcla IA y del Afinador recuperados",
+              ai(after) == ai(before) and ai(after)[1] == 35, {"antes": ai(before), "después": ai(after)})
+    call("setTuneStrength", 0)
     notes = lambda snap: [(t["name"], sorted(t["roll"]), sorted(t["pat"]), t["cfg"]) for t in snap["tracks"] if t["type"] in ("inst", "drum")]  # noqa: E731
     rep.check("Proyecto: notas, patrones y ajustes de los sintetizadores recuperados",
               notes(after) == notes(before) and any(n[1] or n[2] for n in notes(after)), len(notes(after)))
@@ -454,10 +460,10 @@ def _native_mixer_checks(rep, app, host, window, bridge, prop) -> None:
     fx = fx.toVariant() if hasattr(fx, "toVariant") else fx
     rep.check("elegir la tira de la voz muestra su rack en Efectos", "deesser" in [e["key"] for e in fx["chain"]], fx["chain"])
     call("mixerCommand", "ab", "A")
-    off = [e["enabled"] for tid in bridge._auto for e in host.engine.effects(tid) if e["id"] in bridge._auto[tid]]
+    off = [e["enabled"] for tid in bridge._auto if tid != 0 for e in host.engine.effects(tid) if e["id"] in bridge._auto[tid]]
     call("mixerCommand", "ab", "B")
-    on = [e["enabled"] for tid in bridge._auto for e in host.engine.effects(tid) if e["id"] in bridge._auto[tid]]
-    rep.check("A/B: puentear y restablecer los efectos de la mezcla automática", off and not any(off) and all(on), f"{len(off)} efectos")
+    on = [e["enabled"] for tid in bridge._auto if tid != 0 for e in host.engine.effects(tid) if e["id"] in bridge._auto[tid]]
+    rep.check("A/B: puentear y restablecer los efectos de la mezcla automática (las pistas, no el master)", off and not any(off) and all(on), f"{len(off)} efectos")
     # Rebobinado: versión manual sin efectos, y volver a la automática
     auto_chain = snap()["masterChain"]
     call("mixerCommand", "unmaster", None)

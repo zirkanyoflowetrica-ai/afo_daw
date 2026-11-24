@@ -1322,7 +1322,7 @@ class Bridge(QObject):
         self._mixer_events.put({"type": "done", "live": True, "applied": applied, "seconds": plan["seconds"],
                                 "profile": plan.get("profile_name", ""), "skipped": plan["skipped"],
                                 "reference_lufs": plan.get("reference_lufs"), "master": plan.get("master"),
-                                "automation": plan.get("automation") or {}})
+                                "automation": plan.get("automation") or {}, "template_note": plan.get("template_note", "")})
 
     def _master_target(self, preset: str):
         """El preset elegido; «Según referencia» = Comercial con el objetivo de la referencia (como el V4.2)."""
@@ -1378,7 +1378,8 @@ class Bridge(QObject):
         """A/B de escucha: activa o puentea los efectos de la mezcla automática (pista o master)."""
         on = not bool(d.get("bypass"))
         tid = d.get("track")
-        targets = [int(tid)] if tid is not None else list(self._auto)
+        # Sin pista: las pistas de la mezcla, no el master (tiene su propio A/B en Master IA)
+        targets = [int(tid)] if tid is not None else [t for t in self._auto if t != project.MASTER]
         for t in targets:
             for e in self._auto.get(t, []):
                 self.host.engine.set_effect_enabled(e, on)
