@@ -39,6 +39,13 @@ def logs_dir() -> Path:
     return p
 
 
+def library_dir() -> Path:
+    """Biblioteca de proyectos (Artista → Lanzamiento → Canción): datos/biblioteca."""
+    p = user_data_dir() / "biblioteca"
+    p.mkdir(parents=True, exist_ok=True)
+    return p
+
+
 def media_dir() -> Path:
     p = user_data_dir() / "media"
     p.mkdir(parents=True, exist_ok=True)

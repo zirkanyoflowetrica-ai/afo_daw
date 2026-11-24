@@ -17,6 +17,18 @@ def test_repo_themes_are_valid():
     assert themes.list_themes()[0]["name"] == "AllForOne"      # el de fábrica primero
 
 
+def test_tema_sobrio_apagado():
+    """X12: el tema de fábrica Sobrio no lleva colores llamativos (saturación HSL ≤ 35 %)."""
+    from allforone.native_ui import _hsl_sat, contrast_ratio
+    t = themes.load("Sobrio")
+    assert t["dark"]
+    cols = dict(t["modules"], accent=t["colors"]["accent"], knobArc=t["colors"]["knobArc"])
+    loud = {k: round(_hsl_sat(c), 2) for k, c in cols.items() if _hsl_sat(c) > 0.35}
+    assert not loud, loud
+    c = t["colors"]
+    assert contrast_ratio(c["ink"], c["bg"]) >= 4.5 and contrast_ratio("#000000", c["accent"]) >= 4.5
+
+
 def test_shared_theme_folder_is_picked_up(tmp_path, monkeypatch):
     monkeypatch.setattr(paths, "app_root", lambda: tmp_path)
     (tmp_path / "templates" / "Amigo").mkdir(parents=True)

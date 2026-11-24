@@ -164,6 +164,24 @@ Column {
         var id = e.id
         chain = chain.map(function (x) { return x.id === id ? Object.assign({}, x, { values: vals }) : x })
     }
+    // A/B de un dispositivo: la primera vez guarda los valores como A (lo que se cambie después es B);
+    // luego alterna: aplica en el motor los valores del otro lado y guarda los actuales.
+    property var ab: ({})                       // id → {side: "A"|"B", other: [valores del otro lado]}
+    function abToggle(e) {
+        var d = typeOf(e.key); if (!d) return
+        var now = d.params.map(function (p, i) { return e.values[i] !== undefined ? e.values[i] : p.def })
+        var s = ab[e.id], m = Object.assign({}, ab)
+        if (!s) { m[e.id] = { side: "B", other: now }; ab = m; studio.toast("A guardado. Lo que cambies ahora es B; pulsa A/B para comparar"); return }
+        for (var i = 0; i < d.params.length; i++)
+            if (s.other[i] !== now[i]) studio.call("fxParam", e.id, d.params[i].id, s.other[i])
+        var id = e.id, vals = s.other.slice()
+        chain = chain.map(function (x) { return x.id === id ? Object.assign({}, x, { values: vals }) : x })
+        m[e.id] = { side: s.side === "A" ? "B" : "A", other: now }; ab = m
+        studio.dirty = true
+        studio.toast("Escuchas " + m[e.id].side + " en «" + nameOf(e) + "»")
+    }
+    function dropAt(id, x) { return chainView.dropAt(id, x) }
+    readonly property bool tuneShown: tuneLoader.active && !!tuneLoader.item && !!tuneLoader.item.fx && tuneLoader.item.fx.id === sel
     function applyPresetTo(e, name) {
         var r = studio.call("fxApplyPreset", e.id, name)
         if (!r.ok) { studio.toast(r.error); return }
@@ -233,224 +251,20 @@ Column {
     }
 
     // ---------------- cadena de dispositivos (como un DAW: en fila, en orden de señal) ----------------
-    Rectangle {
-        id: chainBox
-        width: root.width; height: Math.max(300, root.cardNeed + 12)
-        color: Theme.chain; radius: Theme.radius
-        border.width: 1; border.color: Theme.line
-        Flickable {
-            id: chainFlick
-            x: 6; y: 6; width: parent.width - 12; height: parent.height - 12
-            contentWidth: devRow.width; contentHeight: height
-            clip: true; boundsBehavior: Flickable.StopAtBounds
-            flickableDirection: Flickable.HorizontalFlick
-            interactive: contentWidth > width
-            Row {
-                id: devRow
-                height: chainFlick.height; spacing: 6
-                Repeater {
-                    model: root.chain
-                    Rectangle {
-                        id: card
-                        required property var modelData
-                        required property int index
-                        readonly property var desc: root.typeOf(modelData.key)
-                        readonly property bool picked: modelData.id === root.sel
-                        readonly property var knobs: desc ? desc.params.filter(function (p) { return !p.choices.length }) : []
-                        readonly property var picks: desc ? desc.params.filter(function (p) { return p.choices.length > 0 }) : []
-                        readonly property int cols: Math.max(2, Math.ceil(knobs.length / 2))
-                        readonly property bool isFolded: !!root.folded[modelData.id]
-                        width: isFolded ? 36 : modelData.key === "vst3" ? 200 : Math.max(200, cols * 64 + 16)
-                        readonly property int needH: isFolded ? 0 : devHead.height + 6 + cardBody.implicitHeight + 10
-                        onNeedHChanged: if (needH > root.cardNeed) root.cardNeed = needH
-                        clip: true
-                        height: devRow.height
-                        color: Theme.device; radius: Theme.radius
-                        border.width: picked ? 2 : 1; border.color: picked ? Theme.knobArc : Theme.deviceBorder
-                        MouseArea { anchors.fill: parent; onClicked: root.sel = card.modelData.id }
-                        HoverHandler { id: cardHover }   // ◀ ▶ ≡ solo al pasar o con la tarjeta elegida: el nombre cabe
-                        readonly property bool tools: cardHover.hovered || picked
-                        Rectangle {                      // cabecera: activar · nombre · ◀ ▶ ≡ ✕
-                            id: devHead
-                            visible: !card.isFolded
-                            x: 1; y: 1; width: parent.width - 2; height: 28
-                            color: Theme.deviceHead; radius: Theme.radius
-                            Rectangle {
-                                x: 8; anchors.verticalCenter: parent.verticalCenter
-                                width: 14; height: 14; radius: 7
-                                color: card.modelData.enabled ? Theme.knobArc : Theme.knobTrack
-                                border.width: 1; border.color: Theme.deviceBorder
-                                MouseArea { id: bypassMouse; hoverEnabled: true; anchors.fill: parent; anchors.margins: -5; cursorShape: Qt.PointingHandCursor
-                                            onClicked: root.enable(card.modelData.id, !card.modelData.enabled) }
-                                ToolTipLite { text: card.modelData.enabled ? "Activo: clic para puentear" : "Puenteado: clic para activar"; show: bypassMouse.containsMouse }
-                            }
-                            Text {
-                                id: devName
-                                x: 30; width: parent.width - 30 - devBtns.width - 8; anchors.verticalCenter: parent.verticalCenter
-                                elide: Text.ElideRight
-                                text: root.nameOf(card.modelData) + ((card.modelData.automated || []).length ? " ∿" : "")
-                                color: Theme.deviceInk; font.strikeout: !card.modelData.enabled
-                                font.family: Theme.font; font.pixelSize: 12; font.weight: 700
-                                MouseArea { id: foldMouse; hoverEnabled: true; anchors.fill: parent; onClicked: root.sel = card.modelData.id
-                                            onDoubleClicked: root.toggleFold(card.modelData.id) }
-                                ToolTipLite { text: "Doble clic: plegar"; show: foldMouse.containsMouse }
-                            }
-                            Row {
-                                id: devBtns
-                                anchors.right: parent.right; anchors.rightMargin: 4; anchors.verticalCenter: parent.verticalCenter
-                                spacing: 0
-                                Rectangle {              // lo puso la mezcla automática (antes, un texto al pie que pisaba los valores)
-                                    visible: !!card.modelData.auto
-                                    width: autoTxt.implicitWidth + 8; height: 18; radius: 2
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    color: Theme.knobArc
-                                    Text { id: autoTxt; anchors.centerIn: parent; text: "AUTO"; color: "#000"
-                                           font.family: Theme.font; font.pixelSize: 10; font.weight: 700 }
-                                    MouseArea { id: autoM; anchors.fill: parent; hoverEnabled: true }
-                                    ToolTipLite { text: "Lo puso la mezcla automática; puedes cambiarlo"; show: autoM.containsMouse }
-                                }
-                                DevBtn { glyph: "◀"; tip: "Mover antes"; visible: card.tools && card.index > 0; onClicked: root.move(card.modelData.id, card.index - 1) }
-                                DevBtn { glyph: "▶"; tip: "Mover después"; visible: card.tools && card.index < root.chain.length - 1; onClicked: root.move(card.modelData.id, card.index + 1) }
-                                DevBtn { glyph: "≡"; tip: "Detalle: medidores, presets propios y automatización"; visible: card.tools; onClicked: root.sel = card.modelData.id }
-                                DevBtn { glyph: "✕"; tip: "Quitar de la cadena"; onClicked: root.remove(card.modelData.id) }
-                            }
-                        }
-                        Column {                         // plegado: activador y nombre en vertical
-                            visible: card.isFolded
-                            anchors.fill: parent; anchors.topMargin: 8; spacing: 10
-                            Rectangle {
-                                anchors.horizontalCenter: parent.horizontalCenter
-                                width: 14; height: 14; radius: 7
-                                color: card.modelData.enabled ? Theme.knobArc : Theme.knobTrack
-                                border.width: 1; border.color: Theme.deviceBorder
-                                MouseArea { anchors.fill: parent; anchors.margins: -5; cursorShape: Qt.PointingHandCursor
-                                            onClicked: root.enable(card.modelData.id, !card.modelData.enabled) }
-                            }
-                            Item {
-                                width: parent.width; height: parent.height - 40
-                                Text {
-                                    anchors.centerIn: parent; rotation: -90
-                                    width: parent.height; horizontalAlignment: Text.AlignHCenter; elide: Text.ElideRight
-                                    text: root.nameOf(card.modelData)
-                                    color: Theme.deviceInk; font.family: Theme.font; font.pixelSize: 12; font.weight: 700
-                                }
-                                MouseArea { anchors.fill: parent; onDoubleClicked: root.toggleFold(card.modelData.id)
-                                            onClicked: root.sel = card.modelData.id }
-                            }
-                        }
-                        Column {
-                            id: cardBody
-                            visible: !card.isFolded
-                            x: 8; y: devHead.height + 6; width: parent.width - 16; spacing: 6
-                            opacity: card.modelData.enabled ? 1 : 0.55
-                            Column {                     // plugin VST3: su propia ventana
-                                visible: card.modelData.key === "vst3"
-                                width: parent.width; spacing: 8
-                                NeoButton { text: "Abrir plugin"; width: parent.width; fontSize: 12; padY: 6
-                                            tip: "Abre la ventana del plugin (sus controles y presets)"
-                                            onClicked: { var r = root.studio.call("fxPluginEditor", card.modelData.id); if (!r.ok) root.studio.toast(r.error) } }
-                                Text { width: parent.width; wrapMode: Text.Wrap; text: "VST3 externo. Su estado se guarda con el proyecto."
-                                       color: Theme.deviceInk; font.family: Theme.font; font.pixelSize: 11; font.weight: 500 }
-                            }
-                            Select {
-                                visible: card.modelData.key !== "vst3"
-                                width: parent.width; fontSize: 10; padX: 4; padY: 2
-                                fill: Theme.deviceHead; ink: Theme.deviceInk
-                                options: [["", "Preset…"]].concat((root.presetCache[card.modelData.key] || []).map(function (p) { return [p.name, p.name + (p.factory ? "" : " ★")] }))
-                                current: ""
-                                tip: "Presets de fábrica y los tuyos (★)"
-                                onPicked: function (v) { if (v) root.applyPresetTo(card.modelData, v) }
-                            }
-                            Canvas {                     // pantalla del dispositivo: lo que hará con estos valores
-                                visible: !!card.desc
-                                width: parent.width; height: visible ? 64 : 0
-                                property var fx: card.modelData
-                                property var live: root.cardLive[card.modelData.id]
-                                onFxChanged: requestPaint()
-                                onLiveChanged: requestPaint()
-                                onWidthChanged: requestPaint()
-                                onPaint: { FG.setPalette(Theme.lcd, Theme.lcdSoft); if (card.desc) FG.draw(getContext("2d"), width, height, fx, card.desc, live) }
-                            }
-                            Grid {                       // perillas en dos filas
-                                columns: card.cols; columnSpacing: 4; rowSpacing: 2
-                                Repeater {
-                                    model: card.knobs
-                                    Column {
-                                        id: kc
-                                        required property var modelData
-                                        readonly property int pi: root.paramIndex(card.desc, modelData.id)
-                                        readonly property real v: card.modelData.values[pi] !== undefined ? card.modelData.values[pi] : modelData.def
-                                        readonly property bool auto: (card.modelData.automated || []).indexOf(modelData.id) >= 0
-                                        width: 60; spacing: 0
-                                        Knob {
-                                            anchors.horizontalCenter: parent.horizontalCenter
-                                            value: root.toPos(kc.modelData, kc.v)
-                                            label: kc.modelData.name + (kc.auto ? " ∿" : "")
-                                            labelColor: kc.auto ? Theme.knobArc : Theme.deviceInk
-                                            tip: kc.modelData.help
-                                            onMoved: function (pos) { root.setParamOf(card.modelData, kc.pi, root.fromPos(kc.modelData, pos)) }
-                                            onReleased: root.studio.autoRelease("fx", card.modelData.id, kc.modelData.id, kc.v)
-                                        }
-                                        Text { anchors.horizontalCenter: parent.horizontalCenter
-                                               text: root.fmtVal(kc.modelData, kc.v); color: Theme.deviceInk
-                                               font.family: Theme.font; font.pixelSize: 11; font.weight: 700 }
-                                    }
-                                }
-                            }
-                            Flow {                       // parámetros de elegir (modo, tipo…)
-                                width: parent.width; spacing: 6
-                                Repeater {
-                                    model: card.picks
-                                    Column {
-                                        id: pcol
-                                        required property var modelData
-                                        readonly property int pi: root.paramIndex(card.desc, modelData.id)
-                                        readonly property real v: card.modelData.values[pi] !== undefined ? card.modelData.values[pi] : modelData.def
-                                        spacing: 1
-                                        Text { text: pcol.modelData.name; color: Theme.deviceInk; font.family: Theme.font; font.pixelSize: 10; font.weight: 600 }
-                                        Select {
-                                            width: 96; fontSize: 10; padY: 2; padX: 4
-                                            fill: Theme.deviceHead; ink: Theme.deviceInk
-                                            options: pcol.modelData.choices.map(function (c, i) { return [String(i), c] })
-                                            current: String(Math.round(pcol.v))
-                                            tip: pcol.modelData.help
-                                            onPicked: function (val) { root.setParamOf(card.modelData, pcol.pi, Number(val)) }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-                Rectangle {                              // hueco final: agregar efecto
-                    width: 150; height: devRow.height
-                    color: "transparent"; radius: Theme.radius
-                    border.width: 1; border.color: Theme.deviceBorder
-                    Column {
-                        anchors.centerIn: parent; spacing: 6; width: parent.width - 20
-                        Text { width: parent.width; horizontalAlignment: Text.AlignHCenter; text: root.libOpen ? "×" : "+"
-                               color: Theme.ink; font.family: Theme.font; font.pixelSize: 30; font.weight: 300 }
-                        Text { width: parent.width; horizontalAlignment: Text.AlignHCenter; wrapMode: Text.Wrap
-                               text: root.libOpen ? "Cerrar biblioteca" : (root.chain.length ? "Agregar efecto" : "Sin efectos en " + root.targetName + ". Agrega uno" + (root.master ? " o pulsa MASTERIZAR abajo" : "") + ".")
-                               color: Theme.ink; font.family: Theme.font; font.pixelSize: 12; font.weight: 600 }
-                    }
-                    MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.libOpen = !root.libOpen }
-                }
-            }
-        }
-        Rectangle {                                      // barra de desplazamiento horizontal
-            visible: chainFlick.contentWidth > chainFlick.width + 1
-            y: parent.height - 5; height: 3; radius: 1.5
-            x: chainFlick.x + chainFlick.visibleArea.xPosition * chainFlick.width
-            width: Math.max(24, chainFlick.visibleArea.widthRatio * chainFlick.width)
-            color: Theme.ink; opacity: 0.35
-        }
-    }
+    DeviceChain { id: chainView; rk: root }
     Item { width: 1; height: 10 }
 
     // ---------------- editor del efecto abierto ----------------
+    Loader {                                    // AF-60: su propio editor (el del Afinador) en vez del genérico
+        id: tuneLoader
+        width: root.width
+        active: root.curKey === "tune" && !root.master
+        visible: active
+        height: active && item ? item.implicitHeight : 0
+        sourceComponent: TuneBody { objectName: "fxTune"; mixer: root.studio.mixer; trackId: root.target }
+    }
     Rectangle {
-        visible: !!root.type
+        visible: !!root.type && root.curKey !== "tune"
         width: root.width; height: visible ? ed.height + 20 : 0
         color: Theme.device; radius: Theme.radius; border.width: 1; border.color: Theme.deviceBorder
         Column {
@@ -702,17 +516,4 @@ Column {
         reload()
     }
 
-    // Botón de la cabecera de un dispositivo (solo el símbolo)
-    component DevBtn: Rectangle {
-        id: db
-        property string glyph
-        property string tip
-        signal clicked()
-        width: 24; height: 24; radius: 2              // objetivo mínimo de 24 px (WCAG 2.5.8)
-        color: dbm.containsMouse ? Theme.knobArc : "transparent"
-        Text { anchors.centerIn: parent; text: db.glyph; color: dbm.containsMouse ? "#000" : Theme.deviceInk
-               font.family: "Segoe UI Symbol"; font.pixelSize: 12 }
-        MouseArea { id: dbm; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: db.clicked() }
-        ToolTipLite { text: db.tip; show: dbm.containsMouse }
-    }
 }

@@ -103,6 +103,15 @@ def _luminance(hex_color: str) -> float:
     return 0.2126 * r + 0.7152 * g + 0.0722 * b
 
 
+def _hsl_sat(c: str) -> float:
+    """Saturación HSL (0–1) de un color #rrggbb."""
+    c = c.lstrip("#")[-6:]
+    r, g, b = (int(c[i:i + 2], 16) / 255 for i in (0, 2, 4))
+    hi, lo = max(r, g, b), min(r, g, b)
+    l = (hi + lo) / 2
+    return 0.0 if hi == lo else (hi - lo) / (1 - abs(2 * l - 1))
+
+
 def contrast_ratio(fg: str, bg: str) -> float:
     """Contraste WCAG 2.x entre dos colores «#rrggbb»: de 1 a 21."""
     a, b = sorted((_luminance(fg), _luminance(bg)), reverse=True)
@@ -127,6 +136,42 @@ def _native_fx_checks(rep, app, host, window, bridge, track_id: int) -> None:
     rep.check("Efectos: insertar EQ y Analizador en la pista", [e["key"] for e in st["chain"]] == ["eq", "analyzer"],
               [e["key"] for e in st["chain"]])
     rep.check("la cadena está en el motor", [e["key"] for e in host.engine.effects(track_id)] == ["eq", "analyzer"])
+    # Navegador (X16): los efectos del motor por categoría (DISENO_DAW §3); doble clic añade a la pista elegida
+    def lay(what, a=None):
+        v = QMetaObject.invokeMethod(window, "layoutCommand", Q_RETURN_ARG("QVariant"),
+                                     Q_ARG("QVariant", what), Q_ARG("QVariant", a), Q_ARG("QVariant", None))
+        return v.toVariant() if hasattr(v, "toVariant") else v
+    br = lay("browser")
+    secs = dict((s[0], s[1]) for s in br["sections"])
+    rep.check("Navegador: efectos del motor por categoría (Dinámica, EQ y filtro, Tono y voz, Espacio, Utilidad)",
+              list(secs)[:5] == ["Dinámica", "EQ y filtro", "Tono y voz", "Espacio", "Utilidad"] and "tune" in secs["Tono y voz"]
+              and sum(len(v) for v in secs.values()) == 12, secs)
+    lay("browser", "compressor")
+    keys = [e["key"] for e in host.engine.effects(track_id)]
+    rep.check("Navegador: doble clic en Compresor lo añade a la pista elegida", keys == ["eq", "analyzer", "compressor"], keys)
+    fx("pick", "compressor")
+    fx("remove")
+    fx("pick", "analyzer")
+    # Cadena de dispositivos (X15): arrastrar el Analizador al principio y A/B del EQ
+    st = fx("drop", 0)
+    rep.check("arrastrar un dispositivo al principio lo mueve en el motor",
+              [e["key"] for e in st["chain"]] == ["analyzer", "eq"] and [e["key"] for e in host.engine.effects(track_id)] == ["analyzer", "eq"],
+              [e["key"] for e in st["chain"]])
+    fx("drop", 10000)
+    fx("pick", "eq")
+    a_val = host.engine.effects(track_id)[0]["values"][0]
+    st = fx("ab")                                  # A guardado; ahora se edita B
+    p0 = next(c for c in host.effect_catalog() if c["key"] == "eq")["params"][0]
+    fx("param", 0, a_val + (p0["max"] - p0["min"]) * (0.25 if a_val < (p0["min"] + p0["max"]) / 2 else -0.25))
+    b_val = host.engine.effects(track_id)[0]["values"][0]
+    st2 = fx("ab")                                 # vuelve a A
+    back_a = host.engine.effects(track_id)[0]["values"][0]
+    st3 = fx("ab")                                 # otra vez B
+    back_b = host.engine.effects(track_id)[0]["values"][0]
+    rep.check("A/B de un dispositivo: alterna dos juegos de valores en el motor",
+              st["ab"] == "B" and st2["ab"] == "A" and st3["ab"] == "B" and abs(back_a - a_val) < 1e-4 and abs(back_b - b_val) < 1e-4 and abs(b_val - a_val) > 1,
+              {"A": a_val, "B": b_val, "vuelta A": back_a, "vuelta B": back_b, "lados": [st["ab"], st2["ab"], st3["ab"]]})
+    fx("pick", "analyzer")
     if host.engine.device_info().get("open"):
         json.loads(bridge.togglePlay())
         ok = _wait(app, lambda: (lambda s: len(s["spectrum"]) == 96 and max(s["spectrum"]) > -40)(fx("noop")), 3, host)
@@ -240,12 +285,17 @@ def _native_daw_checks(rep, app, host, window, bridge, track_id) -> None:
     t = lay("theme", "Professional")
     rep.check("tema Professional (carpeta templates/Professional): plano, sin marco grueso, perillas de arco",
               t["ok"] and t["name"] == "Professional" and t["frame"] == 0 and t["knob"] == "arc"
-              and {"AllForOne", "AllForOne Oscuro", "Professional"} <= set(t["themes"]), t)
+              and {"AllForOne", "AllForOne Oscuro", "Professional", "Sobrio"} <= set(t["themes"]), t)
+    # Tema sobrio (X12): acento y colores de módulo apagados (saturación HSL ≤ 35 %)
+    t = lay("theme", "Sobrio")
+    sat = {k: round(_hsl_sat(c), 2) for k, c in t.get("colors", {}).items()}
+    rep.check("tema Sobrio: carbón, un acento discreto y colores de módulo con saturación ≤ 35 %",
+              t["ok"] and t["name"] == "Sobrio" and sat and max(sat.values()) <= 0.35, sat)
     t = lay("theme", "AllForOne")
     rep.check("volver al tema AllForOne", t["ok"] and t["name"] == "AllForOne" and t["frame"] == 9, t)
 
     # Guía de diseño §8: contraste WCAG AA (texto ≥ 4,5:1) en cada tema de fábrica
-    for name in ("AllForOne", "AllForOne Oscuro", "Professional"):
+    for name in ("AllForOne", "AllForOne Oscuro", "Professional", "Sobrio"):
         lay("theme", name)
         low = [(what, round(r, 2)) for what, fg, bg in lay("contrast") if (r := contrast_ratio(fg, bg)) < 4.5]
         rep.check(f"contraste del tema {name}: todo el texto ≥ 4,5:1 (WCAG AA)", not low, low)
@@ -349,6 +399,82 @@ def _native_project_checks(rep, app, host, window) -> None:
     path.unlink(missing_ok=True)
 
 
+def _native_home_checks(rep, app, host, window, bridge, startup: bool = False) -> None:
+    """Inicio y Biblioteca (X10, X11): sale al arrancar; artista → álbum → canción, abrirla, guardar en su
+    carpeta y verla con su .afo al volver a Inicio. Lo que crea se quita al final."""
+    import shutil
+
+    from PySide6.QtCore import QMetaObject, Q_ARG, Q_RETURN_ARG
+
+    from .selftest import _wait
+
+    def call(fn, *args):
+        v = QMetaObject.invokeMethod(window, fn, Q_RETURN_ARG("QVariant"), *[Q_ARG("QVariant", a) for a in args])
+        return v.toVariant() if hasattr(v, "toVariant") else v
+
+    if startup:
+        st = call("homeCommand", "noop", None, None)
+        rep.check("Inicio sale al arrancar sin proyecto abierto", st["view"] == "home" and st["visible"], st["view"])
+        call("layoutCommand", "view", "arrange", None)
+        return
+    artist = "Autoprueba " + time.strftime("%H%M%S")
+    a = call("homeCommand", "create", "artist", artist)
+    r = call("homeCommand", "create", "release", "Primer Álbum")
+    s = call("homeCommand", "create", "song", "Canción Uno")
+    st = call("homeCommand", "open", None, None)
+    _wait(app, lambda: False, 0.2, host)
+    rep.check("Inicio: crear artista → álbum → canción y abrirla",
+              bool(a and r and s) and st["view"] == "arrange" and st["songTarget"].endswith("Canción Uno.afo")
+              and st["title"] == f"{artist} · Primer Álbum · Canción Uno", st)
+    saved = call("projectCommand", "save", "")
+    st = call("homeCommand", "show", None, None)
+    _wait(app, lambda: False, 0.3, host)
+    song = st.get("song") or {}
+    rep.check("guardar la canción la deja en su carpeta y, al volver a Inicio, se ve con su .afo y en Recientes",
+              bool(saved) and song.get("hasAfo") and Path(song.get("afo", "")).is_file() and song.get("afo") in st["recent"],
+              {"guardado": saved, "canción": song, "recientes": st["recent"][:2]})
+    shot = paths.logs_dir() / "selftest_inicio.png"
+    window.grabWindow().save(str(shot))
+    rep.add("captura del Inicio", "INFO", str(shot))
+    gone = json.loads(bridge.libraryRemove(a)) if a else {}
+    if gone.get("ok"):
+        shutil.rmtree(gone["trash"], ignore_errors=True)     # lo creó la autoprueba: no se deja en la papelera
+    call("projectCommand", "loose", "")
+    call("layoutCommand", "view", "arrange", None)
+
+
+def _native_inspector_checks(rep, app, host, window, track_id) -> None:
+    """Inspector (X17): la página Pista sigue a la pista elegida y su volumen llega al motor; el
+    Asistente IA reúne Mezcla IA, Master IA y Antes / Después."""
+    from PySide6.QtCore import QMetaObject, Q_ARG, Q_RETURN_ARG
+    from PySide6.QtQuick import QQuickItem
+
+    from .selftest import _wait
+
+    def call(fn, *args):
+        v = QMetaObject.invokeMethod(window, fn, Q_RETURN_ARG("QVariant"), *[Q_ARG("QVariant", a) for a in args])
+        return v.toVariant() if hasattr(v, "toVariant") else v
+
+    tracks = window.property("tracks").toVariant() if hasattr(window.property("tracks"), "toVariant") else window.property("tracks")
+    idx = next(i for i, t in enumerate(tracks) if t["id"] == track_id)
+    window.setProperty("selected", idx)
+    g = call("layoutCommand", "goto", "pista", None)
+    _wait(app, lambda: False, 0.2, host)
+    insp = window.findChild(QQuickItem, "inspector")
+    rep.check("Inspector › Pista muestra la pista elegida",
+              insp is not None and insp.property("tid") == track_id and insp.isVisible() and g["page"] == "pista",
+              {"tid": insp.property("tid") if insp else None, "page": g["page"]})
+    uid = tracks[idx]["uid"]
+    QMetaObject.invokeMethod(window, "setTrackMixUid", Q_ARG("QVariant", uid), Q_ARG("QVariant", 40), Q_ARG("QVariant", 50))
+    _wait(app, lambda: False, 0.1, host)
+    vol = insp.findChild(QQuickItem, "inspVol")
+    rep.check("el fader del Inspector refleja el volumen de la pista", vol is not None and round(vol.property("value")) == 40,
+              vol.property("value") if vol else None)
+    QMetaObject.invokeMethod(window, "setTrackMixUid", Q_ARG("QVariant", uid), Q_ARG("QVariant", 70), Q_ARG("QVariant", 50))
+    g = call("layoutCommand", "goto", "mastia", None)
+    rep.check("Master IA y A/B abren el Asistente IA del Inspector", g["page"] == "asist" and g["zone"] == "Inspector", g)
+
+
 def run_native_selftest(app, host, report_path: str | None, screenshot_path: str | None, rep=None) -> int:
     """Parte de `AllForOne --selftest`: la interfaz QML con el motor real, comprobada de verdad."""
     from PySide6.QtCore import QMetaObject, Q_ARG, Q_RETURN_ARG
@@ -381,10 +507,11 @@ def run_native_selftest(app, host, report_path: str | None, screenshot_path: str
     pv = QMetaObject.invokeMethod(window, "layoutCommand", Q_RETURN_ARG("QVariant"), Q_ARG("QVariant", "pages"),
                                   Q_ARG("QVariant", None), Q_ARG("QVariant", None))
     ids = sorted((pv.toVariant() if hasattr(pv, "toVariant") else pv) or [])
-    rep.check("los 14 módulos tienen su sitio: 13 páginas en las zonas y la consola como vista Mezclador",
-              ids == sorted(["add", "fxlist", "ia", "audios", "mastia", "antes", "master", "cinta", "pistas", "piano",
+    rep.check("cada módulo tiene su sitio: páginas en las zonas y la consola como vista Mezclador",
+              ids == sorted(["add", "fxlist", "ia", "audios", "recent", "pista", "asist", "master", "cinta", "pistas", "piano",
                              "inst", "drums", "fx", "afina", "fxm"]), ids)
     rep.check("motor conectado desde QML", bool(prop("engineOk")))
+    _native_home_checks(rep, app, host, window, bridge, startup=True)   # lo demás de Inicio, al final: deja el proyecto vacío
 
     _native_sequencer_checks(rep, app, host, window, prop)
 
@@ -396,6 +523,7 @@ def run_native_selftest(app, host, report_path: str | None, screenshot_path: str
 
     _native_fx_checks(rep, app, host, window, bridge, tone["track"]["id"])
     _native_daw_checks(rep, app, host, window, bridge, tone["track"]["id"])
+    _native_inspector_checks(rep, app, host, window, tone["track"]["id"])
     _native_lab_checks(rep, app, host, window, bridge)
 
     dev = host.engine.device_info()
@@ -426,6 +554,7 @@ def run_native_selftest(app, host, report_path: str | None, screenshot_path: str
     _wait(app, lambda: False, 0.5, host)
     window.grabWindow().save(str(shot))
     rep.add("captura de la interfaz nativa", "info", str(shot))
+    _native_home_checks(rep, app, host, window, bridge)
     window.close()
     return _finish(rep, report_path)
 
@@ -588,7 +717,7 @@ def _native_mixer_checks(rep, app, host, window, bridge, prop) -> None:
         yield it
         for c in it.childItems():
             yield from _items(c)
-    tb = next((i for i in _items(window.contentItem()) if i.property("histLen") == 240), None)
+    tb = next((i for i in _items(window.contentItem()) if i.property("histLen") == 240 and i.objectName() != "fxTune"), None)
     tfx, tvals = None, None
     if tb is not None:
         tb.setProperty("trackId", voz)
@@ -605,6 +734,21 @@ def _native_mixer_checks(rep, app, host, window, bridge, prop) -> None:
     rep.check("Afinador en tiempo real: se inserta el primero en la voz, cambia la tónica y se quita",
               tfx is not None and tvals is not None and round(tvals[0]) == 9 and "tune" not in left,
               {"módulo": tb is not None, "efecto": tfx and tfx["key"], "valores": tvals, "queda": left})
+    # Panel de detalle de efectos (X15): elegir la voz y en su cadena el AF-60 → sale el editor del Afinador
+    def fxc(what, a=None, b=None):
+        v = QMetaObject.invokeMethod(window, "fxCommand", Q_RETURN_ARG("QVariant"),
+                                     Q_ARG("QVariant", what), Q_ARG("QVariant", a), Q_ARG("QVariant", b))
+        return v.toVariant() if hasattr(v, "toVariant") else v
+    fxc("target", voz)
+    fxc("add", "tune")
+    st = fxc("pick", "tune")
+    _wait(app, lambda: False, 0.2, host)
+    st = fxc("noop")
+    ed = next((i for i in _items(window.contentItem()) if i.objectName() == "fxTune"), None)
+    rep.check("Efectos: elegir el AF-60 de la voz muestra el editor del Afinador",
+              bool(st["tuneEditor"]) and ed is not None and ed.property("trackId") == voz and ed.isVisible(),
+              {"editor": st["tuneEditor"], "pista": ed and ed.property("trackId"), "voz": voz})
+    fxc("remove")
     call("mixNow", True)                          # REMEZCLAR con afinación al 60 %
     done = _wait(app, lambda: (snap()["runs"] >= 2 and not snap()["mastering"]) or "Error" in snap()["status"], 240, host)
     st = snap()

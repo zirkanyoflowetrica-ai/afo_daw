@@ -25,9 +25,9 @@ Window {
     property var deviceInfo: ({})
     property real latencyMs: 0
     property bool dirty: false
-    // Vista principal: «arrange» (Arreglo: pistas, clips y automatización) o «mixer» (Mezclador: la
-    // consola). Tab o F5 / F6. Se recuerda en el diseño guardado.
-    property string view: savedLayout.view === "mixer" ? "mixer" : "arrange"
+    // Vista principal: «home» (Inicio: la biblioteca; sale al arrancar, sin proyecto abierto, F4),
+    // «arrange» (Arreglo: pistas, clips y automatización) o «mixer» (Mezclador: la consola). Tab o F5 / F6.
+    property string view: "home"
     onViewChanged: if (!loading) saveLayout()
     QtObject { id: lu; function clamp(v, a, b) { return Math.max(a, Math.min(b, v)) } }
     // Doble flujo: el Arreglo (línea de tiempo) en una ventana aparte, para un segundo monitor, y el
@@ -104,7 +104,11 @@ Window {
         else if (what === "remove") fxBody.remove(fxBody.sel)
         else if (what === "preset") fxBody.applyPreset(a)
         else if (what === "auto") { fxBody.autoParam = a; fxBody.setAuto(b) }
-        return { chain: fxBody.chain.map(function (e) { return { id: e.id, key: e.key, enabled: e.enabled, values: e.values, automated: e.automated || [] } }),
+        else if (what === "pick") { var pk = fxBody.chain.filter(function (e) { return e.key === a })[0]; if (pk) fxBody.sel = pk.id }
+        else if (what === "ab") fxBody.abToggle(fxBody.cur)
+        else if (what === "drop") fxBody.dropAt(fxBody.sel, a)
+        return { tuneEditor: fxBody.tuneShown, ab: fxBody.cur && fxBody.ab[fxBody.cur.id] ? fxBody.ab[fxBody.cur.id].side : "",
+                 target: fxBody.target, chain: fxBody.chain.map(function (e) { return { id: e.id, key: e.key, enabled: e.enabled, values: e.values, automated: e.automated || [] } }),
                  sel: fxBody.sel, meters: fxBody.meters, spectrum: fxBody.spectrum, catalog: fxBody.catalog.length,
                  presets: fxBody.presets.length, autoPts: fxBody.autoPts }
     }
@@ -119,14 +123,29 @@ Window {
     Shortcut { sequences: [StandardKey.Open]; onActivated: pj.open("") }
     Shortcut { sequences: [StandardKey.Save]; onActivated: pj.save(false) }
     Shortcut { sequence: "Ctrl+Shift+S"; onActivated: pj.save(true) }
+    Shortcut { sequence: "F4"; onActivated: win.view = "home" }
+    Shortcut { sequence: "Shift+Space"; enabled: !win.typing; onActivated: { if (win.engineOk) win.call("stop"); win.step = -1 } }
+    Shortcut { sequence: "Ctrl+Shift+R"; onActivated: win.resetLayout() }
+    Shortcut { sequence: "Ctrl+,"; onActivated: win.openAudioSettings() }
     Shortcut { sequence: "F5"; onActivated: win.view = "arrange" }
     Shortcut { sequence: "F6"; onActivated: win.view = "mixer" }
     Shortcut { sequence: "F7"; onActivated: win.dualWindow = !win.dualWindow }
     property alias arrangeView: arrange
     // Para la autoprueba: guardar y abrir proyectos sin diálogo
+    // Para la autoprueba: Inicio (biblioteca). a/b según la acción
+    function homeCommand(what, a, b) {
+        if (what === "show") view = "home"
+        else if (what === "create") { var it = homeView.create(a, b, a === "release" ? { type: "album" } : {}); return it ? it.path : "" }
+        else if (what === "open") { var s = homeView.song; if (s) homeView.openSong(s) }
+        homeView.reload()
+        return { view: view, visible: homeView.visible, title: pj.title, file: pj.file, songTarget: pj.songTarget,
+                 artists: homeView.tree.map(function (x) { return x.name }), song: homeView.song,
+                 recent: homeView.recent.map(function (x) { return x.path }) }
+    }
     function projectCommand(what, path) {
         if (what === "save") { pj.file = path; return pj.save(false) }
         if (what === "open") return pj.open(path)
+        if (what === "loose") { pj.newLoose(); return true }
         return pj.snapshot()
     }
     onBpmChanged: { sq.rerenderAll(); markDirty() }   // el patrón depende del tempo: se vuelve a sintetizar
@@ -137,6 +156,7 @@ Window {
     function followSelection(t) {
         if (!t || loading) return
         if (t.id > 0) rackTrack = t.id
+        if (t.type === "inst") sq.oct = (t.cfg && t.cfg.oct) || 4      // la Octava es de cada pista
         var ed = ({ inst: "piano", drum: "drums", audio: "pistas", ia: "pistas", voz: "pistas" })[t.type]
         if (ed && ["piano", "drums", "pistas", "inst"].indexOf(detZ.current) >= 0) detZ.current = ed
     }
@@ -204,6 +224,9 @@ Window {
     }
     function layoutCommand(what, a, b) {
         if (what === "zones") return zoneRects()
+        if (what === "browser") { if (a) fxBrowser.add(a)
+                                  return { sections: fxBrowser.sections.map(function (s) { return [s[0], s[1].map(function (d) { return d.key })] }),
+                                           target: fxBrowser.targetName } }
         if (what === "pages") return navZ.tabs.concat(inspZ.tabs, detZ.tabs).map(function (t) { return t[0] })
         if (what === "overlaps") {
             var r = zoneRects(), ks = Object.keys(r).filter(function (k) { return r[k].visible && r[k].w > 0 && r[k].h > 0 }), out = []
@@ -214,7 +237,7 @@ Window {
                 }
             return out
         }
-        if (what === "goto") { goTo(a); var zn = zoneOf(a); return { currentId: currentId, zone: zn ? zn.title : "", page: zn ? zn.current : "",
+        if (what === "goto") { goTo(a); var zn = zoneOf(currentId); return { currentId: currentId, zone: zn ? zn.title : "", page: zn ? zn.current : "",
                                                                      folded: zn ? zn.folded : true, view: view } }
         if (what === "fold") { var zf = ({ nav: navZ, insp: inspZ, detail: detZ })[a]; zf.folded = !!b; return zoneRects() }
         if (what === "select") { sq.pick(a); return { detail: detZ.current, rack: rackTrack } }
@@ -241,7 +264,10 @@ Window {
                               arrange.setSend(a[1], at.id, a[2], false)
                               return { ok: true, id: at.id, sends: arrange.sendCount, uid: at.uid } }
         if (what === "auxRemove") { var ai = sq.indexOf(a); if (ai >= 0) removeTrackAt(ai); return ai >= 0 }
-        if (what === "theme") { var ok = setTheme(a, true); return { ok: ok, name: Theme.name, frame: Theme.frame, knob: Theme.knobStyle,
+        if (what === "theme") { var ok = setTheme(a, true)
+                                var cols = { accent: String(Theme.accent) }
+                                for (var mk in Theme.pc) cols[mk] = String(Theme.pc[mk])
+                                return { ok: ok, name: Theme.name, frame: Theme.frame, knob: Theme.knobStyle, colors: cols,
                                                                    themes: loadThemes().map(function (t) { return t.name }) } }
         return null
     }
@@ -250,7 +276,7 @@ Window {
 
     // ---------------- diseño guardado ----------------
     function saveLayout() {
-        layoutStore.save(JSON.stringify({ v: layoutVersion, theme: Theme.name, view: view, look2: 1, detailH: detailH,
+        layoutStore.save(JSON.stringify({ v: layoutVersion, theme: Theme.name, view: view === "home" ? "arrange" : view, look2: 2, detailH: detailH,
                                           fold: { nav: navZ.folded, insp: inspZ.folded, detail: detZ.folded },
                                           tab: { nav: navZ.current, insp: inspZ.current, detail: detZ.current } }))
     }
@@ -264,7 +290,7 @@ Window {
     }
     function resetLayout() {
         navZ.folded = false; inspZ.folded = false; detZ.folded = false; detailH = 360
-        navZ.current = "add"; inspZ.current = "mastia"; detZ.current = "fx"
+        navZ.current = "add"; inspZ.current = "pista"; detZ.current = "fx"
         saveLayout()
         toast("Distribución de fábrica restaurada")
     }
@@ -272,17 +298,18 @@ Window {
     // ---------------- ir a una página ----------------
     // Cada cuerpo de módulo vive en una página de una zona fija (DISENO_DAW §2). goTo abre su zona y su
     // pestaña; la consola es la vista Mezclador.
-    readonly property var pageZone: ({ ia: "nav", audios: "nav", add: "nav", fxlist: "nav",
-                                       mastia: "insp", antes: "insp", master: "insp", cinta: "insp",
+    readonly property var pageZone: ({ ia: "nav", audios: "nav", add: "nav", fxlist: "nav", recent: "nav",
+                                       pista: "insp", asist: "insp", master: "insp", cinta: "insp",
                                        pistas: "detail", inst: "detail", piano: "detail", drums: "detail",
                                        fx: "detail", fxm: "detail", afina: "detail" })
     function zoneOf(id) { return ({ nav: navZ, insp: inspZ, detail: detZ })[pageZone[id]] || null }
     function titleOf(id) {
-        return ({ ia: "IA", audios: "Archivos", add: "Añadir", fxlist: "Efectos", mastia: "Master IA", antes: "Antes / Después",
+        return ({ ia: "IA", audios: "Archivos", add: "Añadir", fxlist: "Efectos", recent: "Inicio", pista: "Pista", asist: "Asistente IA",
                   master: "Versiones", cinta: "Grabar", pistas: "Clips", inst: "Instrumento", piano: "Piano roll",
                   drums: "Batería", fx: "Efectos", fxm: "Efectos master", afina: "Afinador", mezcla: "Mezclador" })[id] || id
     }
     function goTo(id) {
+        if (id === "mastia" || id === "antes") id = "asist"     // Master IA y A/B están en el Asistente IA (X17)
         currentId = id
         if (id === "mezcla") { if (!dualWindow) view = "mixer"; return }
         var z = zoneOf(id)
@@ -517,6 +544,12 @@ Window {
             Row {                                   // .transport
                 spacing: 6
                 NeoButton {
+                    text: "Inicio"; tip: "Inicio: tus artistas, álbumes y canciones, y los proyectos recientes (F4)"
+                    pressedState: win.view === "home"
+                    color: win.view === "home" ? Theme.pressedBg : Theme.button; textColor: win.view === "home" ? Theme.pressedInk : Theme.ink
+                    onClicked: win.view = "home"
+                }
+                NeoButton {
                     text: "☰"; tip: "Mostrar u ocultar el navegador: añadir instrumentos y efectos, IA y archivos (Ctrl+B)"
                     readonly property bool on: !navZ.folded
                     pressedState: on
@@ -543,7 +576,7 @@ Window {
                     onClicked: win.dualWindow = !win.dualWindow
                 }
                 NeoButton {
-                    text: "■"; tip: "Detener y volver al principio"
+                    text: "■"; tip: "Detener y volver al principio (Mayús+Espacio)"
                     onClicked: { if (win.engineOk) win.call("stop"); win.step = -1 }
                 }
                 NeoButton {
@@ -600,7 +633,15 @@ Window {
             }
             Row {                                   // .zoom
                 spacing: 6
-                NeoButton { text: "Restaurar zonas"; tip: "Abre todas las zonas con su tamaño y sus pestañas de fábrica"; onClicked: win.resetLayout() }
+                Text {                              // dónde vive el proyecto: Artista · Lanzamiento · Canción
+                    width: Math.min(implicitWidth, 300); elide: Text.ElideRight
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: pj.title + (win.dirty ? " •" : "")
+                    color: Theme.ink; font.family: Theme.font; font.pixelSize: 13; font.weight: 700
+                    HoverHandler { id: ptH }
+                    ToolTipLite { text: (pj.file || pj.songTarget || "Sin guardar") + (win.dirty ? " · cambios sin guardar" : ""); show: ptH.hovered }
+                }
+                NeoButton { text: "Restaurar zonas"; tip: "Abre todas las zonas con su tamaño y sus pestañas de fábrica (Ctrl+Mayús+R)"; onClicked: win.resetLayout() }
                 Row {                               // selector de tema (carpetas de templates/)
                     spacing: 4
                     Text { text: "Tema"; anchors.verticalCenter: parent.verticalCenter; color: Theme.ink
@@ -620,7 +661,7 @@ Window {
                 }
                 NeoButton {
                     text: "⚙ Audio"
-                    tip: "Driver (Windows Audio, DirectSound, ASIO4ALL…), dispositivo, frecuencia y búfer"
+                    tip: "Driver (Windows Audio, DirectSound, ASIO4ALL…), dispositivo, frecuencia y búfer (Ctrl+,)"
                     onClicked: win.openAudioSettings()
                 }
             }
@@ -653,12 +694,13 @@ Window {
         z: 4
         title: "Navegador"; vertical: true
         anchors { top: header.bottom; bottom: detZ.top; left: parent.left }
-        width: folded ? 34 : 360
+        width: folded ? 34 : 390
         foldTip: folded ? "Mostrar el navegador (Ctrl+B)" : "Plegar el navegador (Ctrl+B)"
         tabs: [["add", "Añadir", "Instrumentos, batería, voz, audio y plugins VST3: cada uno crea su pista"],
-               ["fxlist", "Efectos", "Efectos nativos y VST3: se añaden a la pista elegida"],
+               ["fxlist", "Efectos", "Efectos nativos por categoría y VST3: doble clic añade a la pista elegida"],
                ["ia", "IA", "Canción, MIDI y partes con IA, en tu equipo"],
-               ["audios", "Archivos", "Audios del proyecto: tipo y rol para la Mezcla IA"]]
+               ["audios", "Archivos", "Audios del proyecto: tipo y rol para la Mezcla IA"],
+               ["recent", "Inicio", "Proyectos recientes y la biblioteca (F4)"]]
         current: "add"
         extra: srcToggle
         onFoldedChanged: if (!win.loading) win.saveLayout()
@@ -668,9 +710,11 @@ Window {
             studio: win
             anchors.fill: parent
             showTabs: false
-            tab: navZ.current === "fxlist" ? 2 : 1
-            visible: navZ.current === "add" || navZ.current === "fxlist"
+            tab: 1
+            visible: navZ.current === "add" && !navZ.folded
         }
+        ZonePage { zid: "fxlist"; tint: "fx"; minWidth: 300; Browser { id: fxBrowser; studio: win } }
+        ZonePage { zid: "recent"; tint: "pistas"; minWidth: 300; Browser { studio: win; mode: "home" } }
         ZonePage { zid: "ia"; tint: "ia"; minWidth: 300; IaBody { seq: sq } }
         ZonePage { zid: "audios"; tint: "audios"; minWidth: 300; AudiosBody { mixer: mx; studio: win } }
     }
@@ -683,16 +727,27 @@ Window {
         anchors { top: header.bottom; bottom: detZ.top; right: parent.right }
         width: folded ? 34 : 460
         foldTip: folded ? "Mostrar el inspector (Ctrl+I)" : "Plegar el inspector (Ctrl+I)"
-        tabs: [["mastia", "Master IA", "Masterizar automáticamente y ajustar el master"],
-               ["antes", "A/B", "Antes / Después: escucha con y sin los efectos"],
+        tabs: [["pista", "Pista", "Volumen, paneo, envíos y efectos de la pista elegida"],
+               ["asist", "Asistente IA", "Mezcla IA, Master IA y Antes / Después en un sitio"],
                ["master", "Versiones", "Versiones del master guardadas (Rebobinado)"],
                ["cinta", "Grabar", "Grabador de voz: entrada, monitor y tomas de la pista de voz"]]
-        current: "mastia"
+        current: "pista"
         extra: srcToggle
         onFoldedChanged: if (!win.loading) win.saveLayout()
         onPicked: if (!win.loading) win.saveLayout()
-        ZonePage { zid: "mastia"; tint: "mastia"; minWidth: 380; MasteringBody { mixer: mx; studio: win } }
-        ZonePage { id: abPage; zid: "antes"; tint: "antes"; minWidth: 360; ReviewBody { mixer: mx; studio: win; shown: abPage.visible } }
+        ZonePage { id: pistaPage; zid: "pista"; tint: "mezcla"; minWidth: 360; Inspector { objectName: "inspector"; studio: win; mixer: mx; shown: pistaPage.shown } }
+        ZonePage {
+            id: abPage; zid: "asist"; tint: "mastia"; minWidth: 380
+            Column {
+                width: parent ? parent.width : 400; spacing: 14
+                MixAiBody { mixer: mx; studio: win }
+                Rectangle { width: parent.width; height: 3; color: Theme.ink }
+                MasteringBody { mixer: mx; studio: win }
+                Rectangle { width: parent.width; height: 3; color: Theme.ink }
+                Text { text: "ANTES / DESPUÉS"; color: Theme.ink; font.family: Theme.font; font.pixelSize: 13; font.weight: 700; font.letterSpacing: 0.52 }
+                ReviewBody { mixer: mx; studio: win; shown: abPage.shown }
+            }
+        }
         ZonePage { zid: "master"; tint: "master"; minWidth: 380; MasterBody { studio: win; mixer: mx } }
         ZonePage { zid: "cinta"; tint: "cinta"; minWidth: 360; CintaBody { seq: sq; studio: win } }
     }
@@ -842,7 +897,7 @@ Window {
                     color: Theme.accent; textColor: "#000"
                     onClicked: { var r = win.call("togglePlay"); if (!r.ok) win.toast(r.error) }
                 }
-                NeoButton { text: "■"; tip: "Detener y volver al principio"; onClicked: { if (win.engineOk) win.call("stop"); win.step = -1 } }
+                NeoButton { text: "■"; tip: "Detener y volver al principio (Mayús+Espacio)"; onClicked: { if (win.engineOk) win.call("stop"); win.step = -1 } }
                 NeoButton { text: "Volver a una ventana"; tip: "Cierra esta ventana; el Arreglo sigue en la principal (F7)"
                             onClicked: { win.dualWindow = false; win.view = "arrange" } }
                 Text { anchors.verticalCenter: parent.verticalCenter; leftPadding: 10
@@ -858,6 +913,15 @@ Window {
         }
         Shortcut { sequence: "F7"; onActivated: win.dualWindow = false }
         Shortcut { sequence: "Space"; enabled: win.engineOk; onActivated: { var r = win.call("togglePlay"); if (!r.ok) win.toast(r.error) } }
+    }
+
+    // Inicio (F4): la biblioteca encima de las zonas; sale al arrancar sin proyecto abierto
+    HomeView {
+        id: homeView
+        studio: win
+        z: 8
+        anchors { top: header.bottom; left: parent.left; right: parent.right; bottom: statusBar.top }
+        visible: win.view === "home"
     }
 
     // ---------------- ayuda y aviso ----------------
@@ -892,12 +956,12 @@ Window {
         if (tb.insp && pageZone[tb.insp] === "insp") inspZ.current = tb.insp
         if (tb.detail && pageZone[tb.detail] === "detail") detZ.current = tb.detail
         loadThemes()                              // tema guardado (los diseños antiguos guardaban "dark"/"light")
-        // De fábrica: Professional (oscuro, plano, como un DAW de estudio; 23-11-2026). Un diseño guardado
-        // antes con un tema de fábrica (AllForOne claro u oscuro) pasa una vez a Professional; después
-        // se respeta lo que elija el usuario en «Tema».
+        // De fábrica: Sobrio (carbón, un acento discreto, colores apagados; X12, 24-11-2026: «quita los
+        // colores llamativos»). Un diseño guardado antes con un tema de fábrica pasa una vez a Sobrio;
+        // después se respeta lo que elija el usuario en «Tema».
         var tn = savedLayout.theme === "dark" ? "AllForOne Oscuro" : savedLayout.theme === "light" ? "AllForOne" : savedLayout.theme
-        if (!tn || (!savedLayout.look2 && (tn === "AllForOne" || tn === "AllForOne Oscuro"))) tn = "Professional"
-        if (!setTheme(tn, true)) setTheme("Professional", true)
+        if (!tn || ((savedLayout.look2 || 0) < 2 && ["AllForOne", "AllForOne Oscuro", "Professional"].indexOf(tn) >= 0)) tn = "Sobrio"
+        if (!setTheme(tn, true)) setTheme("Sobrio", true)
 
         var info = call("hello")
         engineOk = !!info.engine
@@ -917,7 +981,7 @@ Window {
     Timer { id: firstFit; interval: 60; onTriggered: win.loading = false }
     // Tab cambia Arreglo ⇄ Mezclador (no mientras se escribe en un campo de texto)
     readonly property bool typing: !!activeFocusItem && activeFocusItem.cursorPosition !== undefined
-    Shortcut { sequence: "Tab"; enabled: !win.typing && !win.dualWindow; onActivated: win.view = win.view === "arrange" ? "mixer" : "arrange" }
+    Shortcut { sequence: "Tab"; enabled: !win.typing && !win.dualWindow && win.view !== "home"; onActivated: win.view = win.view === "arrange" ? "mixer" : "arrange" }
     Shortcut { sequence: "Ctrl+B"; onActivated: navZ.folded = !navZ.folded }
     Shortcut { sequence: "Ctrl+I"; onActivated: inspZ.folded = !inspZ.folded }
     Shortcut { sequence: "Ctrl+E"; onActivated: detZ.folded = !detZ.folded }

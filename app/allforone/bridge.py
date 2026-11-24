@@ -18,7 +18,7 @@ from pathlib import Path
 from PySide6.QtCore import QCoreApplication, QObject, QTimer, Signal, Slot
 from PySide6.QtWidgets import QFileDialog, QWidget
 
-from . import audio_import, fx_presets, paths, project, themes
+from . import audio_import, fx_presets, library, paths, project, themes
 from .engine_host import EngineHost, fader_to_db
 from .mixer_service import AUDIO_EXT, REF_LABEL, MixerService
 
@@ -927,7 +927,8 @@ class Bridge(QObject):
             doc = project.collect(json.loads(doc_json), eng, self.host.effect_catalog(), sources, self._fx_labels, self._auto,
                                   self._writer.modes if self._writer else None)
             out = project.save(path, doc)
-            return _ok(path=str(out), name=out.stem)
+            library.touch(str(out))
+            return _ok(path=str(out), name=out.stem, where=library.where(str(out)))
         except Exception as exc:
             return _err(f"No se pudo guardar el proyecto: {exc}")
 
@@ -942,9 +943,45 @@ class Bridge(QObject):
                 return _err("", cancelled=True)
         try:
             doc = project.load(path)
-            return _ok(doc=doc, path=doc["file"], name=Path(path).stem)
+            library.touch(path)
+            return _ok(doc=doc, path=doc["file"], name=Path(path).stem, where=library.where(path))
         except Exception as exc:
             return _err(f"No se pudo abrir el proyecto: {exc}")
+
+    # --- biblioteca (Artista → Lanzamiento → Canción) ---------------------------------
+    @Slot(result=str)
+    @_safe
+    def libraryTree(self) -> str:
+        return _ok(tree=library.tree(), root=str(library.root()))
+
+    @Slot(str, str, str, str, result=str)
+    @_safe
+    def libraryCreate(self, kind: str, parent_path: str, name: str, extra_json: str) -> str:
+        try:
+            return _ok(item=library.create(kind, parent_path, name, json.loads(extra_json or "{}")))
+        except ValueError as exc:
+            return _err(str(exc))
+
+    @Slot(str, str, result=str)
+    @_safe
+    def libraryRename(self, path: str, name: str) -> str:
+        try:
+            return _ok(item=library.rename(path, name))
+        except ValueError as exc:
+            return _err(str(exc))
+
+    @Slot(str, result=str)
+    @_safe
+    def libraryRemove(self, path: str) -> str:
+        try:
+            return _ok(**library.remove(path))
+        except ValueError as exc:
+            return _err(str(exc))
+
+    @Slot(result=str)
+    @_safe
+    def libraryRecent(self) -> str:
+        return _ok(recent=library.recent())
 
     @Slot(str, str, result=str)
     @_safe

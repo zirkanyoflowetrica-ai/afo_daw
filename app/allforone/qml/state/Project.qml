@@ -9,6 +9,31 @@ QtObject {
     property string file: ""                    // ruta del proyecto abierto o guardado
     property string name: ""
     property bool loading: false
+    // Biblioteca (X11): dónde vive el proyecto ({artist, release, song}; vacío = proyecto suelto) y, para
+    // una canción que aún no tiene .afo, el archivo donde se guardará la primera vez
+    property var where: ({})
+    property string songTarget: ""
+    readonly property string title: where.artist ? where.artist + " · " + where.release + " · " + where.song
+                                                 : (name ? name : "Proyecto suelto")
+
+    // Abrir una canción de la biblioteca: su .afo, o un proyecto vacío que se guardará en su carpeta
+    function openSong(s) {
+        if (s.hasAfo) return open(s.afo)
+        if (!studio.engineOk) { studio.toast("Motor no disponible: no se puede abrir un proyecto"); return false }
+        clear()
+        file = ""; songTarget = s.afo; name = s.name
+        var parts = String(s.path).replace(/\\/g, "/").split("/")
+        where = { artist: parts[parts.length - 3], release: parts[parts.length - 2], song: parts[parts.length - 1] }
+        studio.dirty = false
+        studio.toast("Canción nueva «" + s.name + "»: se guardará en su carpeta de la biblioteca")
+        return true
+    }
+    // Proyecto suelto: sesión vacía, sin artista ni canción
+    function newLoose() {
+        if (studio.engineOk) clear()
+        file = ""; songTarget = ""; name = ""; where = ({})
+        studio.dirty = false
+    }
 
     function snapshot() {
         var s = studio, sq = s.seq, mx = s.mixer
@@ -34,9 +59,9 @@ QtObject {
     // saveAs: elegir archivo aunque ya tenga uno
     function save(saveAs) {
         if (!studio.engineOk) { studio.toast("Motor no disponible: no se puede guardar el proyecto"); return false }
-        var r = studio.call("projectSave", JSON.stringify(snapshot()), saveAs ? "" : file)
+        var r = studio.call("projectSave", JSON.stringify(snapshot()), saveAs ? "" : (file || songTarget))
         if (!r.ok) { if (!r.cancelled) studio.toast(r.error); return false }
-        file = r.path; name = r.name
+        file = r.path; name = r.name; where = r.where || ({}); songTarget = ""
         studio.dirty = false
         studio.toast("Proyecto guardado: " + r.path)
         return true
@@ -47,7 +72,7 @@ QtObject {
         var r = studio.call("projectOpen", path || "")
         if (!r.ok) { if (!r.cancelled) studio.toast(r.error); return false }
         load(r.doc)
-        file = r.path; name = r.name
+        file = r.path; name = r.name; where = r.where || ({}); songTarget = ""
         studio.dirty = false
         studio.arrangeView.fitAll()            // el proyecto abierto se ve entero
         Qt.callLater(function () { studio.arrangeView.refresh(); studio.arrangeView.fitAll() })
