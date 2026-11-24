@@ -321,6 +321,25 @@ QtObject {
         generating = true; aiProgress = 0.01
         aiMsg = "Escuchando " + Math.round(r.seconds) + " s del proyecto…"
     }
+    // ---------------- Dividir en pistas: separador Demucs local (stems.py) ----------------
+    property bool splitting: false
+    property real splitProgress: 0
+    property string splitMsg: ""
+    function splitStems(trackId) {
+        if (splitting) return
+        var st = studio.call("stemsStatus")
+        if (!st.ok) { studio.toast(st.error); return }
+        if (!st.engineOk) { studio.toast("Falta el separador (motores\\demucs junto a AllForOne.exe)"); return }
+        if (!st.modelOk) {
+            if (!st.downloading) studio.call("stemsDownload")
+            studio.toast("Descargando el modelo del separador (55 MB); al terminar vuelve a pulsar «Dividir»")
+            return
+        }
+        var r = studio.call("stemsSplit", trackId, true)
+        if (!r.ok) { studio.toast(r.error); return }
+        splitting = true; splitProgress = 0.01; splitMsg = "Preparando el audio"
+        studio.toast("Dividiendo en pistas con Demucs (≈ 5 s por cada segundo de audio)…")
+    }
     function cancelGenerate() { studio.call("aiCancel"); aiMsg = "Cancelando…" }
     function download(pack) {
         var r = studio.call("aiDownload", pack)
@@ -382,6 +401,30 @@ QtObject {
         studio.toast("«" + (title || r.title) + "»: " + r.notes + " notas en " + n + " pistas")
     }
     function onAiEvent(ev) {
+        if (ev.type === "stemsDownload") {
+            if (ev.phase === "progress") splitMsg = ev.message
+            else studio.toast(ev.ok || ev.cancelled ? ev.message : ev.error)
+            return
+        }
+        if (ev.type === "stems") {
+            if (ev.phase === "progress") { splitting = true; splitProgress = ev.progress; splitMsg = ev.message + " · " + Math.round(ev.progress * 100) + " %"; return }
+            splitting = false; splitProgress = 0
+            if (!ev.ok) { splitMsg = ev.cancelled ? ev.message : ev.error; if (!ev.cancelled) studio.toast(ev.error); return }
+            var n = 0
+            ;(ev.stems || []).forEach(function (s) {
+                var r = studio.call("addAudioPath", s.path, ev.name + " · " + s.label)
+                if (!r.ok) { studio.toast(r.error); return }
+                studio.addTrack(r.track, true); n++
+            })
+            var t = studio.tracks.slice()                  // la original queda silenciada (no se borra)
+            for (var i = 0; i < t.length; i++) if (t[i].id === ev.trackId && !t[i].mute) {
+                t[i] = Object.assign({}, t[i], { mute: true }); studio.tracks = t; studio.syncTrackStates(); break
+            }
+            studio.markDirty()
+            splitMsg = ev.message
+            studio.toast(ev.message + " · la original queda silenciada")
+            return
+        }
         if (ev.type === "aiMidiDownload") {
             if (ev.phase === "progress") { midiDownloading = true; midiDlProgress = ev.progress; midiDlMsg = ev.message + " · " + (ev.got / 1073741824).toFixed(2) + " de " + (ev.size / 1073741824).toFixed(2) + " GB" }
             else { midiDownloading = false; midiDlMsg = ev.ok || ev.cancelled ? ev.message : ev.error; if (!ev.ok && !ev.cancelled) studio.toast(ev.error); midiRefresh() }

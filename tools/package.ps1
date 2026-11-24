@@ -7,6 +7,7 @@
     EXE\datos\                   tus datos (mezclas, ajustes, registros); se conservan al actualizar
     EXE\motores\acestep\         motor de IA local (ACE-Step con Vulkan, tools\build_acestep.bat)
     EXE\motores\llama\           motor de composicion MIDI (llama-server con Vulkan, tools\build_llama.bat)
+    EXE\motores\demucs\          separador de stems (demucs.cpp, tools\build_demucs.ps1)
     EXE\modelos\acestep\ y midi\ modelos de IA que descargas desde el programa; se conservan al actualizar
     AllForOne.lnk                acceso directo en la raiz del proyecto
     release\AllForOne-<version>-win64.zip   para publicar (sin tus datos)
@@ -142,9 +143,21 @@ $LlamaOut = Join-Path $Out 'motores\llama'
 New-Item -ItemType Directory -Force -Path $LlamaOut | Out-Null
 Get-ChildItem $Llama | Where-Object { $_.Name -eq 'llama-server.exe' -or $_.Extension -eq '.dll' } | Copy-Item -Destination $LlamaOut
 Copy-Item (Join-Path $Cache 'llama.cpp\LICENSE') (Join-Path $LlamaOut 'LICENSE-llama.cpp.txt')
+# Separador de stems: demucs.cpp (Demucs v4, CPU con OpenMP) en motores\demucs; el modelo ggml se
+# descarga desde el programa a modelos\demucs.
+$Dm = Join-Path $Cache 'demucs.cpp\build-msvc'
+if (-not (Test-Path (Join-Path $Dm 'demucs_mt.cpp.main.exe'))) {
+    Step "Compilando el separador de stems (tools\build_demucs.ps1)"
+    if ((Run-Native 'powershell.exe' @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', (Join-Path $PSScriptRoot 'build_demucs.ps1'), $Root)) -ne 0) { Fail "No se pudo compilar demucs.cpp" }
+}
+$DmOut = Join-Path $Out 'motores\demucs'
+New-Item -ItemType Directory -Force -Path $DmOut | Out-Null
+Copy-Item (Join-Path $Dm 'demucs_mt.cpp.main.exe') (Join-Path $DmOut 'afo-demucs.exe')
+Copy-Item (Join-Path $Dm 'vcomp140.dll') $DmOut
+Copy-Item (Join-Path $Cache 'demucs.cpp\LICENSE') (Join-Path $DmOut 'LICENSE-demucs.cpp.txt')
 
 Step "Comprobaciones de la distribucion"
-foreach ($rel in @('AllForOne.exe', 'motores\acestep\ace-synth.exe', 'motores\acestep\ggml-vulkan.dll', 'motores\llama\llama-server.exe', 'motores\llama\ggml-vulkan.dll', 'allforone\qml\Main.qml', 'allforone\qml\modules\FxBody.qml', 'allforone\qml\theme\qmldir', 'allforone\qml\assets\fonts\SpaceGrotesk-Bold.ttf', 'allforone\qml\assets\icon.ico', 'templates\Professional\theme.json')) {
+foreach ($rel in @('AllForOne.exe', 'motores\acestep\ace-synth.exe', 'motores\acestep\ggml-vulkan.dll', 'motores\llama\llama-server.exe', 'motores\llama\ggml-vulkan.dll', 'motores\demucs\afo-demucs.exe', 'allforone\qml\Main.qml', 'allforone\qml\modules\FxBody.qml', 'allforone\qml\theme\qmldir', 'allforone\qml\assets\fonts\SpaceGrotesk-Bold.ttf', 'allforone\qml\assets\icon.ico', 'templates\Professional\theme.json')) {
     if (-not (Test-Path (Join-Path $Out $rel))) { Fail "Falta $rel en la distribucion" }
 }
 if (Get-ChildItem $Out -Recurse -Filter 'QtWebEngineProcess.exe') { Fail "La distribucion lleva Qt WebEngine (Chromium) y ya no lo usa" }

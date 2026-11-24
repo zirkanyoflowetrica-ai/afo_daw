@@ -116,3 +116,11 @@ Módulo IA › «Parte para el proyecto»: renderiza lo que suena y `ace-synth` 
 confirmada. Necesita el **modelo base** `acestep-v15-base-Q8_0.gguf` (2,55 GB, paquete «Partes»);
 el turbo no hace `lego` ni `extract`. `tests/test_partes_ia.py` lo mide con un rock completo.
 `extract` (separar stems) se midió y no separa bien: no se ofrece.
+
+## Dividir en pistas (Demucs, 23-11-2026)
+Botón «Dividir» de cada pista de audio: `motores/demucs/afo-demucs.exe` (demucs.cpp, Demucs v4 de 6
+fuentes, CPU con OpenMP, 8 hilos: con 12 se cae) y el modelo `modelos/demucs/ggml-model-htdemucs-6s-f16.bin`
+(55 MB, se descarga desde la app). Salen Batería (dividida en Bombo, Caja / Clap y Platos por bandas
+complementarias), Bajo, Voz, Guitarra, Piano y Otros; las que salen en silencio no se cargan y la
+original queda silenciada. Unos 5 s por cada segundo de audio. Compilar: `tools/build_demucs.ps1`.
+`tests/test_stems.py` lo mide con trap y rock completos.

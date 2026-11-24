@@ -104,9 +104,12 @@ class Bridge(QObject):
         self.mixsvc = MixerService(self._mixer_events.put)
         from .ai_music import AiMusic
         self.ai = AiMusic(self._mixer_events.put)
+        from .stems import StemSeparator
+        self.stems = StemSeparator(self._mixer_events.put)
         app = QCoreApplication.instance()
         if app is not None:
             app.aboutToQuit.connect(self.ai.shutdown)   # no dejar procesos del motor de IA huérfanos
+            app.aboutToQuit.connect(self.stems.shutdown)
             app.aboutToQuit.connect(self._midi_shutdown)
         self._midi = None
         self._mixer_timer = QTimer(self)
@@ -130,7 +133,7 @@ class Bridge(QObject):
             if ev.get("type") == "_converted":      # interno: la conversión terminó en su hilo
                 self._finish_import(ev)
                 continue
-            if str(ev.get("type", "")).startswith("ai"):   # IA local (ai_music.py)
+            if str(ev.get("type", "")).startswith(("ai", "stems")):   # IA local (ai_music.py, stems.py)
                 self.aiEvent.emit(_json(ev))
                 continue
             if ev.get("type") == "_plan":           # interno: la mezcla decidida se aplica en el motor aquí
@@ -1073,6 +1076,38 @@ class Bridge(QObject):
     @_safe
     def aiCancel(self) -> str:
         self.ai.cancel()
+        return _ok()
+
+    # --- IA local: separador de stems con Demucs (stems.py) ------------------------------
+    @Slot(result=str)
+    @_safe
+    def stemsStatus(self) -> str:
+        return _ok(**self.stems.status())
+
+    @Slot(result=str)
+    @_safe
+    def stemsDownload(self) -> str:
+        """Descarga (o reanuda) el modelo de Demucs (55 MB); el avance llega por `aiEvent`."""
+        self.stems.download()
+        return _ok(started=True)
+
+    @Slot(int, bool, result=str)
+    @_safe
+    def stemsSplit(self, track_id: int, drums: bool) -> str:
+        """Separa el audio de una pista en Batería, Bajo, Voz, Guitarra, Piano y Otros (y la batería
+        en Bombo, Caja / Clap y Platos si `drums`). Las pistas llegan por `aiEvent` (type "stems")."""
+        t = self.host.tracks.get(track_id)
+        if not t:
+            return _err("Elige una pista de audio")
+        try:
+            return _ok(**self.stems.split(t.get("source_path") or "", t.get("name") or "Pista", track_id, drums))
+        except Exception as exc:
+            return _err(str(exc))
+
+    @Slot(result=str)
+    @_safe
+    def stemsCancel(self) -> str:
+        self.stems.cancel()
         return _ok()
 
     # --- IA local: composición MIDI con MIDI-LLM (midi_ai.py) --------------------------

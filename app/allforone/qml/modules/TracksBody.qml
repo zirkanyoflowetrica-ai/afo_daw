@@ -26,6 +26,7 @@ Column {
     signal toggleMute(int i)
     signal toggleSolo(int i)
     signal removeTrack(int i)
+    signal splitTrack(int i)
     signal selectTrack(int i)
     width: parent ? parent.width : 600
     spacing: 0
@@ -283,6 +284,11 @@ Column {
                                                 tip: "Solo"; onClicked: root.toggleSolo(row.index) }
                                     NeoButton { text: "✕"; fontSize: 12; padX: 6; padY: 0; shadow: 2
                                                 tip: "Quitar pista (y su canal y efectos)"; confirm: "¿Quitar?"; onClicked: root.removeTrack(row.index) }
+                                    NeoButton { visible: row.modelData.type === "audio" && row.modelData.id >= 0
+                                                text: root.seq.splitting ? "…" : "Dividir"; fontSize: 12; padX: 6; padY: 0; shadow: 2
+                                                enabled: !root.seq.splitting
+                                                tip: "Dividir en pistas con IA (Demucs, en tu equipo): batería en bombo, caja / clap y platos, bajo, voz, guitarra, piano y otros. La original queda silenciada"
+                                                onClicked: root.splitTrack(row.index) }
                                 }
                                 Row {                       // .afo-trole: tipo y rol de voz
                                     id: trole

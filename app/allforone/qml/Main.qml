@@ -1114,6 +1114,7 @@ Las entradas van a la izquierda y las salidas a la derecha. Arrastra para moverl
                             onToggleMute: function (i) { var t = win.tracks.slice(); t[i] = Object.assign({}, t[i], { mute: !t[i].mute }); win.tracks = t; win.syncTrackStates() }
                             onToggleSolo: function (i) { var t = win.tracks.slice(); t[i] = Object.assign({}, t[i], { solo: !t[i].solo }); win.tracks = t; win.syncTrackStates() }
                             onRemoveTrack: function (i) { win.removeTrackAt(i) }
+                            onSplitTrack: function (i) { sq.splitStems(win.tracks[i].id) }
                         }
                     }
                 }

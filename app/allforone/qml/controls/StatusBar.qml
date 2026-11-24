@@ -50,8 +50,9 @@ Rectangle {
         Text {                                       // IA local trabajando (generación o descarga de modelos)
             readonly property var sq: root.studio.seq
             anchors.verticalCenter: parent.verticalCenter
-            visible: !!sq && (sq.generating || sq.downloading)
-            text: !sq ? "" : sq.generating ? "● IA generando " + Math.round(sq.aiProgress * 100) + " %"
+            visible: !!sq && (sq.generating || sq.downloading || sq.splitting)
+            text: !sq ? "" : sq.splitting ? "● Dividiendo en pistas " + Math.round(sq.splitProgress * 100) + " %"
+                 : sq.generating ? "● IA generando " + Math.round(sq.aiProgress * 100) + " %"
                                          : "● IA descargando modelos " + Math.round(sq.dlProgress * 100) + " %"
             color: Theme.ink; font.family: Theme.font; font.pixelSize: 12; font.weight: 700
         }
