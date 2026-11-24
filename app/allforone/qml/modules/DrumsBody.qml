@@ -21,7 +21,7 @@ Column {
         Lcd { id: one; text: "1 instancia"; anchors.verticalCenter: parent.verticalCenter }
         Text { width: root.width - one.width - 10; anchors.verticalCenter: parent.verticalCenter; wrapMode: Text.Wrap
                text: "Una sola caja de ritmos. Cada pista guarda su patrón."
-               color: Theme.ink; font.family: Theme.font; font.pixelSize: 12; font.weight: 500 }
+               color: Theme.ink; font.family: Theme.font; font.pixelSize: 13; font.weight: 500 }
     }
     TrackTabs { seq: root.seq; type: "drum" }
     DashedBox { visible: !root.t; width: root.width; height: visible ? implicitHeight : 0
@@ -104,18 +104,18 @@ Column {
                     Rectangle {
                         x: pad.lit ? 3 : 0; y: pad.lit ? 3 : 0
                         width: parent.width; height: parent.height
-                        color: pad.lit ? root.groupColor[pad.index % 4] : "#2b2720"
+                        color: pad.lit ? root.groupColor[pad.index % 4] : Theme.screenCard
                         border.width: Theme.buttonBorder; border.color: Theme.line
                         Rectangle { x: 4; y: 4; width: 8; height: 8; radius: 4; color: root.groupColor[pad.index % 4] }
-                        Text { x: 18; y: 6; text: pad.modelData; color: pad.lit ? "#000" : "#f3e7c4"
-                               font.family: Theme.font; font.pixelSize: 12; font.weight: 700 }
+                        Text { x: 18; y: 6; text: pad.modelData; color: pad.lit ? "#000" : Theme.screenInk
+                               font.family: Theme.font; font.pixelSize: 13; font.weight: 700 }
                         Text { x: 6; anchors.bottom: parent.bottom; anchors.bottomMargin: 4
                                visible: root.sampled.indexOf(pad.index) >= 0
-                               text: "GOLPE GRABADO"; color: pad.lit ? "#000" : "#bdb398"
-                               font.family: Theme.font; font.pixelSize: 10; font.weight: 700 }
+                               text: "GOLPE GRABADO"; color: pad.lit ? "#000" : Theme.screenDim
+                               font.family: Theme.font; font.pixelSize: 11; font.weight: 700 }
                         Text { anchors.right: parent.right; anchors.rightMargin: 6; anchors.bottom: parent.bottom; anchors.bottomMargin: 4
-                               text: String(pad.index + 1); color: pad.lit ? "#000" : "#bdb398"
-                               font.family: Theme.font; font.pixelSize: 16; font.weight: 700 }
+                               text: String(pad.index + 1); color: pad.lit ? "#000" : Theme.screenDim
+                               font.family: Theme.font; font.pixelSize: 15; font.weight: 700 }
                     }
                     MouseArea { id: pm; anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onPressed: root.hit(pad.index) }
                 }
@@ -126,8 +126,8 @@ Column {
     Rectangle {                                 // .seq
         visible: !!root.t
         width: root.width; height: visible ? seqCol.height + 16 + 6 : 0
-        color: "#16130e"; border.width: Theme.border; border.color: Theme.line
-        Rectangle { anchors.fill: parent; anchors.margins: 3; color: "transparent"; border.width: Theme.buttonBorder; border.color: "#4a4030" }
+        color: Theme.screen; border.width: Theme.border; border.color: Theme.line
+        Rectangle { anchors.fill: parent; anchors.margins: 3; color: "transparent"; border.width: Theme.buttonBorder; border.color: Theme.screenLine }
         Column {
             id: seqCol
             x: 11; y: 11; width: parent.width - 22; spacing: 6
@@ -140,7 +140,7 @@ Column {
                     spacing: 8
                     NeoButton {                 // .dl: escuchar el golpe
                         width: 108; text: lane.modelData; fontSize: 12; padX: 6; padY: 3; leftAlign: true
-                        color: "#2b2720"; textColor: "#f3e7c4"; hoverColor: "#3a352b"
+                        color: Theme.screenCard; textColor: Theme.screenInk; hoverColor: Theme.screenHover
                         onClicked: if (root.t) root.seq.previewDrum(root.t.cfg, lane.index)
                     }
                     Grid {                      // .sc: 16 pasos
@@ -154,7 +154,7 @@ Column {
                                 required property int index
                                 readonly property bool on: !!root.t && !!root.t.pat[lane.index + "-" + index]
                                 width: parent.cw; height: 26
-                                color: on ? root.groupColor[index >> 2] : (sm.containsMouse ? "#4d463a" : "#3a352b")
+                                color: on ? root.groupColor[index >> 2] : (sm.containsMouse ? Theme.screenHover : Theme.screenHover)
                                 border.width: Theme.buttonBorder; border.color: Theme.line
                                 Rectangle {     // .st.cur
                                     visible: root.curStep === st.index
