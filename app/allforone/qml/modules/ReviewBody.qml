@@ -51,7 +51,7 @@ Column {
     Row {
         width: root.width; spacing: 6; bottomPadding: 8
         Text { text: "Conectado a"; height: 26; verticalAlignment: Text.AlignVCenter; color: Theme.ink
-               font.family: Theme.font; font.pixelSize: 12; font.weight: 700 }
+               font.family: Theme.font; font.pixelSize: 13; font.weight: 700 }
         Repeater {
             model: [["rack", "Rack del canal"], ["master", "Master"]]
             NeoButton {
@@ -76,7 +76,7 @@ Column {
                 id: scr
                 required property var modelData
                 width: (root.width - 6) / 2; height: 150
-                color: "#16130e"; border.width: Theme.border; border.color: Theme.line
+                color: Theme.screen; border.width: Theme.border; border.color: Theme.line
                 Canvas {
                     x: 3; y: 22; width: parent.width - 6; height: parent.height - 25
                     property var bands: root.scope ? root.scope[scr.modelData[1]] : []
