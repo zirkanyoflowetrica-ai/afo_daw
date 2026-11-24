@@ -19,8 +19,8 @@ Column {
 
     Rectangle {                                 // .reels
         width: root.width; height: 92 + 28 + 6
-        color: "#16130e"; border.width: Theme.border; border.color: Theme.line
-        Rectangle { anchors.fill: parent; anchors.margins: 3; color: "transparent"; border.width: Theme.buttonBorder; border.color: "#4a4030" }
+        color: Theme.screen; border.width: Theme.border; border.color: Theme.line
+        Rectangle { anchors.fill: parent; anchors.margins: 3; color: "transparent"; border.width: Theme.buttonBorder; border.color: Theme.screenLine }
         Row {
             anchors.centerIn: parent
             spacing: 34
@@ -61,7 +61,7 @@ Column {
             text: !root.t ? "Crea una pista de voz para grabar."
                   : root.seq.armedUid === root.t.uid ? "Pista armada: " + root.t.name
                   : root.t.name + ": sin entrada para armar"
-            color: Theme.ink; font.family: Theme.font; font.pixelSize: 12; font.weight: 500
+            color: Theme.ink; font.family: Theme.font; font.pixelSize: 13; font.weight: 500
         }
     }
     TrackTabs { seq: root.seq; type: "voz" }
@@ -122,7 +122,7 @@ Column {
         text: root.seq.inputs.length
               ? "La toma la escribe el motor en un WAV, se ve como onda en Pistas y entra en Mezcla. Entrada: " + (root.rec ? root.rec.input : "—") + "."
               : "El dispositivo de audio actual no tiene entradas. Pulsa «Audio» (arriba o aquí) y elige uno que sí (ASIO4ALL, Windows Audio con micrófono…)."
-        color: Theme.ink; font.family: Theme.font; font.pixelSize: 12; font.weight: 500
+        color: Theme.ink; font.family: Theme.font; font.pixelSize: 13; font.weight: 500
     }
     Component.onCompleted: seq.refreshInputs()
 }
