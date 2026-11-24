@@ -125,3 +125,58 @@ def test_swing_retrasa_las_semicorcheas_pares():
     assert pattern_notes(t) == [(0.0, 38), (0.25 + 0.125, 38)]
     t["cfg"]["sw"] = 0
     assert pattern_notes(t)[1] == (0.25, 38)
+
+
+@pytest.mark.parametrize("bpm", [90, 140])
+def test_perillas_de_bateria_cambian_el_sonido(host, tmp_path, bpm):
+    """X7: cada perilla de Batería actúa en el render (el Swing ya se prueba arriba con las notas):
+    Volumen sube el nivel del patrón de bombo, caja y charles; Afinación sube el tono del bombo; a dos
+    tempos."""
+    eng = host.engine
+    eng.set_tempo(float(bpm))
+    tid = eng.add_synth_track("Batería", 1)["id"]
+    notes = [(b * 1.0, 36) for b in range(4)] + [(b + 1.0, 38) for b in (0, 2)] + [(b * 0.5, 42) for b in range(8)]
+
+    def render(vol, tun):
+        eng.set_synth_settings(tid, mode=1, vol=vol, tun=tun)
+        eng.set_synth_notes(tid, notes, 4.0)
+        out = tmp_path / f"b_{vol}_{tun}.wav"
+        assert eng.render_to_wav(str(out))
+        y, sr = sf.read(str(out))
+        return y[:, 0], sr
+
+    lo, sr = render(30, 50)
+    hi, _ = render(90, 50)
+    rms = lambda x: float(np.sqrt(np.mean(x ** 2)))  # noqa: E731
+    assert rms(hi) > 1.3 * rms(lo), (rms(lo), rms(hi))            # el limitador del master iguala algo
+    # Afinación: el tono del bombo (el charles es ruido y no tiene tono)
+    notes[:] = [(0.0, 36)]
+    grave, _ = render(80, 15)
+    agudo, _ = render(80, 85)
+    f_g, f_a = peak_hz(grave[: int(0.12 * sr)], sr), peak_hz(agudo[: int(0.12 * sr)], sr)
+    assert f_a > 1.8 * f_g, (f_g, f_a)
+
+
+@pytest.mark.parametrize("oct_", [3, 5])
+def test_octava_transpone_lo_que_suena(host, tmp_path, oct_):
+    """X2: la Octava del Piano roll mueve las notas que suenan (no solo el teclado dibujado)."""
+    from allforone.engine_host import pattern_notes
+    t = {"type": "inst", "clips": [[0, 6.25]], "roll": {"3-0": 1}, "cfg": {}}       # fila 3 = A4 en la octava 4
+    base = pattern_notes(t)
+    assert base[0] == (0.0, 69)
+    t["cfg"]["oct"] = oct_
+    moved = pattern_notes(t)
+    assert [n for _, n in moved] == [n + 12 * (oct_ - 4) for _, n in base]
+    eng = host.engine
+    eng.set_tempo(120.0)
+    tid = eng.add_synth_track("Piano", 0)["id"]
+    eng.set_synth_settings(tid, mode=0, wave=4, vel=100, bri=100)                   # seno: el pico es la nota
+    freqs = []
+    for notes in (base, moved):
+        eng.set_synth_notes(tid, notes[:1], 8.0)
+        out = tmp_path / f"o{len(freqs)}.wav"
+        assert eng.render_to_wav(str(out))
+        y, sr = sf.read(str(out))
+        freqs.append(peak_hz(y[: int(0.25 * sr), 0], sr))
+    assert freqs[0] == pytest.approx(440, abs=5)
+    assert freqs[1] == pytest.approx(440 * 2 ** (oct_ - 4), rel=0.03)

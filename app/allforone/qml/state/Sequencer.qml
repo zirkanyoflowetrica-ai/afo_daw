@@ -45,8 +45,11 @@ QtObject {
     readonly property var insts: [["Piano de cola", "Teclas"], ["Bajo sintético", "Graves"], ["Batería acústica", "Percusión"],
         ["Guitarra eléctrica", "Cuerdas"], ["Pad ambiental", "Sintetizador"], ["Cuerdas de orquesta", "Cuerdas"],
         ["Voz coral", "Voces"], ["Campanas", "Percusión"]]
+    // Filas del Piano roll: C5..C4 en la octava 4; «Octava» las transpone (y lo que suena, X2)
     readonly property var notes: ["C5", "B4", "A#4", "A4", "G#4", "G4", "F#4", "F4", "E4", "D#4", "D4", "C#4", "C4"]
+        .map(function (n) { return n.slice(0, -1) + (Number(n.slice(-1)) + oct - 4) })
     readonly property var base: [523.25, 493.88, 466.16, 440, 415.3, 392, 369.99, 349.23, 329.63, 311.13, 293.66, 277.18, 261.63]
+        .map(function (f) { return f * Math.pow(2, oct - 4) })
     readonly property var dn: ["Bombo", "Caja", "Hi-hat", "Hi-hat abierto", "Palmas", "Tom", "Platillo", "Cencerro"]
     readonly property var styles: ["Lo-fi", "Funk", "Ambient", "Rock", "Electrónica"]
 
@@ -269,7 +272,7 @@ QtObject {
         if (!t) { if (type === "ia") { var d = Object.assign({}, draftIa); d[key] = value; draftIa = d } return }
         var c = Object.assign({}, t.cfg); c[key] = value
         replace(t.uid, { cfg: c })
-        if (isSynth(t)) update(t.uid, key !== "sw")   // el swing mueve las notas; el resto solo son parámetros
+        if (isSynth(t)) update(t.uid, key !== "sw" && key !== "oct")   // swing y octava mueven las notas; el resto son parámetros
     }
     function setVoice(v) {
         var t = active("inst"); if (!t) return
@@ -293,7 +296,11 @@ QtObject {
         replace(t.uid, { roll: roll }); update(t.uid)
     }
     function clearRoll() { var t = active("inst"); if (t) { replace(t.uid, { roll: {} }); update(t.uid) } }
-    function setOct(d) { oct = Math.max(1, Math.min(7, oct + d)) }
+    function setOct(d) {
+        oct = Math.max(1, Math.min(7, oct + d))
+        var t = active("inst")
+        if (t && !midiLocked(t) && (t.cfg.oct || 4) !== oct) setCfg("inst", "oct", oct)   // transpone lo que suena
+    }
     function toggleSus() { sus = !sus; rerenderAll("inst") }
 
     // ---------------- Batería ----------------

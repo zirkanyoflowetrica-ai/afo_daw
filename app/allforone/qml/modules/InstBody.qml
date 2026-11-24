@@ -86,6 +86,12 @@ Column {
             }
         }
     }
+    Note {                                      // X6: con un VST3, las perillas del sintetizador interno no actúan
+        objectName: "instVstNote"
+        visible: !!root.t && !!root.t.cfg.plugin
+        width: root.width
+        text: "Velocidad, Brillo y Reverb son del sintetizador interno; ajusta el VST3 en su editor («Abrir instrumento»)."
+    }
     Row {                                       // .krow
         visible: !!root.t && !root.t.cfg.plugin
         anchors.horizontalCenter: parent.horizontalCenter; spacing: 16

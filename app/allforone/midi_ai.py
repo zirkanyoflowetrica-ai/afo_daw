@@ -336,6 +336,11 @@ def list_compositions(limit: int = 30) -> list[dict]:
 
 
 # ---------------- servidor y trabajos -----------------------------------------------------------
+def creativity_temperature(creativity) -> float:
+    """Perilla Creatividad (0..100) → temperatura del muestreo: 0,70..1,20 (más alta, más sorpresas)."""
+    return max(0.5, min(1.3, 0.7 + float(creativity) / 200))
+
+
 def _free_port() -> int:
     with socket.socket() as s:
         s.bind(("127.0.0.1", 0))
@@ -524,7 +529,7 @@ class MidiAi:
         prompt.append(AUTOREGRESS + LLAMA_VOCAB)
         total = int(max(300, min(4000, float(opts.get("length") or 2046))))
         total -= total % 3
-        temp = max(0.5, min(1.3, 0.7 + float(opts.get("creativity", 60)) / 200))
+        temp = creativity_temperature(opts.get("creativity", 60))
         seed = int(opts.get("seed", -1))
         out: list[int] = []
         chunk = 300

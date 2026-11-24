@@ -54,13 +54,15 @@ def pattern_notes(track: dict) -> list[tuple[float, int]]:
     roll = [tuple(map(int, k.split("-"))) for k in (track.get("roll") or {})]
     pat = [tuple(map(int, k.split("-"))) for k, on in (track.get("pat") or {}).items() if on]
     swing = max(0.0, min(100.0, float((track.get("cfg") or {}).get("sw", 0)))) / 100
+    # Octava del Piano roll (X2): la rejilla es C4..C5 en la octava 4; cada octava más sube 12 semitonos
+    shift = 12 * (max(1, min(7, int((track.get("cfg") or {}).get("oct", 4)))) - 4)
     for st in range(STEPS):
         bar, s = st >> 4, st % 16
         if not in_clip(track.get("clips", []), bar):
             continue
         beat = st / 4
         if track["type"] == "inst":
-            out += [(beat, ROLL_TOP_NOTE - r) for r, c in roll if c == s]
+            out += [(beat, ROLL_TOP_NOTE - r + shift) for r, c in roll if c == s]
         elif track["type"] == "drum":
             # Swing: las semicorcheas pares se retrasan hasta media semicorchea (perilla al 100 %)
             if s % 2:
