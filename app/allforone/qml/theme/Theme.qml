@@ -19,6 +19,8 @@ QtObject {
             device: "#f6f1e4", deviceHead: "#e3dac4", deviceInk: "#1b1b1b", deviceBorder: "#000000",
             knobArc: "#5b6fc0", knobTrack: "#c9bfa6", knobValue: "#1b1b1b", chain: "#ece4cf",
             lcd: "#a3acea", lcdSoft: "#c6cbef",
+            screen: "#16130e", screenCard: "#2b2720", screenHover: "#3a352b", screenLine: "#4a4030",
+            screenInk: "#f3e7c4", screenDim: "#bdb398",
             sidebar: "#fff1c9"
         },
         style: { frame: 9, border: 3, shadow: 7, buttonShadow: 3, buttonBorder: 2, radius: 0, headHeight: 44,
@@ -92,6 +94,14 @@ QtObject {
     readonly property color lcd: cl.lcd                 // cifras de la pantalla LCD, aguja del VU y lecturas
     readonly property color lcdSoft: cl.lcdSoft
     readonly property color chain: cl.chain
+    // Pantallas oscuras (pads, rejilla de pasos, lista de audios, rejilla de notas): fondo, tarjeta,
+    // tarjeta con el ratón encima, borde interior, texto y texto secundario
+    readonly property color screen: cl.screen
+    readonly property color screenCard: cl.screenCard
+    readonly property color screenHover: cl.screenHover
+    readonly property color screenLine: cl.screenLine
+    readonly property color screenInk: cl.screenInk
+    readonly property color screenDim: cl.screenDim
 
     // Colores de módulo
     readonly property var pc: spec.modules

@@ -10,7 +10,7 @@
     "canvas": "#1d1d1d", "panelHead": "#333333", "panelHeadInk": "#e2e2e2", "panelBorder": "#141414",
     "panelBody": "#272727", "chip": "#222222", "chipInk": "#a8a8a8", "shadow": "#000000", "sidebar": "#252525",
     "device": "#3b3b3b", "deviceHead": "#474747", "deviceInk": "#dcdcdc", "deviceBorder": "#161616",
-    "knobArc": "#8a94d8", "lcd": "#a3acea", "lcdSoft": "#c6cbef", "knobTrack": "#1f1f1f", "knobValue": "#e8e8e8", "chain": "#2e2e2e"
+    "knobArc": "#8a94d8", "lcd": "#a3acea", "lcdSoft": "#c6cbef", "knobTrack": "#1f1f1f", "knobValue": "#e8e8e8", "chain": "#2e2e2e", "screen": "#1a1a1a", "screenCard": "#2a2a2a", "screenHover": "#353535", "screenLine": "#3e3e3e", "screenInk": "#e0e0e0", "screenDim": "#a6a6a6"
   },
   "style": {
     "frame": 0, "border": 1, "shadow": 0, "buttonShadow": 0, "buttonBorder": 1, "radius": 3,

@@ -248,7 +248,10 @@ Window {
                 ["texto/campo", c(Theme.ink), c(Theme.input)], ["texto/botón", c(Theme.ink), c(Theme.button)],
                 ["texto/menú", c(Theme.ink), c(Theme.sidebar)], ["botón pulsado", c(Theme.pressedInk), c(Theme.pressedBg)],
                 ["botón principal", "#000000", c(Theme.accent)], ["chip del modelo", c(Theme.chipInk), c(Theme.chip)],
-                ["dispositivo", c(Theme.deviceInk), c(Theme.device)], ["cabecera de dispositivo", c(Theme.deviceInk), c(Theme.deviceHead)]]
+                ["dispositivo", c(Theme.deviceInk), c(Theme.device)], ["cabecera de dispositivo", c(Theme.deviceInk), c(Theme.deviceHead)],
+                ["pantalla", c(Theme.screenInk), c(Theme.screen)], ["tarjeta de pantalla", c(Theme.screenInk), c(Theme.screenCard)],
+                ["texto secundario de pantalla", c(Theme.screenDim), c(Theme.screenCard)],
+                ["pantalla con el ratón", c(Theme.screenInk), c(Theme.screenHover)]]
             for (var mid in Theme.pc) {
                 out2.push(["título " + mid, c(Theme.headInk(Theme.pc[mid])), c(Theme.panelHead)])
                 if (mid !== "piano") out2.push(["cuerpo " + mid, c(Theme.ink), c(Theme.panelColor(mid, Theme.pc[mid]))])
