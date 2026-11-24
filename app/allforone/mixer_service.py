@@ -279,10 +279,10 @@ class MixerService:
             tuning = dict(key=self.approval["key"], scale=self.approval["scale"], strength=strength,
                           tune_lead=bool(voices.get("lead", True)), tune_left=bool(voices.get("l", False)),
                           tune_right=bool(voices.get("r", False)), tune_center_backings=bool(voices.get("b", False)))
-            # "psola" (por defecto): copia afinada sin conexión con el PSOLA de V4.2, la más exacta en
-            # tests/test_proyectos_completos.py. "live": el AF-60 del motor en la cadena (no escribe
-            # audio; al remezclar con 0 % desaparece), velocidad según el tempo y rango según la voz.
-            live = tune.get("method") == "live"
+            # "live" (por defecto): el afinador nativo AF-60 del motor en la cadena (no escribe audio;
+            # al remezclar con 0 % desaparece), velocidad según el tempo y rango según la voz.
+            # "psola": copia afinada sin conexión con el PSOLA de V4.2 (algo más exacta, escribe audio).
+            live = tune.get("method", "live") != "psola"
             dest = paths.user_data_dir() / "afinadas"
             for t in result["tracks"]:
                 if t.get("skip") or not eng._should_tune_vocal(tuning, t["kind"], t["kind"] == "Voz lateral (_L/_R)", t["position"]):

@@ -308,6 +308,52 @@ Column {
                color: Theme.ink; font.family: Theme.font; font.pixelSize: 12; font.weight: 500 }
     }
 
+    // ---------------- parte para el proyecto (ACE-Step «lego», modelo base) ----------------
+    Rectangle {
+        visible: !!root.ai.engineOk
+        width: root.width; height: part.implicitHeight + 20
+        color: "transparent"; border.width: Theme.buttonBorder; border.color: Theme.line; radius: Theme.radius
+        Column {
+            id: part
+            x: 10; y: 10; width: parent.width - 20; spacing: 8
+            Text { text: "Parte para el proyecto"; color: Theme.ink; font.family: Theme.font; font.pixelSize: 13; font.weight: 700 }
+            Text {
+                width: parent.width; wrapMode: Text.Wrap; color: Theme.ink; font.family: Theme.font; font.pixelSize: 12
+                text: "Escucha lo que ya suena (todas las pistas) y genera un instrumento nuevo encima, al tempo del proyecto ("
+                      + root.studio.bpm + " BPM)" + (root.studio.mixer && root.studio.mixer.tune.confirmed
+                      ? " y en " + root.studio.mixer.tune.confirmed.key + " " + root.studio.mixer.tune.confirmed.scale : "")
+                      + ". Entra como pista nueva en Pistas."
+            }
+            Row {
+                width: parent.width; spacing: 8
+                Select {
+                    width: Math.min(200, parent.width * 0.4)
+                    options: (root.ai.parts || []).map(function (p) { return [p, p] })
+                    current: root.c.part || "Guitarra"
+                    onPicked: function (v) { root.set("part", v) }
+                }
+                NeoButton {
+                    id: pgen
+                    visible: !!root.ai.partsReady
+                    text: root.seq.generating ? "Generando…" : "Generar parte"
+                    color: root.accent; textColor: "#000"
+                    enabled: !root.seq.generating && (root.studio.tracks || []).length > 0
+                    opacity: enabled ? 1 : 0.55
+                    tip: (root.studio.tracks || []).length ? "Genera " + (root.c.part || "Guitarra").toLowerCase() + " acorde a las pistas del proyecto (≈ 10 s por cada 30 s en tu tarjeta)"
+                                                           : "Añade antes alguna pista: la parte se genera sobre lo que ya suena"
+                    onClicked: root.seq.generatePart()
+                }
+                NeoButton {
+                    visible: !root.ai.partsReady
+                    enabled: !root.seq.downloading; opacity: enabled ? 1 : 0.5
+                    text: "Descargar sintetizador base (2,5 GB)"
+                    tip: "Partes sobre el proyecto: necesita el modelo base de ACE-Step (el turbo no sabe hacerlo)"
+                    onClicked: root.seq.download("partes")
+                }
+            }
+        }
+    }
+
     // ---------------- generaciones guardadas ----------------
     Text { visible: (root.ai.generations || []).length > 0; text: "Generadas (en datos\\media\\ia)"
            color: Theme.ink; font.family: Theme.font; font.pixelSize: 13; font.weight: 600 }

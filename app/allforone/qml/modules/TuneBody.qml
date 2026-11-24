@@ -353,7 +353,7 @@ Column {
             id: offCol
             x: 10; y: 8; width: parent.width - 20; spacing: 6
             Text { width: parent.width; wrapMode: Text.Wrap; textFormat: Text.StyledText
-                   text: root.tn.method === "live"
+                   text: root.tn.method !== "psola"
                          ? "<b>Al mezclar con IA · en vivo</b>: pone este afinador (AF-60) en las voces marcadas con la tonalidad confirmada, la intensidad elegida, velocidad según el tempo y rango según la voz. No toca el audio y se ajusta aquí después."
                          : "<b>Al mezclar con IA · precisa</b>: afina las voces marcadas sin conexión (PSOLA, la más exacta en las pruebas) y pone en su pista una copia <i>_afinada</i>; el original queda intacto."
                    color: Theme.deviceInk; font.family: Theme.font; font.pixelSize: 12 }
@@ -371,18 +371,18 @@ Column {
                     onClicked: root.mixer.confirmTune()
                 }
                 NeoButton {
-                    readonly property bool on: root.tn.method !== "live"
-                    text: "Precisa"; fontSize: 12; padX: 8; padY: 3; pressedState: on
+                    readonly property bool on: root.tn.method !== "psola"
+                    text: "Efecto nativo (AF-60)"; fontSize: 12; padX: 8; padY: 3; pressedState: on
                     color: on ? Theme.pc.afina : Theme.button; textColor: on ? "#000" : Theme.ink
-                    tip: "Afinación sin conexión (PSOLA): más exacta, escribe una copia afinada de la voz"
-                    onClicked: root.mixer.setTune({ method: "psola" })
+                    tip: "Por defecto: pone el afinador AF-60 en la cadena de la voz; no escribe audio y se retoca aquí"
+                    onClicked: root.mixer.setTune({ method: "live" })
                 }
                 NeoButton {
-                    readonly property bool on: root.tn.method === "live"
-                    text: "En vivo (AF-60)"; fontSize: 12; padX: 8; padY: 3; pressedState: on
+                    readonly property bool on: root.tn.method === "psola"
+                    text: "Copia precisa (PSOLA)"; fontSize: 12; padX: 8; padY: 3; pressedState: on
                     color: on ? Theme.pc.afina : Theme.button; textColor: on ? "#000" : Theme.ink
-                    tip: "Pone el afinador AF-60 en la cadena de la voz: no escribe audio y se puede retocar"
-                    onClicked: root.mixer.setTune({ method: "live" })
+                    tip: "Afinación sin conexión (PSOLA de V4.2): algo más exacta, escribe una copia afinada de la voz"
+                    onClicked: root.mixer.setTune({ method: "psola" })
                 }
             }
             Row {

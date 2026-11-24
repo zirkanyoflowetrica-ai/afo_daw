@@ -14,7 +14,7 @@ QtObject {
     property var act: ({ inst: "", drum: "", ia: "", voz: "" })   // pista activa de cada módulo (uid)
     property int oct: 4
     property bool sus: false
-    property var draftIa: ({ prompt: "", style: "Trap", cre: 50, dur: 60, key: "Auto", inst: true, lyrics: "", bpmSync: true })
+    property var draftIa: ({ prompt: "", style: "Trap", cre: 50, dur: 60, key: "Auto", inst: true, lyrics: "", bpmSync: true, part: "Guitarra", partPrompt: "" })
     // IA en dos modos: «song» = canción completa en audio (ACE-Step) · «midi» = solo las notas (MIDI-LLM)
     property string iaMode: "song"
     property var draftMidi: ({ prompt: "", len: 2046, cre: 60 })
@@ -308,6 +308,18 @@ QtObject {
             creativity: c.cre, bpm: c.bpmSync ? studio.bpm : 0, seed: -1 }))
         if (!r.ok) { studio.toast(r.error); aiMsg = r.error; return }
         generating = true; aiProgress = 0.01; aiMsg = "Preparando…"
+    }
+    // Parte nueva (guitarra, piano…) acorde al proyecto: tempo del proyecto y la tonalidad confirmada
+    // en el Afinador / Mezcla IA si la hay; ACE-Step escucha lo que ya suena (aiPart en bridge.py)
+    function generatePart() {
+        if (generating) return
+        var c = draftIa, conf = studio.mixer ? studio.mixer.tune.confirmed : null
+        var key = conf ? conf.key + (conf.scale.indexOf("Menor") === 0 ? " minor" : " major") : c.key
+        var r = studio.call("aiPart", JSON.stringify({ part: c.part || "Guitarra", style: c.style, prompt: c.partPrompt || "",
+                                                         bpm: studio.bpm, key: key, seed: -1 }))
+        if (!r.ok) { studio.toast(r.error); aiMsg = r.error; return }
+        generating = true; aiProgress = 0.01
+        aiMsg = "Escuchando " + Math.round(r.seconds) + " s del proyecto…"
     }
     function cancelGenerate() { studio.call("aiCancel"); aiMsg = "Cancelando…" }
     function download(pack) {

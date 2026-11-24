@@ -43,6 +43,7 @@ FILES = {
     "acestep-5Hz-lm-1.7B-Q8_0.gguf": (1975837568, "Compositor 1,7B (letra, estructura y códigos)"),
     "acestep-v15-turbo-Q8_0.gguf": (2549528000, "Sintetizador DiT turbo (8 pasos)"),
     "vae-BF16.gguf": (337420928, "Decodificador de audio (VAE)"),
+    "acestep-v15-base-Q8_0.gguf": (2549527936, "Sintetizador DiT base (50 pasos): partes sobre el proyecto"),
 }
 COMMON = ("Qwen3-Embedding-0.6B-Q8_0.gguf", "acestep-v15-turbo-Q8_0.gguf", "vae-BF16.gguf")
 PACKS = {
@@ -50,8 +51,19 @@ PACKS = {
                 "desc": "Compositor de 4B: mejor estructura y letras. Para tarjetas de 12 GB o más."},
     "ligero": {"name": "Ligero", "lm": "acestep-5Hz-lm-1.7B-Q8_0.gguf", "vram_gb": 8,
                "desc": "Compositor de 1,7B: algo más simple y más rápido. Para tarjetas de 8 GB."},
+    "partes": {"name": "Partes (instrumentos sobre el proyecto)", "lm": None, "vram_gb": 8,
+               "desc": "Sintetizador base: genera una guitarra, un piano, cuerdas… que encajan con lo que ya suena."},
 }
 SYNTH_MODEL = "acestep-v15-turbo-Q8_0.gguf"
+BASE_MODEL = "acestep-v15-base-Q8_0.gguf"      # el turbo no hace «lego» (probado: devuelve la mezcla)
+
+# Partes que el sintetizador base sabe añadir a un proyecto (tarea «lego» de ACE-Step 1.5): el
+# nombre que ve el usuario y la clase de pista del modelo.
+PARTS = {
+    "Guitarra": "guitar", "Piano / teclados": "keyboard", "Bajo": "bass", "Cuerdas": "strings",
+    "Sintetizador": "synth", "Metales": "brass", "Maderas": "woodwinds", "Percusión": "percussion",
+    "Batería": "drums", "Coros": "backing_vocals",
+}
 
 # Estilos: el nombre que ve el usuario y las etiquetas (en inglés, como se entrenó el modelo) que se
 # añaden a la descripción.
@@ -153,6 +165,8 @@ def gpu_info() -> dict:
 
 
 def pack_files(pack: str) -> list[str]:
+    if pack == "partes":
+        return [COMMON[0], BASE_MODEL, COMMON[2]]
     return [*COMMON[:1], PACKS[pack]["lm"], *COMMON[1:]]
 
 
@@ -184,6 +198,32 @@ def recommended_pack(vram_gb: float) -> str:
 
 
 # ---------------- petición ---------------------------------------------------------------------
+def build_part_request(opts: dict) -> dict:
+    """Petición «lego» de ace-synth: una parte nueva (guitarra, piano…) sobre el audio del proyecto,
+    con su tempo y tonalidad. Va con el modelo base y guía 7 (sin guía sale una copia del contexto)."""
+    part = str(opts.get("part") or "Guitarra")
+    if part not in PARTS:
+        raise ValueError(f"Parte desconocida: {part}")
+    tags = STYLES.get(str(opts.get("style") or "Libre"), "")
+    desc = str(opts.get("prompt") or "").strip()
+    req = {
+        "task_type": "lego", "track": PARTS[part],
+        "caption": ", ".join(x for x in (tags, desc or part.lower()) if x),
+        "lyrics": "[Instrumental]",
+        "duration": int(max(5, min(240, float(opts.get("duration", 30))))),
+        "seed": int(opts.get("seed", -1)), "guidance_scale": 7.0,
+        "output_format": "wav16", "synth_model": BASE_MODEL,
+    }
+    bpm = int(float(opts.get("bpm") or 0))
+    if bpm > 0:
+        req["bpm"] = max(40, min(220, bpm))
+    key = str(opts.get("key") or "Auto")
+    if key != "Auto":
+        req["keyscale"] = key
+    return req
+
+
+
 def build_request(opts: dict, pack: str) -> dict:
     """Petición de ace-lm a partir de lo que eligió el usuario (descripción, estilo, tempo…)."""
     desc = str(opts.get("prompt") or "").strip()
@@ -308,7 +348,8 @@ class AiMusic:
             "engine": str(eng) if eng else "", "engineOk": eng is not None, "models": str(mdir),
             "gpu": g, "recommended": recommended_pack(g["vram_gb"]), "installed": installed_pack(mdir) or "",
             "packs": [pack_status(p, mdir) for p in PACKS], "downloading": self.downloading,
-            "generating": self.generating, "styles": list(STYLES), "keys": KEYS,
+            "generating": self.generating, "styles": list(STYLES), "keys": KEYS, "parts": list(PARTS),
+            "partsReady": pack_status("partes", mdir)["installed"],
             "output": str(output_dir()),
         }
 
@@ -407,6 +448,60 @@ class AiMusic:
                                      daemon=True)
         self._gen.start()
         return {"name": name}
+
+    def generate_part(self, opts: dict, src: Path) -> dict:
+        """Una parte nueva sobre `src` (la mezcla del proyecto, ya renderizada): llega por `aiEvent`
+        como cualquier generación y la interfaz la carga en Pistas."""
+        if self.generating:
+            raise RuntimeError("Ya se está generando una pista.")
+        eng = engine_dir()
+        if eng is None:
+            raise RuntimeError("Falta el motor de IA (motores/acestep junto a AllForOne.exe).")
+        if not pack_status("partes")["installed"]:
+            raise RuntimeError("Falta el sintetizador base: instálalo en «Modelos de IA» (Partes).")
+        req = build_part_request(opts)
+        stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        part = str(opts.get("part") or "Guitarra")
+        name = f"{stamp}_parte_{slug(part)}"
+        title = str(opts.get("title") or "").strip() or f"{part} (IA)"
+        meta = {"title": title, "style": opts.get("style") or "Libre", "prompt": str(opts.get("prompt") or ""),
+                "part": part, "created": stamp, "request": req, "source": str(src)}
+        self._gen_cancel.clear()
+        self._gen = threading.Thread(target=self._part, args=(eng, req, Path(src), name, meta), name="ia-parte",
+                                     daemon=True)
+        self._gen.start()
+        return {"name": name}
+
+    def _part(self, eng: Path, req: dict, src: Path, name: str, meta: dict) -> None:
+        work = output_dir() / f".trabajo_{name}"
+        t0 = time.monotonic()
+        try:
+            work.mkdir(parents=True, exist_ok=True)
+            (work / "req.json").write_text(json.dumps(req, ensure_ascii=False, indent=1), encoding="utf-8")
+            self.last_log = []
+            self.emit({"type": "aiGenerate", "phase": "progress", "progress": 0.05,
+                       "message": "Escuchando el proyecto"})
+            self._run(eng / ENGINE_EXES[1], ["--models", str(models_dir()), "--request", "req.json",
+                                             "--src-audio", str(src)], "synth", req["duration"], work)
+            wav = work / "req0.wav"
+            if not wav.is_file():
+                raise RuntimeError("El sintetizador no escribió el audio.")
+            out = output_dir() / f"{name}.wav"
+            wav.replace(out)
+            meta["seconds"] = round(time.monotonic() - t0, 1)
+            out.with_suffix(".json").write_text(json.dumps(meta, ensure_ascii=False, indent=1), encoding="utf-8")
+            _rmtree(work)
+            self.emit({"type": "aiGenerate", "phase": "done", "ok": True, "progress": 1.0, "path": str(out),
+                       "title": meta["title"], "meta": meta, "part": meta["part"],
+                       "message": f"«{meta['title']}» lista en {meta['seconds']:.0f} s"})
+        except _Cancelled:
+            _rmtree(work)
+            self.emit({"type": "aiGenerate", "phase": "done", "ok": False, "cancelled": True,
+                       "message": "Generación cancelada"})
+        except Exception as exc:
+            log.exception("Parte con IA (registro en %s)", work)
+            self.emit({"type": "aiGenerate", "phase": "done", "ok": False,
+                       "error": f"No se pudo generar la parte: {exc}", "log": str(work)})
 
     def cancel(self) -> None:
         self._gen_cancel.set()

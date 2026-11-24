@@ -25,9 +25,9 @@ QtObject {
     property bool lastTuned: false
     property var live: ({})                     // por id de pista del motor: decisiones reales del mezclador
     property int workingTrack: -1
-    // Afinación de la Mezcla IA: tonalidad y BPM confirmados antes de afinar; method "psola" (copia
-    // afinada sin conexión, la más exacta) o "live" (AF-60 en la cadena, editable)
-    property var tune: ({ mode: "Automático", key: "F", scale: "Menor natural", bpm: 91, prefer: true, method: "psola",
+    // Afinación de la Mezcla IA: tonalidad y BPM confirmados antes de afinar; method "live" (por defecto: el
+    // afinador nativo AF-60 en la cadena, editable) o "psola" (copia afinada sin conexión)
+    property var tune: ({ mode: "Automático", key: "F", scale: "Menor natural", bpm: 91, prefer: true, method: "live",
                           voices: { lead: true, l: false, r: false, b: false }, analysis: null, confirmed: null,
                           status: "Pendiente: analiza y confirma antes de afinar." })
     property real tuneStrength: 0               // intensidad 0..100 (0 = sin afinación)
@@ -142,7 +142,7 @@ QtObject {
             reference: reference, profile: profile, mode: mode, profile_name: p ? p[1] : "",
             step_db: stepDb(), space: spaceKnob,
             tune: { mode: tune.mode, key: tune.key, scale: tune.scale, bpm: tune.bpm, prefer: tune.prefer,
-                    strength: tuneStrength, voices: tune.voices, method: tune.method || "psola" }
+                    strength: tuneStrength, voices: tune.voices, method: tune.method || "live" }
         }
     }
     function mix(remix) {

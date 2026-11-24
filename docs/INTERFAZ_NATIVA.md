@@ -90,10 +90,10 @@ no muestra (fase 3).
   «Detectar tonalidad» analiza la música y «Usar …» lleva la tonalidad analizada al efecto (al
   insertarlo se aplica sola si ya estaba confirmada). Los medidores salen de `fxMeters` (~30 Hz solo
   mientras suena). Abajo queda la afinación de la Mezcla IA (voces P / L / R / _B e intensidad) con
-  dos modos: **Precisa** (PSOLA de V4.2 sin conexión, copia `_afinada`; por defecto) y **En vivo
-  (AF-60)**: el mismo afinador en la cadena de la voz, velocidad según el tempo y rango según el
+  dos modos: **Efecto nativo (AF-60)**, por defecto desde noviembre de 2026 (lo pidió el usuario: el
+  afinador es un efecto más de la cadena), el mismo afinador en la cadena de la voz, velocidad según el tempo y rango según el
   tono medido de la voz. `tests/test_proyectos_completos.py` mide los dos en trap, balada, rock y
-  reguetón (sin afinar ≈ 30 cents; PSOLA 2,5–7,5; AF-60 7,5–12,5), por eso PSOLA sigue por defecto. Con intensidad > 0 % sale **un cable a la tira
+  reguetón (sin afinar ≈ 30 cents; PSOLA 2,5–7,5; AF-60 7,5–12,5); **Copia precisa (PSOLA)** queda como opción porque afina algo más exacto, pero escribe una copia `_afinada`. Con intensidad > 0 % sale **un cable a la tira
   exacta** de cada voz con ese rol.
 - `MasteringBody.qml` (Master IA) y `ReviewBody.qml` (Antes / Después) se rehicieron para la
   mezcla en vivo: ver «Mezcla y master en vivo» más abajo (ya no hay WAVs, ZIP ni escucha de archivos).

@@ -108,3 +108,11 @@ vuelta, render del motor con notas largas, release y velocidad, y el puente) y `
 - Un editor de piano roll libre (notas de cualquier duración) para las pistas MIDI: hoy se ven en
   Pistas y suenan, pero se cambian con un VST3 o regenerando.
 - MIDI-LLM no sabe de tempo ni de compases: sus notas no caen en la rejilla del proyecto.
+
+## Partes para el proyecto (ACE-Step «lego», 23-11-2026)
+Módulo IA › «Parte para el proyecto»: renderiza lo que suena y `ace-synth` (tarea `lego`, campo
+`track`: guitar, keyboard, bass, strings, synth, brass, woodwinds, percussion, drums, backing_vocals;
+`guidance_scale` 7) escribe un instrumento nuevo encima, al tempo del proyecto y en la tonalidad
+confirmada. Necesita el **modelo base** `acestep-v15-base-Q8_0.gguf` (2,55 GB, paquete «Partes»);
+el turbo no hace `lego` ni `extract`. `tests/test_partes_ia.py` lo mide con un rock completo.
+`extract` (separar stems) se midió y no separa bien: no se ofrece.

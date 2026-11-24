@@ -1043,6 +1043,32 @@ class Bridge(QObject):
         except Exception as exc:
             return _err(str(exc))
 
+    @Slot(str, result=str)
+    @_safe
+    def aiPart(self, payload: str) -> str:
+        """Genera una parte (guitarra, piano…) acorde al proyecto: renderiza lo que suena ahora a un
+        WAV y ACE-Step (modelo base, tarea «lego») escribe la parte nueva encima, con tempo y tono."""
+        from .ai_music import output_dir
+        opts = json.loads(payload or "{}")
+        if self.ai.generating:
+            return _err("Ya se está generando una pista.")
+        eng = self.host.engine
+        if eng is None:
+            return _err("Motor de audio no disponible")
+        if not [t for t in self.host.tracks if t != 0]:
+            return _err("El proyecto está vacío: la parte se genera sobre lo que ya suena.")
+        src = output_dir() / ".contexto_parte.wav"
+        src.parent.mkdir(parents=True, exist_ok=True)
+        if not eng.render_to_wav(str(src)):
+            return _err("No se pudo escuchar el proyecto (render)")
+        import soundfile as sf
+        secs = sf.info(str(src)).duration
+        opts["duration"] = min(240.0, max(5.0, secs))
+        try:
+            return _ok(**self.ai.generate_part(opts, src), seconds=round(secs, 1))
+        except Exception as exc:
+            return _err(str(exc))
+
     @Slot(result=str)
     @_safe
     def aiCancel(self) -> str:
