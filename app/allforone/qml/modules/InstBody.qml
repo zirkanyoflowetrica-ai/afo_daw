@@ -93,6 +93,7 @@ Column {
         text: "Velocidad, Brillo y Reverb son del sintetizador interno; ajusta el VST3 en su editor («Abrir instrumento»)."
     }
     Row {                                       // .krow
+        objectName: "instKnobs"
         visible: !!root.t && !root.t.cfg.plugin
         anchors.horizontalCenter: parent.horizontalCenter; spacing: 16
         Knob { label: "Velocidad"; value: root.t ? root.t.cfg.vel : 70; onMoved: function (v) { root.seq.setCfg("inst", "vel", v) } }

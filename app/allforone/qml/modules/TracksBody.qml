@@ -175,6 +175,16 @@ Column {
             Tb { text: root.seq.repaintUid ? "Rehaciendo…" : "Rehacer con IA"; active: !!root.selInfo && !root.seq.generating
                  tip: "La IA (en tu equipo) vuelve a tocar el trozo del clip elegido con el mismo estilo; el resto de la pista no cambia. Acota el trozo con «Dividir». Ctrl+Z vuelve al original"
                  onClicked: root.seq.repaintClip(root.clipUid, root.selInfo, "") }
+            Tb { text: root.seq.coverUid ? "Haciendo versión…" : "Versión con IA"; active: !!root.selInfo && !root.seq.generating
+                 tip: "La IA (en tu equipo) vuelve a tocar el clip elegido a su manera y lo pone en una pista nueva; el original no cambia. Acota el trozo con «Dividir»"
+                 onClicked: root.seq.coverClip(root.clipUid, root.selInfo) }
+            Select { objectName: "coverMode"; width: 96; options: ["Parecida", "Libre"]; current: root.seq.coverOpts.mode
+                     tip: "Parecida: guarda melodía y timbre. Libre: solo la forma; suena más distinta"
+                     onPicked: function (v) { root.seq.coverOpts = Object.assign({}, root.seq.coverOpts, { mode: v }) } }
+            Select { objectName: "coverStyle"; width: 110; options: root.seq.ai.styles && root.seq.ai.styles.length ? root.seq.ai.styles : ["Libre"]
+                     current: root.seq.coverOpts.style
+                     tip: "Estilo de la versión («Libre»: el mismo que el original)"
+                     onPicked: function (v) { root.seq.coverOpts = Object.assign({}, root.seq.coverOpts, { style: v }) } }
             Tb { text: "Normalizar"; active: !!root.selInfo; tip: "Sube o baja el clip para que su pico quede en −1 dBFS"
                  onClicked: root.edit(root.clipUid, { op: "normalize", clip: root.clipSel, target: -1 }) }
             Sep {}

@@ -59,6 +59,14 @@ def main(argv: list[str] | None = None) -> int:
 
     diagnostics.install()
     _prepare_qt_environment()
+    from . import procs
+
+    try:                                   # motores de IA que dejó una sesión anterior caída
+        gone = procs.reap_orphans()
+        if gone:
+            log.info("Cerrados %d motores de IA de una sesión anterior", len(gone))
+    except Exception:
+        log.exception("No se pudieron revisar los motores de IA de sesiones anteriores")
     log.info("AllForOne %s | Python %s | %s", __version__, sys.version.split()[0], sys.executable)
 
     from PySide6.QtCore import QCoreApplication, Qt

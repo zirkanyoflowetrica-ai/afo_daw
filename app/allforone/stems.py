@@ -24,7 +24,7 @@ from pathlib import Path
 
 import numpy as np
 
-from . import paths
+from . import paths, procs
 
 log = logging.getLogger("allforone.stems")
 
@@ -169,7 +169,7 @@ def run_demucs(exe: Path, wav: Path, work: Path, cancel: threading.Event, progre
     `progress(0..1)` recibe el avance; `hold(proc)` guarda el proceso para poder cancelarlo."""
     cmd = [str(exe), str(models_dir() / MODEL), str(wav), str(work), str(threads)]
     log.info("Stems: %s", " ".join(cmd))
-    proc = subprocess.Popen(cmd, cwd=str(work), stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+    proc = procs.spawn(cmd, cwd=str(work), stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                             stdin=subprocess.DEVNULL, creationflags=_NO_WINDOW,
                             env={**os.environ, "PATH": str(exe.parent) + os.pathsep + os.environ.get("PATH", "")})
     if hold:

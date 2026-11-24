@@ -46,6 +46,9 @@ Estados: `·` libre · `>` en curso · `✓` hecho (+ hash) · `!` bloqueado (mo
 | C12 | C | ✓ | `ai_music.py` (repaint), `bridge.py` (`aiRepaint`, `trackSetSource`, clipEdit «set» con `source`), `Sequencer.qml`, `TracksBody.qml` (botón), `tests/test_repaint.py` | **Rehacer con IA** el clip elegido (ACE-Step `repaint`, turbo): la pista pasa al archivo rehecho con sus mismos clips y Ctrl+Z vuelve al original. Medido con un rock de 16 s: 4 s rehechos en 14 s, fuera de la zona r = 1,00, dentro el croma cambia ×2,2, mismo largo |
 | X18 | C | ✓ | nuevo `modules/LabView.qml`, `Main.qml` (vista «Crear IA») | Vista del laboratorio según docs/INSTRUMENTAL_LAB.md §2 y §5 (colores del tema, discos dibujados del audio, arrastrar a pistas). Empieza cuando C8 tenga los slots `lab*` |
 | X19 | C | ✓ | `modules/LabView.qml` | Editar variante solo con controles que actúen de verdad |
+| C13 | C | ✓ | `ai_music.py`, `bridge.py` (aiCover), `state/Sequencer.qml`, `modules/TracksBody.qml`, `tests/test_cover.py` | «Versión con IA» de un clip (ACE-Step cover: Parecida / Libre) a una pista nueva; pytest test_cover pasa |
+| C14 | C | ✓ | `midi_ai.py`, `state/Sequencer.qml`, `modules/LabView.qml`, `tests/test_lab_pattern.py` | «Patrón MIDI» en cada familia del Lab: MIDI-LLM local con estilo, tonalidad y tempo de la sesión, solo notas de esa familia, a tempo; pytest test_lab_pattern pasa |
+| C15 | C | ✓ | `procs.py`, `ai_music.py`, `lab.py`, `midi_ai.py`, `stems.py`, `main.py`, `tests/test_procs.py` | Los motores de IA local (ACE-Step, llama-server, Demucs) se cierran con la sesión aunque se caiga, y al arrancar se cierran los que dejó una sesión anterior; pytest test_procs pasa |
 
 ## Notas
 C (24-11): el usuario avisa de que Codex no hizo nada; todas las X abiertas pasan a C, en el orden de la prioridad nueva (X14 primero).

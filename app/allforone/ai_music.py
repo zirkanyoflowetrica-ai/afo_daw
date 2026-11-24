@@ -27,7 +27,7 @@ import urllib.request
 from datetime import datetime
 from pathlib import Path
 
-from . import hardware as H, paths
+from . import hardware as H, paths, procs
 
 log = logging.getLogger("allforone.ia")
 
@@ -213,6 +213,43 @@ def build_part_request(opts: dict) -> dict:
         req["keyscale"] = key
     return req
 
+
+
+COVER_MODES = ("Parecida", "Libre")
+
+
+def build_cover_request(opts: dict, seconds: float) -> dict:
+    """Petición «cover» de ace-synth (C13): otra versión de un trozo de audio. «Parecida» usa
+    `cover-nofsq` (guarda melodía, estructura y timbre; se le pasa el mismo audio como referencia);
+    «Libre» usa `cover` (la fuente solo da la forma). `likeness` 0–1 = cuánto se parece al original
+    (`audio_cover_strength`, en el rango que la documentación del motor da por bueno para cada modo)."""
+    if seconds < 2.0:
+        raise ValueError("Elige al menos 2 s de audio para hacer una versión")
+    if seconds > max_seconds():
+        raise ValueError(f"Con el perfil de tu equipo se versionan como mucho {max_seconds()} s seguidos: "
+                         "acota el trozo con «Dividir»")
+    mode = str(opts.get("mode") or "Parecida")
+    if mode not in COVER_MODES:
+        raise ValueError(f"Modo de versión desconocido: {mode}")
+    like = max(0.0, min(1.0, float(opts.get("likeness", 0.5))))
+    strength = 0.2 + 0.3 * like if mode == "Parecida" else 0.3 + 0.6 * like
+    tags = STYLES.get(str(opts.get("style") or "Libre"), "")
+    desc = str(opts.get("prompt") or "").strip()
+    req = {
+        "task_type": "cover-nofsq" if mode == "Parecida" else "cover",
+        "caption": ", ".join(x for x in (tags, desc) if x) or "same instruments and style as the original",
+        "lyrics": "[Instrumental]",
+        "audio_cover_strength": round(strength, 3),
+        "duration": int(max(1, round(seconds))),          # ace-synth usa el largo del audio; esto es para el avance
+        "seed": int(opts.get("seed", -1)), "output_format": "wav16", "synth_model": SYNTH_MODEL,
+    }
+    bpm = int(float(opts.get("bpm") or 0))
+    if bpm > 0:
+        req["bpm"] = max(40, min(220, bpm))
+    key = str(opts.get("key") or "Auto")
+    if key != "Auto":
+        req["keyscale"] = key
+    return req
 
 
 def build_repaint_request(opts: dict, src_seconds: float) -> dict:
@@ -518,7 +555,42 @@ class AiMusic:
         self._gen.start()
         return {"name": name}
 
-    def _part(self, eng: Path, req: dict, src: Path, name: str, meta: dict) -> None:
+    def cover(self, opts: dict, src: Path, start: float, end: float) -> dict:
+        """Otra versión (C13) del trozo [start, end) del archivo `src`: se recorta a un WAV de trabajo
+        y va a ace-synth en modo cover. El resultado llega por `aiEvent` con `cover` = {trackId, at}
+        y la interfaz lo pone en una pista nueva (el original no se toca)."""
+        if self.generating:
+            raise RuntimeError("Ya se está generando una pista.")
+        eng = engine_dir()
+        if eng is None:
+            raise RuntimeError("Falta el motor de IA (motores/acestep junto a AllForOne.exe).")
+        if not (models_dir() / SYNTH_MODEL).is_file():
+            raise RuntimeError("Falta el sintetizador: instala los modelos en «Modelos de IA».")
+        import soundfile as sf
+        info = sf.info(str(src))
+        start = max(0.0, float(start)); end = min(float(end), info.duration)
+        req = build_cover_request(opts, end - start)
+        stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        name = f"{stamp}_version_{slug(Path(src).stem, 24)}"
+        work = output_dir() / f".trabajo_{name}"
+        work.mkdir(parents=True, exist_ok=True)
+        cut = work / "fuente.wav"
+        data, sr = sf.read(str(src), start=int(start * info.samplerate), stop=int(end * info.samplerate),
+                           dtype="float32", always_2d=True)
+        sf.write(str(cut), data, sr, subtype="PCM_16")
+        mode = str(opts.get("mode") or "Parecida")
+        meta = {"title": f"{Path(src).stem} (versión {mode.lower()})", "style": opts.get("style") or "Libre",
+                "prompt": str(opts.get("prompt") or ""), "created": stamp, "request": req, "source": str(src),
+                "cover": {"trackId": int(opts.get("trackId", -1)), "at": float(opts.get("at", 0.0)),
+                          "start": round(start, 3), "end": round(end, 3), "mode": mode}}
+        self._gen_cancel.clear()
+        ref = ["--ref-audio", str(cut)] if req["task_type"] == "cover-nofsq" else []
+        self._gen = threading.Thread(target=self._part, args=(eng, req, cut, name, meta, ref), name="ia-version",
+                                     daemon=True)
+        self._gen.start()
+        return {"name": name}
+
+    def _part(self, eng: Path, req: dict, src: Path, name: str, meta: dict, extra: list | None = None) -> None:
         work = output_dir() / f".trabajo_{name}"
         t0 = time.monotonic()
         try:
@@ -529,7 +601,7 @@ class AiMusic:
             self.emit({"type": "aiGenerate", "phase": "progress", "progress": 0.05,
                        "message": "Escuchando el proyecto"})
             self._run(eng / ENGINE_EXES[1], ["--models", str(models_dir()), "--request", "req.json",
-                                             "--src-audio", str(src)], "synth", req["duration"], work)
+                                             "--src-audio", str(src), *(extra or [])], "synth", req["duration"], work)
             wav = work / "req0.wav"
             if not wav.is_file():
                 raise RuntimeError("El sintetizador no escribió el audio.")
@@ -540,6 +612,7 @@ class AiMusic:
             _rmtree(work)
             self.emit({"type": "aiGenerate", "phase": "done", "ok": True, "progress": 1.0, "path": str(out),
                        "title": meta["title"], "meta": meta, "part": meta.get("part", ""), "repaint": meta.get("repaint"),
+                       "cover": meta.get("cover"),
                        "message": f"«{meta['title']}» lista en {meta['seconds']:.0f} s"})
         except _Cancelled:
             _rmtree(work)
@@ -568,7 +641,7 @@ class AiMusic:
         cmd = [str(exe), *args, *H.engine_args(stage)]
         t0 = time.monotonic()
         log.info("IA: %s", " ".join(cmd))
-        self._proc = subprocess.Popen(cmd, cwd=str(cwd), stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+        self._proc = procs.spawn(cmd, cwd=str(cwd), stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                                       stdin=subprocess.DEVNULL, creationflags=_NO_WINDOW,
                                       env={**os.environ, "PATH": str(exe.parent) + os.pathsep + os.environ.get("PATH", "")})
         with open(cwd / f"{stage}.log", "w", encoding="utf-8", errors="replace") as logf:

@@ -107,7 +107,7 @@ class Bridge(QObject):
         from .stems import StemSeparator
         self.stems = StemSeparator(self._mixer_events.put)
         from .lab import Lab
-        self.lab = Lab(self._mixer_events.put, lambda: self.ai.generating or self.stems.busy)
+        self.lab = Lab(self._mixer_events.put, lambda: self.ai.generating or self.stems.busy or self._midi_busy())
         self._lab_tracks: dict[str, dict] = {}     # familia → pista borrador del laboratorio {tid, vid, folder}
         app = QCoreApplication.instance()
         if app is not None:
@@ -824,12 +824,32 @@ class Bridge(QObject):
         src = t.get("originalPath") or t.get("source_path") or ""
         if not src or not Path(src).is_file():
             return _err("Elige un clip de una pista de audio")
-        if self.lab.busy or self.stems.busy:
+        if self.lab.busy or self.stems.busy or self._midi_busy():
             return _err("Otro trabajo de IA está en marcha: espera a que termine.")
         opts = {**json.loads(payload or "{}"), "trackId": int(track_id)}
         try:
             import soundfile as sf
             return _ok(**self.ai.repaint(opts, Path(src), float(sf.info(src).duration)))
+        except Exception as exc:
+            return _err(str(exc))
+
+    @Slot(int, str, result=str)
+    @_safe
+    def aiCover(self, track_id: int, payload: str) -> str:
+        """Otra versión con IA (C13) de un trozo de una pista de audio: {start, end} en segundos DEL
+        ARCHIVO, `at` (segundo del proyecto donde poner el resultado), mode Parecida / Libre,
+        likeness 0–1, estilo y prompt opcionales. Llega por `aiEvent` con `cover` y va a una pista nueva."""
+        if (g := self._guard()):
+            return g
+        t = self.host.tracks.get(int(track_id)) or {}
+        src = t.get("originalPath") or t.get("source_path") or ""
+        if not src or not Path(src).is_file():
+            return _err("Elige un clip de una pista de audio")
+        if self.lab.busy or self.stems.busy or self._midi_busy():
+            return _err("Otro trabajo de IA está en marcha: espera a que termine.")
+        opts = {**json.loads(payload or "{}"), "trackId": int(track_id)}
+        try:
+            return _ok(**self.ai.cover(opts, Path(src), float(opts.get("start", 0)), float(opts.get("end", 0))))
         except Exception as exc:
             return _err(str(exc))
 
@@ -1428,6 +1448,9 @@ class Bridge(QObject):
             self._midi = MidiAi(self._mixer_events.put)
         return self._midi
 
+    def _midi_busy(self) -> bool:
+        return self._midi is not None and self._midi.generating
+
     def _midi_shutdown(self) -> None:
         if self._midi is not None:
             self._midi.shutdown()           # cierra llama-server
@@ -1457,6 +1480,8 @@ class Bridge(QObject):
     @_safe
     def midiGenerate(self, payload: str) -> str:
         """Compone en otro proceso; las pistas (notas por instrumento) llegan por `aiEvent` (aiMidi)."""
+        if self.ai.generating or self.lab.busy or self.stems.busy:     # una sola carga en la gráfica
+            return _err("Otro trabajo de IA está en marcha: espera a que termine.")
         try:
             return _ok(**self.midi.generate(json.loads(payload or "{}")))
         except Exception as exc:

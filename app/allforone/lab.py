@@ -32,7 +32,7 @@ import numpy as np
 
 from . import ai_music as A
 from . import hardware as H
-from . import paths
+from . import paths, procs
 from . import stems as S
 
 log = logging.getLogger("allforone.lab")
@@ -563,7 +563,7 @@ class Lab:
         cmd = [str(exe), *args, *H.engine_args(stage)]
         t0 = time.monotonic()
         log.info("Lab: %s", " ".join(cmd))
-        self._proc = subprocess.Popen(cmd, cwd=str(cwd), stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+        self._proc = procs.spawn(cmd, cwd=str(cwd), stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                                       stdin=subprocess.DEVNULL, creationflags=_NO_WINDOW,
                                       env={**os.environ, "PATH": str(exe.parent) + os.pathsep + os.environ.get("PATH", "")})
         self.last_log = []

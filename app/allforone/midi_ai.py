@@ -31,7 +31,7 @@ import urllib.request
 from datetime import datetime
 from pathlib import Path
 
-from . import paths
+from . import paths, procs
 from .ai_music import _Cancelled, _ancestors, _NO_WINDOW, output_dir, slug
 
 log = logging.getLogger("allforone.ia.midi")
@@ -184,6 +184,59 @@ def split_tracks(notes: list[tuple[float, float, int, int]], bpm: float, tag: st
             out.append({"type": "inst", "program": prog, "voice": gm_to_voice(prog),
                         "name": f"{gm_name(prog)} {tag}", "midi": midi})
     return out
+
+
+# ---------------- patrón por familia del Instrumental Lab (C14) ----------------------------------
+# Familia del laboratorio → programas General MIDI que cuentan como ella y cómo pedirla en inglés.
+FAMILY_GM = {
+    "Batería": ({DRUMS}, "drum beat"),
+    "Percusión": ({DRUMS} | set(range(112, 120)), "percussion groove"),
+    "Bajo": (set(range(32, 40)), "bass line"),
+    "Piano / teclados": (set(range(0, 8)) | set(range(16, 24)), "piano chords and melody"),
+    "Guitarra": (set(range(24, 32)), "guitar riff"),
+    "Sintetizador": (set(range(80, 96)), "synth lead and pads"),
+    "Cuerdas": (set(range(40, 52)), "string section"),
+    "Metales": (set(range(56, 64)), "brass section"),
+    "Maderas": (set(range(64, 80)), "woodwinds"),
+}
+FAMILY_TRIES = 3
+
+
+def family_prompt(family: str, style_tags: str, key: str, bpm: float, extra: str = "") -> str:
+    if family not in FAMILY_GM:
+        raise ValueError(f"Familia desconocida: {family}")
+    parts = [style_tags, FAMILY_GM[family][1], f"{bpm:g} bpm"]
+    if key and key != "Auto":
+        parts.append(f"in {key}")
+    if extra:
+        parts.append(extra)
+    return ", ".join(p for p in parts if p)
+
+
+def pick_family(notes: list[tuple[float, float, int, int]], family: str) -> list[tuple[float, float, int, int]]:
+    """Solo las notas de los instrumentos de la familia; nunca se cambia el instrumento de otras."""
+    progs = FAMILY_GM[family][0]
+    return [n for n in notes if n[3] in progs]
+
+
+def to_pattern(notes: list[tuple[float, float, int, int]], bpm: float, bars: int, beats: int = 4) -> list:
+    """El modelo no conoce el tempo: ataques y duraciones se ajustan a semicorcheas del tempo de la
+    sesión y se cortan a sus compases (lo que cae fuera no entra). Un patrón es una pista: si el modelo
+    usó varios instrumentos de la familia (p. ej. tres bajos), todo va con el que más notas tiene."""
+    step = 60.0 / max(20.0, float(bpm)) / 4
+    count: dict[int, int] = {}
+    for n in notes:
+        count[n[3]] = count.get(n[3], 0) + 1
+    main = max(count, key=lambda g: (count[g], -g)) if count else 0
+    end = bars * beats * 4 * step
+    out, seen = [], set()
+    for t, d, p, prog in notes:
+        q = round(t / step) * step
+        if q >= end - 1e-6 or (q, p) in seen:
+            continue
+        seen.add((q, p))
+        out.append((round(q, 6), round(min(max(step, round(d / step) * step), end - q), 6), p, main))
+    return sorted(out)
 
 
 # ---------------- archivo .mid (formato 1, sin dependencias) ------------------------------------
@@ -452,7 +505,7 @@ class MidiAi:
             args = [str(eng / SERVER_EXE), "-m", str(models_dir() / MODEL), "--host", "127.0.0.1",
                     "--port", str(self._port), "-c", "4096", "-ngl", "99", "--parallel", "1", "--no-webui"]
             with open(logf, "wb") as lf:
-                self._server = subprocess.Popen(args, cwd=str(eng), stdout=lf, stderr=subprocess.STDOUT,
+                self._server = procs.spawn(args, cwd=str(eng), stdout=lf, stderr=subprocess.STDOUT,
                                                 stdin=subprocess.DEVNULL, creationflags=_NO_WINDOW)
             url = f"http://127.0.0.1:{self._port}"
             t0 = time.monotonic()
@@ -487,6 +540,11 @@ class MidiAi:
         if not model_status()["done"]:
             raise RuntimeError("Falta el modelo MIDI: descárgalo en «Modelo MIDI» de este módulo.")
         text = str(opts.get("prompt") or "").strip()
+        fam = str(opts.get("family") or "")
+        if fam:                                       # patrón del laboratorio: la descripción sale de la sesión
+            from .ai_music import STYLES
+            text = family_prompt(fam, STYLES.get(str(opts.get("style") or "Libre"), ""), str(opts.get("key") or "Auto"),
+                                 float(opts.get("bpm") or 120), text)
         if not text:
             raise ValueError("Describe la música que quieres (en inglés el modelo entiende mejor).")
         stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -504,8 +562,21 @@ class MidiAi:
         try:
             self.emit({"type": "aiMidi", "phase": "progress", "progress": 0.02, "message": "Cargando el modelo…"})
             url = self._ensure_server()
-            notes, tokens = self.compose(url, text, opts)
+            fam = str(opts.get("family") or "")
             bpm = float(opts.get("bpm") or 120)
+            if fam:                                   # patrón del laboratorio: solo esa familia, a tempo
+                o = dict(opts)
+                for _ in range(FAMILY_TRIES):
+                    notes, tokens = self.compose(url, text, o)
+                    notes = to_pattern(pick_family(notes, fam), bpm, int(opts.get("bars") or 8), int(opts.get("beats") or 4))
+                    if notes:
+                        break
+                    o["seed"] = -1
+                else:
+                    raise RuntimeError(f"El modelo no compuso {fam.lower()} en {FAMILY_TRIES} intentos; "
+                                       "prueba con otra descripción o con otro estilo")
+            else:
+                notes, tokens = self.compose(url, text, opts)
             path = output_dir() / f"{name}.mid"
             write_mid(path, notes, bpm)
             secs = max((t + d for t, d, *_ in notes), default=0.0)
@@ -513,8 +584,8 @@ class MidiAi:
                     "seconds": round(secs, 2), "bpm": bpm, "tokens": len(tokens)}
             Path(str(path) + ".json").write_text(json.dumps(meta, ensure_ascii=False, indent=1), encoding="utf-8")
             self.emit({"type": "aiMidi", "phase": "done", "ok": True, "progress": 1.0, "path": str(path),
-                       "title": meta["title"], "tracks": split_tracks(notes, bpm), "notes": len(notes),
-                       "seconds": meta["seconds"],
+                       "title": meta["title"], "notes": len(notes), "seconds": meta["seconds"],
+                       "tracks": split_tracks(notes, bpm, "· patrón IA" if fam else "IA"), "family": fam,
                        "message": f"{len(notes)} notas en {len({n[3] for n in notes})} instrumentos"})
         except _Cancelled:
             self.emit({"type": "aiMidi", "phase": "done", "ok": False, "cancelled": True, "message": "Composición cancelada"})

@@ -11,6 +11,7 @@ Item {
     id: root
     property var studio
     readonly property var lb: studio ? studio.lab : null
+    readonly property var seq: lb ? lb.seq : null
     readonly property var st: lb ? lb.state : null
     readonly property var ctx: st ? st.context : null
     readonly property var stat: lb ? lb.status : ({})
@@ -73,7 +74,7 @@ Item {
         lb.create({ prompt: prompt.text, style: style.current, bpm: Math.round(studio.bpm), key: key.current,
                     beats: parseInt(beats.current), bars: parseInt(bars.current), variants: parseInt(nvar.current) })
     }
-    onVisibleChanged: if (visible && lb) { lb.refresh(); lb.listSessions() }
+    onVisibleChanged: if (visible && lb) { lb.refresh(); lb.listSessions(); if (seq) seq.midiRefresh() }
 
     Rectangle { anchors.fill: parent; color: Theme.panelColor("ia", Theme.pc.ia) }
 
@@ -219,7 +220,8 @@ Item {
             Text { visible: !!(root.lb && root.lb.msg); width: parent.width; wrapMode: Text.Wrap; color: Theme.ink
                    font.family: Theme.font; font.pixelSize: 12; text: root.lb ? root.lb.msg + (root.lb.family ? " · " + root.lb.family : "") : "" }
             Text { width: parent.width; wrapMode: Text.Wrap; color: Theme.ink; opacity: 0.85; font.family: Theme.font; font.pixelSize: 11
-                   text: "Variantes de audio (ACE-Step). Patrones MIDI por familia: próximamente." }
+                   text: root.seq && root.seq.composing ? root.seq.midiMsg + " · " + Math.round(root.seq.midiProgress * 100) + " %"
+                         : "Variantes de audio (ACE-Step) y patrones MIDI editables por familia (MIDI-LLM, en tu equipo)." }
             Text { visible: !root.stat.legoOk; width: parent.width; wrapMode: Text.Wrap; color: Theme.ink; font.family: Theme.font; font.pixelSize: 11
                    text: "Para generar variantes (V2…) falta el modelo «partes» de ACE-Step: descárgalo en Navegador › IA." }
         }
@@ -257,6 +259,13 @@ Item {
                                             opacity: root.stat.legoOk ? 1 : 0.5; confirm: "¿Regenerar?"
                                             tip: "Las no bloqueadas pasan al historial y salen " + (root.ctx ? root.ctx.variants : 4) + " nuevas"
                                             onClicked: if (root.stat.legoOk && !root.lb.busy) root.lb.regenerate(fam.modelData.name) }
+                                NeoButton { objectName: "labPattern"
+                                            readonly property bool can: !!(root.seq && root.seq.midiAi.engineOk && root.seq.midiAi.model && root.seq.midiAi.model.done)
+                                            text: root.seq && root.seq.patternFamily === fam.modelData.name ? "Componiendo…" : "Patrón MIDI"
+                                            fontSize: 11; padX: 6; padY: 2; shadow: 2; opacity: can ? 1 : 0.5
+                                            tip: can ? "Compone un patrón MIDI de " + fam.modelData.name.toLowerCase() + " con el estilo, tonalidad y tempo de la sesión; entra como pista MIDI editable"
+                                                     : "Falta el modelo MIDI: descárgalo en Navegador › IA"
+                                            onClicked: if (can && !root.seq.composing) root.seq.labPattern(fam.modelData.name, root.ctx) }
                                 NeoButton { text: "Referencia"; fontSize: 11; padX: 6; padY: 2; shadow: 2
                                             pressedState: !!fam.modelData.reference
                                             color: pressedState ? Theme.pressedBg : Theme.button; textColor: pressedState ? Theme.pressedInk : Theme.ink

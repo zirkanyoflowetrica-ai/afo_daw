@@ -201,6 +201,7 @@ Window {
         else if (what === "midi") { sq.iaMode = "midi"; sq.openMidi(a, b) }
         else if (what === "song") sq.iaMode = "song"
         else if (what === "drop") removeTrackAt(tracks.length - 1)
+        else if (what === "cfg") sq.setCfg("inst", a, b)
     }
     function mixNow(remix) { mx.mix(!!remix) }
     function openProject(path) { return pj.open(path) }

@@ -843,6 +843,27 @@ def _native_sequencer_checks(rep, app, host, window, prop) -> None:
     new = snap()["tracks"][-1]
     rep.check("+ Instrumento crea una pista con sintetizador", len(snap()["tracks"]) == n + 1 and new["type"] == "inst" and new["id"] >= 0,
               new["name"])
+    # X6: con un VST3 elegido, las perillas del sintetizador interno se ocultan y sale la nota. Se usa
+    # un id que no existe (el motor lo rechaza y no carga nada): se mira solo el cambio de la interfaz.
+    from PySide6.QtCore import QObject
+    QMetaObject.invokeMethod(window, "layoutCommand", Q_RETURN_ARG("QVariant"), Q_ARG("QVariant", "goto"),
+                             Q_ARG("QVariant", "inst"), Q_ARG("QVariant", None))          # la página a la vista
+    _wait(app, lambda: False, 0.1, host)
+    note, knobs = window.findChild(QObject, "instVstNote"), window.findChild(QObject, "instKnobs")
+    if note is None or knobs is None:
+        rep.check("X6: con un VST3, nota en lugar de las perillas del sintetizador interno", False, "falta la página Instrumentos")
+    else:
+        before = (bool(note.property("visible")), bool(knobs.property("visible")))
+        cmd("cfg", "plugin", "afo-autoprueba-no-existe")
+        _wait(app, lambda: False, 0.1, host)
+        withvst = (bool(note.property("visible")), bool(knobs.property("visible")))
+        cmd("cfg", "plugin", "")
+        _wait(app, lambda: False, 0.1, host)
+        after = (bool(note.property("visible")), bool(knobs.property("visible")))
+        rep.check("X6: con un VST3, nota en lugar de las perillas del sintetizador interno",
+                  before == (False, True) and withvst == (True, False) and after == (False, True),
+                  f"sin VST3 {before} · con VST3 {withvst} · de vuelta {after} (nota, perillas)")
+
     n = len(snap()["tracks"])
     cmd("add", "ia")
     rep.check("+ IA abre el generador y no crea pistas vacías", len(snap()["tracks"]) == n and

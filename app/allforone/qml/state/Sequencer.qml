@@ -356,6 +356,38 @@ QtObject {
         aiMsg = ev.message
         studio.toast("Zona " + ev.repaint.start.toFixed(1) + "–" + ev.repaint.end.toFixed(1) + " s rehecha en " + t.name + " · Ctrl+Z vuelve al original")
     }
+    // ---------------- Otra versión con IA de un clip (C13, ACE-Step «cover») ----------------
+    // El trozo del clip elegido se vuelve a tocar: «Parecida» guarda melodía y timbre, «Libre» solo la
+    // forma. El resultado va a una pista nueva, en el mismo sitio del clip; el original no se toca.
+    property string coverUid: ""
+    property var coverOpts: ({ mode: "Parecida", likeness: 0.5, style: "Libre" })
+    function coverClip(uid, clip) {
+        var t = trackOf(uid)
+        if (!t || !clip) { studio.toast("Elige un clip de una pista de audio"); return false }
+        if (generating) { studio.toast("Ya hay un trabajo de IA en marcha"); return false }
+        var o = coverOpts
+        var r = studio.call("aiCover", t.id, JSON.stringify({ start: clip.offset, end: clip.offset + clip.length, at: clip.start,
+                                                              mode: o.mode, likeness: o.likeness, style: o.style,
+                                                              bpm: studio.bpm, seed: -1 }))
+        if (!r.ok) { studio.toast(r.error); return false }
+        coverUid = uid
+        generating = true; aiProgress = 0.01; aiMsg = "Haciendo una versión " + o.mode.toLowerCase() + " de " + clip.length.toFixed(1) + " s de " + t.name
+        studio.toast(aiMsg + " con la IA (en tu equipo)")
+        return true
+    }
+    function applyCover(ev) {
+        coverUid = ""
+        if (!addGenerated(ev.path, ev.title)) return
+        var nt = studio.tracks[studio.tracks.length - 1]
+        var cl = studio.clipsOf(nt.id)
+        if (cl.length && ev.cover.at > 0) {
+            var ce = studio.call("clipEdit", nt.id, JSON.stringify({ op: "range", clip: cl[0].id, start: ev.cover.at,
+                                                                     length: cl[0].length, offset: cl[0].offset }))
+            if (ce.ok) replace(nt.uid, { aclips: ce.clips }); else studio.toast(ce.error)
+        }
+        aiMsg = ev.message
+        studio.toast(ev.message + ": en la pista nueva «" + nt.name + "», debajo del original")
+    }
     function generate() {
         if (generating) return
         var c = draftIa
@@ -450,6 +482,22 @@ QtObject {
         return n
     }
     function src_(type) { return src[type] }
+    // Patrón MIDI de una familia del Instrumental Lab (C14): estilo, tonalidad, tempo y compases de la
+    // sesión; llega por aiMidi con `family` y entra como pista MIDI editable.
+    property string patternFamily: ""
+    function labPattern(family, ctx) {
+        if (!ctx) return false
+        if (composing) { studio.toast("Ya se está componiendo"); return false }
+        if (!midiAi.engineOk || !midiAi.model || !midiAi.model.done) { studio.toast("Falta el modelo MIDI: descárgalo en Navegador › IA"); return false }
+        var r = studio.call("midiGenerate", JSON.stringify({ family: family, prompt: ctx.prompt || "", style: ctx.style, key: ctx.key,
+                                                             bpm: ctx.bpm, bars: ctx.bars, beats: ctx.beats, length: 900,
+                                                             creativity: 60, seed: -1 }))
+        if (!r.ok) { studio.toast(r.error); return false }
+        patternFamily = family
+        composing = true; midiProgress = 0.01; midiMsg = "Componiendo un patrón de " + family.toLowerCase()
+        studio.toast(midiMsg + " con la IA (en tu equipo)")
+        return true
+    }
     function openMidi(path, title) {
         var r = studio.call("midiOpen", path || "", studio.bpm)
         if (!r.ok) { if (!r.cancelled) studio.toast(r.error); return }
@@ -489,11 +537,12 @@ QtObject {
         if (ev.type === "aiMidi") {
             if (ev.phase === "progress") { composing = true; midiProgress = ev.progress; midiMsg = ev.message }
             else {
-                composing = false; midiProgress = 0
+                composing = false; midiProgress = 0; patternFamily = ""
                 if (ev.ok) {
                     midiMsg = ev.message
                     var n = addMidiTracks(ev.tracks, ev.title, ev.path)
-                    studio.toast("Composición MIDI: " + ev.message + " · " + n + " pistas nuevas en Pistas")
+                    if (ev.family) studio.toast("Patrón de " + ev.family.toLowerCase() + ": " + ev.notes + " notas en " + n + " pista(s) MIDI nuevas, editables en Pistas")
+                    else studio.toast("Composición MIDI: " + ev.message + " · " + n + " pistas nuevas en Pistas")
                 } else { midiMsg = ev.cancelled ? ev.message : ev.error; if (!ev.cancelled) studio.toast(ev.error) }
                 midiRefresh()
             }
@@ -507,10 +556,11 @@ QtObject {
             else {
                 generating = false; aiProgress = 0
                 if (ev.ok && ev.repaint) applyRepaint(ev)
+                else if (ev.ok && ev.cover) applyCover(ev)
                 else if (ev.ok) {
                     aiMsg = ev.message
                     if (addGenerated(ev.path, ev.title)) studio.toast(ev.message + ": añadida a Pistas")
-                } else { aiMsg = ev.cancelled ? ev.message : ev.error; if (!ev.cancelled) studio.toast(ev.error) }
+                } else { repaintUid = ""; coverUid = ""; aiMsg = ev.cancelled ? ev.message : ev.error; if (!ev.cancelled) studio.toast(ev.error) }
                 aiRefresh()
             }
         }
