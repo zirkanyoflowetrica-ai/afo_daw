@@ -62,7 +62,7 @@ QtObject {
     readonly property color focus: cl.focus
     readonly property color pressedBg: cl.pressedBg     // botón pulsado de pestañas y A/B
     readonly property color pressedInk: cl.pressedInk
-    readonly property color canvas: cl.canvas           // fondo del lienzo
+    readonly property color canvas: cl.canvas           // fondo de la ventana
     readonly property color shadowColor: cl.shadow
     readonly property color sidebar: cl.sidebar
     // módulos

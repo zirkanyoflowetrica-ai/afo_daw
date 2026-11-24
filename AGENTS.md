@@ -3,10 +3,9 @@
 Especificación completa: `docs/MASTER_PROMPT.md`. Resumen de lo que no se negocia:
 
 1. **Referencia visual:** `templates/AllForOne/PLANTILLA_DAW.html` (colores, tipografía, controles) y, para los
-   módulos, `templates/AllForOne/REFERENCIA_PANELES.webp` (noviembre 2026, del usuario: marco grueso del color del
-   módulo, cabecera negra con chip blanco del modelo, □ maximizar y ✕, consola CANALES / MIXER). Es un
-   DAW profesional con otro flujo, no un juego: los módulos no se solapan y el menú lateral lleva a
-   ellos. La interfaz es **nativa Qt Quick** (`app/allforone/qml/`, sin HTML ni Chromium; la web se
+   paneles, `templates/AllForOne/REFERENCIA_PANELES.webp` (noviembre 2026, del usuario: color de cada
+   sección, consola CANALES / MIXER). Es un DAW profesional, no un juego: una sola ventana con zonas
+   fijas, sin lienzo de módulos flotantes (retirado el 24-11-2026). La interfaz es **nativa Qt Quick** (`app/allforone/qml/`, sin HTML ni Chromium; la web se
    retiró); `tools/native_compare.py` mide la diferencia con la plantilla (`docs/INTERFAZ_NATIVA.md`). Carpetas de QML:
    `theme/` (colores), `controls/` (botones, perillas, medidores…), `modules/` (cuerpo de cada
    módulo), `state/` (estado y lógica compartida), `assets/` (fuentes e icono). Algo que aún no

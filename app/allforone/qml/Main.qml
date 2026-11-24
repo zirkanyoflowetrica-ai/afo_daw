@@ -61,7 +61,6 @@ Window {
     property var hidden: ({})
     property string abSource: "rack"          // a qué rack escucha Antes / Después (ReviewBody.src)
     property string currentId: ""              // última página a la que se fue (goTo)
-    property var extraTargets: ({})            // (FxBody) racks extra del lienzo antiguo: ya no hay
     property alias navZone: navZ
     property alias inspZone: inspZ
     property alias detailZone: detZ
@@ -284,7 +283,7 @@ Window {
                                           fold: { nav: navZ.folded, insp: inspZ.folded, detail: detZ.folded },
                                           tab: { nav: navZ.current, insp: inspZ.current, detail: detZ.current } }))
     }
-    // Versión de la distribución: un diseño guardado de otra (el lienzo de módulos) no se aplica; solo
+    // Versión de la distribución: un diseño guardado de otra versión no se aplica; solo
     // se conserva el tema
     readonly property int layoutVersion: 7
     property var savedLayout: {
@@ -680,7 +679,7 @@ Window {
     }
 
     // ---------------- zonas fijas (DISENO_DAW §2) ----------------
-    // Fuente que conecta / desconecta cada página (como quitar el módulo en el lienzo antiguo)
+    // Fuente que conecta / desconecta cada página (ocultar ≠ silenciar ≠ desconectar)
     function sourceOf(page) { return ({ inst: "inst", piano: "inst", drums: "drums", ia: "ia", cinta: "cinta" })[page] || "" }
     Component {
         id: srcToggle

@@ -2,7 +2,7 @@ import QtQuick
 import "../theme"
 
 // Barra de estado fija (docs/GUIA_DISENO_INTERFAZ.md §1): qué dispositivo suena y con qué latencia,
-// qué proyecto está abierto y si tiene cambios sin guardar, una ayuda corta y el zoom del lienzo.
+// qué proyecto está abierto y si tiene cambios sin guardar, una ayuda corta y el zoom.
 // Sin salida de audio lo dice en rojo, con icono y texto (no solo color), y un clic abre «⚙ Audio».
 Rectangle {
     id: root
@@ -57,7 +57,7 @@ Rectangle {
             color: Theme.ink; font.family: Theme.font; font.pixelSize: 12; font.weight: 700
         }
     }
-    Text {                                           // ayuda corta del lienzo
+    Text {                                           // ayuda corta de la vista
         anchors.verticalCenter: parent.verticalCenter
         x: left.x + left.width + 24; width: zoomText.x - x - 16
         horizontalAlignment: Text.AlignRight

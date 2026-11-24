@@ -14,9 +14,8 @@ import "../state/fxgraph.js" as FG
 Column {
     id: root
     property var studio
-    property bool shown: true                   // el módulo está en el lienzo (si no, no se consulta el motor)
+    property bool shown: true                   // la página está a la vista (si no, no se consulta el motor)
     property bool master: false                 // Rack FX-M: siempre la pista 0
-    property string extraId: ""                 // rack extra («+» del menú): elige su canal por su cuenta
     property bool libOpen: false                // biblioteca abierta con «+ Agregar efecto»
     property int menuFor: -1                    // efecto con el menú ⋮ abierto
     property var presetCache: ({})              // key → [{name, factory}]
@@ -44,7 +43,7 @@ Column {
         return m
     }
     // sin tira elegida, el rack del canal muestra la primera pista (el master tiene su propio rack)
-    readonly property int follow: master ? 0 : extraId ? -1 : studio.rackTrack > 0 ? studio.rackTrack : targets.length > 1 ? Number(targets[1][0]) : -1
+    readonly property int follow: master ? 0 : studio.rackTrack > 0 ? studio.rackTrack : targets.length > 1 ? Number(targets[1][0]) : -1
     onFollowChanged: if (follow >= 0 && follow !== target) pickTarget(follow)
     readonly property string targetName: (targets.filter(function (o) { return o[0] === String(target) })[0] || ["", "Master"])[1]
     readonly property var targets: {
@@ -62,7 +61,7 @@ Column {
     onCurIdChanged: { presetName = ""; autoParam = type && type.params.length ? pickAutoParam() : ""; loadAuto() }
     onAutoParamChanged: loadAuto()
     readonly property var autoDesc: { if (!type) return null; for (var i = 0; i < type.params.length; i++) if (type.params[i].id === autoParam) return type.params[i]; return null }
-    readonly property real span: studio.bar16                   // la línea abarca los 16 compases del lienzo
+    readonly property real span: studio.bar16                   // la línea abarca los 16 compases del Arreglo
 
     // Índice de un parámetro por su id (el modelData de un Repeater es una copia: indexOf no lo encuentra)
     function paramIndex(desc, id) { if (desc) for (var i = 0; i < desc.params.length; i++) if (desc.params[i].id === id) return i; return -1 }
@@ -85,7 +84,6 @@ Column {
     }
     function pickTarget(id, byUser) {
         target = id; sel = -1; menuFor = -1; reload()
-        if (extraId) { if (byUser) studio.setExtraTarget(extraId, id); return }
         if (byUser && !master && id > 0 && studio.rackTrack !== id) studio.rackTrack = id   // la consola marca esa tira
     }
     function add(key) {
@@ -511,7 +509,6 @@ Column {
         var r = studio.call("fxCatalog")
         catalog = r.ok ? r.catalog : []
         if (master) studio.fxMasterBody = root
-        else if (extraId) { var et = studio.extraTargets[extraId]; target = et !== undefined ? et : (targets.length > 1 ? Number(targets[1][0]) : 0) }
         else { studio.fxBody = root; if (follow > 0) target = follow }
         reload()
     }

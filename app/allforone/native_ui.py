@@ -24,7 +24,7 @@ def qml_dir() -> Path:
 
 
 class LayoutStore(QObject):
-    """Posiciones, tamaños, conectores y curvas de cables del lienzo, en la carpeta de datos."""
+    """Distribución guardada de la ventana (vista, pestañas de cada zona, alto del detalle, tema), en la carpeta de datos."""
 
     def __init__(self, path: Path | None = None):
         super().__init__()
@@ -195,7 +195,7 @@ def _native_fx_checks(rep, app, host, window, bridge, track_id: int) -> None:
 
 
 def _native_daw_checks(rep, app, host, window, bridge, track_id) -> None:
-    """Menú lateral, módulos que chocan, maximizar, racks extra con nombre y edición de clips en Pistas."""
+    """Estado de la IA local, separador, perfil del equipo, Instrumental Lab y edición de clips en Pistas."""
     from PySide6.QtCore import QMetaObject, Q_ARG, Q_RETURN_ARG
 
     from .selftest import _wait
