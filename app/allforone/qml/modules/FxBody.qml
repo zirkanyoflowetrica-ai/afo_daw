@@ -234,7 +234,7 @@ Column {
             width: root.width - (pickBox.visible ? pickBox.width + 10 : 0)
             Text { width: parent.width; elide: Text.ElideRight
                    text: root.targetName.toUpperCase() + " / CADENA DE EFECTOS"
-                   color: Theme.ink; font.family: Theme.font; font.pixelSize: 17; font.weight: 700; font.letterSpacing: 0.6 }
+                   color: Theme.ink; font.family: Theme.font; font.pixelSize: 15; font.weight: 700; font.letterSpacing: 0.6 }
             Text { width: parent.width; elide: Text.ElideRight
                    text: "RACK " + root.targetName.toUpperCase() + " · " + root.chain.length + (root.chain.length === 1 ? " efecto" : " efectos")
                          + " · " + (root.master ? "después de la mezcla, antes del limitador" : "antes del fader")
@@ -244,7 +244,7 @@ Column {
             id: pickBox
             visible: !root.master
             width: 190; spacing: 2
-            Text { text: "Canal (o elige una tira en Mezcla)"; color: Theme.ink; font.family: Theme.font; font.pixelSize: 10; font.weight: 600 }
+            Text { text: "Canal (o elige una tira en Mezcla)"; color: Theme.ink; font.family: Theme.font; font.pixelSize: 11; font.weight: 600 }
             Select { width: parent.width; fontSize: 12; padY: 4; options: root.targets; current: String(root.target)
                      onPicked: function (v) { root.pickTarget(Number(v), true) } }
         }
@@ -288,7 +288,7 @@ Column {
                         Row {
                             required property var modelData
                             spacing: 6
-                            Text { width: 48; text: modelData[0]; color: Theme.deviceInk; font.family: Theme.font; font.pixelSize: 10; font.weight: 600 }
+                            Text { width: 48; text: modelData[0]; color: Theme.deviceInk; font.family: Theme.font; font.pixelSize: 11; font.weight: 600 }
                             Rectangle {
                                 width: 70; height: 9; color: "#120f0a"; border.width: 1; border.color: Theme.line
                                 anchors.verticalCenter: parent.verticalCenter
@@ -296,23 +296,23 @@ Column {
                                             width: 68 * Math.max(0, Math.min(1, ((root.meters[modelData[1]] === undefined ? -100 : root.meters[modelData[1]]) + 60) / 60)) }
                             }
                             Text { text: root.db(root.meters[modelData[1]] === undefined ? -100 : root.meters[modelData[1]]) + " dB"
-                                   color: Theme.lcd; font.family: Theme.font; font.pixelSize: 10; font.weight: 700 }
+                                   color: Theme.lcd; font.family: Theme.font; font.pixelSize: 11; font.weight: 700 }
                         }
                     }
                     Text {
                         readonly property var extra: root.type && root.type.meters.length && root.type.key !== "eq" ? root.type.meters : []
                         visible: extra.length > 0
                         text: extra.map(function (n, i) { var v = root.meters[2 + i]; return n + ": " + (v === undefined ? "—" : v.toFixed(1)) }).join(" · ")
-                        color: Theme.lcd; font.family: Theme.font; font.pixelSize: 10; font.weight: 700
+                        color: Theme.lcd; font.family: Theme.font; font.pixelSize: 11; font.weight: 700
                     }
                     Text { text: "Latencia: " + (root.cur ? (root.cur.latency_seconds * 1000).toFixed(2) : "0") + " ms (compensada)"
-                           color: Theme.deviceInk; font.family: Theme.font; font.pixelSize: 10; font.weight: 600 }
+                           color: Theme.deviceInk; font.family: Theme.font; font.pixelSize: 11; font.weight: 600 }
                 }
             }
             Row {                               // presets
                 width: ed.width; spacing: 8
                 Text { text: "Preset"; height: 28; verticalAlignment: Text.AlignVCenter; color: Theme.deviceInk
-                       font.family: Theme.font; font.pixelSize: 12; font.weight: 700 }
+                       font.family: Theme.font; font.pixelSize: 13; font.weight: 700 }
                 Select {
                     width: Math.min(230, ed.width * 0.35); fontSize: 12; padY: 4
                     options: [["", "— elegir —"]].concat(root.presets.map(function (p) { return [p.name, p.name + (p.factory ? "" : " ★")] }))
@@ -325,7 +325,7 @@ Column {
                     TextInput {
                         id: presetIn
                         x: 6; width: parent.width - 12; anchors.verticalCenter: parent.verticalCenter
-                        color: Theme.ink; font.family: Theme.font; font.pixelSize: 12; selectByMouse: true; clip: true
+                        color: Theme.ink; font.family: Theme.font; font.pixelSize: 13; selectByMouse: true; clip: true
                         onAccepted: if (text.trim()) { root.savePreset(text); text = "" }
                         Text { visible: !presetIn.text && !presetIn.activeFocus; text: "nombre del preset"; color: Theme.ink
                                font: presetIn.font; anchors.verticalCenter: parent.verticalCenter }
@@ -342,7 +342,7 @@ Column {
                 Row {
                     spacing: 8
                     Text { text: "Automatización"; height: 26; verticalAlignment: Text.AlignVCenter; color: Theme.deviceInk
-                           font.family: Theme.font; font.pixelSize: 12; font.weight: 700 }
+                           font.family: Theme.font; font.pixelSize: 13; font.weight: 700 }
                     Select {
                         width: 170; fontSize: 11; padY: 3
                         options: root.type ? root.type.params.map(function (p) { return [p.id, p.name + (root.isAuto(p.id) ? " ∿" : "")] }) : []
@@ -352,7 +352,7 @@ Column {
                     Text { height: 26; verticalAlignment: Text.AlignVCenter; color: Theme.deviceInk
                            text: root.autoPts.length ? root.autoPts.length + " puntos · sigue la curva al reproducir y al exportar"
                                                      : "Sin curva: clic en la línea para añadir un punto"
-                           font.family: Theme.font; font.pixelSize: 10; font.weight: 600 }
+                           font.family: Theme.font; font.pixelSize: 11; font.weight: 600 }
                     NeoButton { text: "Quitar curva"; fontSize: 11; padX: 6; padY: 1; shadow: 2; visible: root.autoPts.length > 0
                                 tip: "El parámetro vuelve a su valor fijo"; onClicked: root.setAuto([]) }
                 }
@@ -385,7 +385,7 @@ Column {
                             for (var j = 0; j < p.length; j++) ctx.fillRect(xOf(p[j][0]) - 4, yOf(p[j][1]) - 4, 8, 8)
                         }
                         if (playX >= 0) { ctx.strokeStyle = "#ff4d3d"; ctx.beginPath(); ctx.moveTo(playX, 0); ctx.lineTo(playX, height); ctx.stroke() }
-                        ctx.fillStyle = "#bdb398"; ctx.font = "10px sans-serif"
+                        ctx.fillStyle = "#bdb398"; ctx.font = "11px '" + Theme.font + "'"
                         ctx.fillText("16 compases · clic: añadir · arrastrar: mover · clic derecho: borrar", 6, 12)
                     }
                     MouseArea {
@@ -435,7 +435,7 @@ Column {
                         if (i) ctx.lineTo(x2, y2); else ctx.moveTo(x2, y2)
                     }
                     ctx.strokeStyle = eq ? String(Theme.lcdSoft) : "#5ee0b0"; ctx.lineWidth = 2; ctx.stroke()
-                    ctx.fillStyle = "#bdb398"; ctx.font = "10px sans-serif"
+                    ctx.fillStyle = "#bdb398"; ctx.font = "11px '" + Theme.font + "'"
                     ctx.fillText(eq ? "respuesta real del EQ (±24 dB)" : "espectro (dBFS, 20 Hz – 20 kHz)", 6, 12)
                 }
             }
@@ -468,7 +468,7 @@ Column {
                 id: folder
                 required property var modelData
                 width: root.width; spacing: 4
-                Text { text: folder.modelData.name; color: Theme.ink; font.family: Theme.font; font.pixelSize: 12; font.weight: 700 }
+                Text { text: folder.modelData.name; color: Theme.ink; font.family: Theme.font; font.pixelSize: 13; font.weight: 700 }
                 Flow {
                     width: root.width; spacing: 5
                     Repeater {
@@ -492,7 +492,7 @@ Column {
                                 border.width: 1; border.color: Theme.ink; opacity: 0.45
                                 Text { id: todo; x: 6; anchors.verticalCenter: parent.verticalCenter
                                        text: it.modelData[0] + " " + it.modelData[1] + " · por construir"
-                                       color: Theme.ink; font.family: Theme.font; font.pixelSize: 10; font.weight: 500 }
+                                       color: Theme.ink; font.family: Theme.font; font.pixelSize: 11; font.weight: 500 }
                             }
                         }
                     }
@@ -504,7 +504,7 @@ Column {
         visible: root.libOpen; height: visible ? implicitHeight : 0
         width: root.width; topPadding: 8; wrapMode: Text.Wrap
         text: "Disponibles: " + root.catalog.length + " de 96 (Hito 1). Los efectos suenan en el motor C++, tienen presets y automatización, se guardan en el proyecto (Guardar / Abrir) y su latencia se compensa. Los marcados «por construir» aún no existen."
-        color: Theme.ink; font.family: Theme.font; font.pixelSize: 12; font.weight: 500
+        color: Theme.ink; font.family: Theme.font; font.pixelSize: 13; font.weight: 500
     }
 
     Component.onCompleted: {

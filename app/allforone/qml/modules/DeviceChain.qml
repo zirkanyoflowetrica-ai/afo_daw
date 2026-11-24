@@ -88,7 +88,7 @@ Rectangle {
                             elide: Text.ElideRight
                             text: rk.nameOf(card.modelData) + ((card.modelData.automated || []).length ? " ∿" : "")
                             color: Theme.deviceInk; font.strikeout: !card.modelData.enabled
-                            font.family: Theme.font; font.pixelSize: 12; font.weight: 700
+                            font.family: Theme.font; font.pixelSize: 13; font.weight: 700
                             MouseArea {
                                 id: foldMouse; hoverEnabled: true; anchors.fill: parent
                                 cursorShape: chainBox.dragId === card.modelData.id ? Qt.ClosedHandCursor : Qt.OpenHandCursor
@@ -120,7 +120,7 @@ Rectangle {
                                 anchors.verticalCenter: parent.verticalCenter
                                 color: Theme.knobArc
                                 Text { id: autoTxt; anchors.centerIn: parent; text: "AUTO"; color: "#000"
-                                       font.family: Theme.font; font.pixelSize: 10; font.weight: 700 }
+                                       font.family: Theme.font; font.pixelSize: 11; font.weight: 700 }
                                 MouseArea { id: autoM; anchors.fill: parent; hoverEnabled: true }
                                 ToolTipLite { text: "Lo puso la mezcla automática; puedes cambiarlo"; show: autoM.containsMouse }
                             }
@@ -155,7 +155,7 @@ Rectangle {
                                 anchors.centerIn: parent; rotation: -90
                                 width: parent.height; horizontalAlignment: Text.AlignHCenter; elide: Text.ElideRight
                                 text: rk.nameOf(card.modelData)
-                                color: Theme.deviceInk; font.family: Theme.font; font.pixelSize: 12; font.weight: 700
+                                color: Theme.deviceInk; font.family: Theme.font; font.pixelSize: 13; font.weight: 700
                             }
                             MouseArea { anchors.fill: parent; onDoubleClicked: rk.toggleFold(card.modelData.id)
                                         onClicked: rk.sel = card.modelData.id }
@@ -230,7 +230,7 @@ Rectangle {
                                     readonly property int pi: rk.paramIndex(card.desc, modelData.id)
                                     readonly property real v: card.modelData.values[pi] !== undefined ? card.modelData.values[pi] : modelData.def
                                     spacing: 1
-                                    Text { text: pcol.modelData.name; color: Theme.deviceInk; font.family: Theme.font; font.pixelSize: 10; font.weight: 600 }
+                                    Text { text: pcol.modelData.name; color: Theme.deviceInk; font.family: Theme.font; font.pixelSize: 11; font.weight: 600 }
                                     Select {
                                         width: 96; fontSize: 10; padY: 2; padX: 4
                                         fill: Theme.deviceHead; ink: Theme.deviceInk
@@ -255,7 +255,7 @@ Rectangle {
                            color: Theme.ink; font.family: Theme.font; font.pixelSize: 30; font.weight: 300 }
                     Text { width: parent.width; horizontalAlignment: Text.AlignHCenter; wrapMode: Text.Wrap
                            text: rk.libOpen ? "Cerrar biblioteca" : (rk.chain.length ? "Agregar efecto" : "Sin efectos en " + rk.targetName + ". Agrega uno" + (rk.master ? " o pulsa MASTERIZAR abajo" : "") + ".")
-                           color: Theme.ink; font.family: Theme.font; font.pixelSize: 12; font.weight: 600 }
+                           color: Theme.ink; font.family: Theme.font; font.pixelSize: 13; font.weight: 600 }
                 }
                 MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: rk.libOpen = !rk.libOpen }
             }
