@@ -12,7 +12,9 @@ Especificación completa: `docs/MASTER_PROMPT.md`. Resumen de lo que no se negoc
    módulo), `state/` (estado y lógica compartida), `assets/` (fuentes e icono). Algo que aún no
    funciona lo dice en su cuerpo; nunca se rellena con controles decorativos.
    **Temas:** cada carpeta de `templates/` con un `theme.json` es un tema (AllForOne es el de fábrica;
-   Professional imita un DAW típico). Los colores y estilos salen de `Theme.qml` (`Theme.apply`), nunca
+   Professional imita un DAW típico).
+   **Distribución (23-11-2026):** se deja atrás la idea modular; una ventana con zonas fijas según
+   `docs/DISENO_DAW.md` (navegador, Arreglo ⇄ Mezclador, inspector, panel de detalle de lo seleccionado). Los colores y estilos salen de `Theme.qml` (`Theme.apply`), nunca
    fijos en un módulo. Los módulos tienen tamaño fijo: solo cambia si lo cambia el usuario.
 2. **Capas:** QML dibuja → `bridge.py` (objeto `afo`, slots de Qt, respuestas JSON) → Python coordina
    (`engine_host.py`) → C++ (`native/src/AfoEngine.*`, `AfoSynth.*` y la Biblioteca nativa en
