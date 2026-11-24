@@ -233,9 +233,9 @@ Column {
                        text: strip.track.name.toUpperCase(); color: "#000"
                        font.family: Theme.font; font.pixelSize: 11; font.weight: 700 }
                 Rectangle { y: parent.height; width: parent.width; height: 2; color: Theme.line }
-                MouseArea { anchors.fill: parent; enabled: strip.tid > 0; cursorShape: Qt.PointingHandCursor
+                MouseArea { id: rackMouse; anchors.fill: parent; hoverEnabled: true; enabled: strip.tid > 0; cursorShape: Qt.PointingHandCursor
                             onClicked: root.studio.rackTrack = strip.tid }
-                ToolTipLite { text: "Clic: ver el rack de " + strip.track.name + " en Efectos"; show: false }
+                ToolTipLite { text: "Clic: ver el rack de " + strip.track.name + " en Efectos"; show: rackMouse.containsMouse }
             }
             Column {
                 x: 6; y: 38; width: parent.width - 12
@@ -243,7 +243,7 @@ Column {
                 Item {                           // rol de voz (o DEMO para IA)
                     width: parent.width; height: 18
                     Rectangle {
-                        visible: strip.track.type === "ia"
+                        visible: strip.track.type === "ia" && !(strip.track.aclips || []).length && !(strip.track.len > 0)
                         anchors.fill: parent; color: "#000"
                         Text { anchors.centerIn: parent; text: "DEMO · sin audio"; color: Theme.lcd
                                font.family: Theme.font; font.pixelSize: 9; font.weight: 700 }

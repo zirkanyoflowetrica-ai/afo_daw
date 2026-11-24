@@ -87,7 +87,7 @@ Column {
         }
     }
     Row {                                       // .krow
-        visible: !!root.t
+        visible: !!root.t && !root.t.cfg.plugin
         anchors.horizontalCenter: parent.horizontalCenter; spacing: 16
         Knob { label: "Velocidad"; value: root.t ? root.t.cfg.vel : 70; onMoved: function (v) { root.seq.setCfg("inst", "vel", v) } }
         Knob { label: "Brillo"; value: root.t ? root.t.cfg.bri : 50; onMoved: function (v) { root.seq.setCfg("inst", "bri", v) } }

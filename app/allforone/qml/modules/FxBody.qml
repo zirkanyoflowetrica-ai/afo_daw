@@ -280,9 +280,9 @@ Column {
                                 width: 14; height: 14; radius: 7
                                 color: card.modelData.enabled ? Theme.knobArc : Theme.knobTrack
                                 border.width: 1; border.color: Theme.deviceBorder
-                                MouseArea { anchors.fill: parent; anchors.margins: -5; cursorShape: Qt.PointingHandCursor
+                                MouseArea { id: bypassMouse; hoverEnabled: true; anchors.fill: parent; anchors.margins: -5; cursorShape: Qt.PointingHandCursor
                                             onClicked: root.enable(card.modelData.id, !card.modelData.enabled) }
-                                ToolTipLite { text: card.modelData.enabled ? "Activo: clic para puentear" : "Puenteado: clic para activar"; show: false }
+                                ToolTipLite { text: card.modelData.enabled ? "Activo: clic para puentear" : "Puenteado: clic para activar"; show: bypassMouse.containsMouse }
                             }
                             Text {
                                 id: devName
@@ -291,9 +291,9 @@ Column {
                                 text: root.nameOf(card.modelData) + ((card.modelData.automated || []).length ? " ∿" : "")
                                 color: Theme.deviceInk; font.strikeout: !card.modelData.enabled
                                 font.family: Theme.font; font.pixelSize: 12; font.weight: 700
-                                MouseArea { anchors.fill: parent; onClicked: root.sel = card.modelData.id
+                                MouseArea { id: foldMouse; hoverEnabled: true; anchors.fill: parent; onClicked: root.sel = card.modelData.id
                                             onDoubleClicked: root.toggleFold(card.modelData.id) }
-                                ToolTipLite { text: "Doble clic: plegar"; show: false }
+                                ToolTipLite { text: "Doble clic: plegar"; show: foldMouse.containsMouse }
                             }
                             Row {
                                 id: devBtns

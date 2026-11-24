@@ -13,7 +13,7 @@ Column {
     property var studio
     readonly property var t: seq.active("voz")
     readonly property var rec: studio.rec
-    readonly property bool go: seq.recording || studio.previewing
+    readonly property bool go: seq.recording || studio.playing || studio.previewing
     width: parent ? parent.width : 380
     spacing: 0
 
@@ -42,7 +42,7 @@ Column {
                         ctx.beginPath(); ctx.arc(c, c, r * .12, 0, 2 * Math.PI); ctx.fillStyle = "#000"; ctx.fill()
                         ctx.beginPath(); ctx.arc(c, c, 44, 0, 2 * Math.PI); ctx.lineWidth = 4; ctx.strokeStyle = "#000"; ctx.stroke()
                     }
-                    RotationAnimation on rotation { from: 0; to: 360; duration: 1100; loops: Animation.Infinite; running: root.go }
+                    RotationAnimation on rotation { from: 0; to: 360; duration: Math.round(120000 / Math.max(1, root.studio.bpm)); loops: Animation.Infinite; running: root.go }
                 }
             }
         }
