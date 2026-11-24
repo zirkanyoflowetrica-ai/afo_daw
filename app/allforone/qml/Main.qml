@@ -5,11 +5,12 @@ import "theme"
 import "controls"
 import "modules"
 import "state"
-import "state/layout.js" as L
 import "state/mixdata.js" as MD
 
-// AllForOne con interfaz nativa (Qt Quick). Referencia visual: PLANTILLA_DAW.html.
-// Lógica del lienzo portada de la plantilla; el audio y los datos vienen de Python (`afo`).
+// AllForOne con interfaz nativa (Qt Quick). Distribución fija de un DAW de uso diario
+// (docs/DISENO_DAW.md §2): cabecera, navegador, Arreglo ⇄ Mezclador, inspector, panel de detalle de lo
+// seleccionado y barra de estado. Nada flota ni se solapa; cada zona se pliega con su botón y su atajo.
+// El audio y los datos vienen de Python (`afo`).
 Window {
     id: win
     width: 1600; height: 900
@@ -24,17 +25,18 @@ Window {
     property var deviceInfo: ({})
     property real latencyMs: 0
     property bool dirty: false
-    // Vista principal: «arrange» (Arreglo: pistas, automatización y consola, como Studio One / Ableton)
-    // o «modules» (el lienzo de módulos). Se recuerda en el diseño guardado.
-    property string view: savedLayout.view === "modules" ? "modules" : "arrange"
+    // Vista principal: «arrange» (Arreglo: pistas, clips y automatización) o «mixer» (Mezclador: la
+    // consola). Tab o F5 / F6. Se recuerda en el diseño guardado.
+    property string view: savedLayout.view === "mixer" ? "mixer" : "arrange"
     onViewChanged: if (!loading) saveLayout()
-    // Doble flujo: el Arreglo (línea de tiempo) en una ventana aparte, para un segundo monitor, y los
-    // módulos en la principal. Es otra vista del MISMO proyecto (pistas, clips y automatización del
+    QtObject { id: lu; function clamp(v, a, b) { return Math.max(a, Math.min(b, v)) } }
+    // Doble flujo: el Arreglo (línea de tiempo) en una ventana aparte, para un segundo monitor, y el
+    // Mezclador en la principal. Es otra vista del MISMO proyecto (pistas, clips y automatización del
     // motor). Se crea dentro de su ventana: Qt no deja mover lo ya dibujado de una ventana a otra.
     property bool dualWindow: false
     readonly property var flowWindow: flowWin                       // para la autoprueba (captura)
     onDualWindowChanged: {
-        if (dualWindow) { view = "modules"; flowWin.show(); flowWin.raise() }
+        if (dualWindow) { view = "mixer"; flowWin.show(); flowWin.raise() }
         else flowWin.hide()
     }
     // Llamadas al motor que cambian el proyecto (las de leer y medir no cuentan)
@@ -54,25 +56,16 @@ Window {
     property int step: -1                     // semicorchea dentro de los 16 compases (como la plantilla)
     property var tracks: []
     property int selected: -1
+    // Fuentes desconectadas (Instrumentos, Batería, IA, Grabador): sus pistas no suenan ni graban.
+    // Se cambia con «Conectada» en la cabecera de su página; se guarda en el proyecto.
     property var hidden: ({})
-    property var portOverride: ({})
     property string abSource: "rack"          // a qué rack escucha Antes / Después (ReviewBody.src)
-    property var bends: ({})
-    property int portRev: 0
-    property int geomRev: 0
-    property int zTop: 20
-    property real tx: 0
-    property real ty: 0
-    property real zoom: 1
-    property var panelItems: ({})
-    property var names: ({})                   // nombre propio de cada módulo (menú lateral y cabecera)
-    property var panelList: []                 // [{pid, base, extra}] en el orden del menú
-    property string currentId: ""              // último módulo al que se fue desde el menú
-    property string maxId: ""                  // módulo maximizado ("" = lienzo normal)
-    property var maxSaved: null                // geometría y vista de antes de maximizar
-    property bool menuOpen: true
-    property alias menuTab: sideMenu.tab       // 0 módulos · 1 instrumentos · 2 efectos
-    property var extraTargets: ({})            // rack extra → pista del motor que muestra
+    property string currentId: ""              // última página a la que se fue (goTo)
+    property var extraTargets: ({})            // (FxBody) racks extra del lienzo antiguo: ya no hay
+    property alias navZone: navZ
+    property alias inspZone: inspZ
+    property alias detailZone: detZ
+    property real detailH: lu.clamp(savedLayout.detailH || 360, 200, 700)
     property var plugins: []                   // plugins VST3 encontrados: [{id, name, vendor, instrument, path}]
     property string pluginStatus: "Aún no se han buscado plugins."
     property bool pluginScanning: false
@@ -103,6 +96,7 @@ Window {
     // Para la autoprueba: acciones del módulo Efectos y lo que muestra
     function fxCommand(what, a, b) {
         if (!fxBody) return null
+        goTo("fx")                                 // lo que se hace en Efectos se ve en Efectos
         if (what === "target") fxBody.pickTarget(a)
         else if (what === "add") fxBody.add(a)
         else if (what === "param") fxBody.setParam(a, b)
@@ -126,7 +120,7 @@ Window {
     Shortcut { sequences: [StandardKey.Save]; onActivated: pj.save(false) }
     Shortcut { sequence: "Ctrl+Shift+S"; onActivated: pj.save(true) }
     Shortcut { sequence: "F5"; onActivated: win.view = "arrange" }
-    Shortcut { sequence: "F6"; onActivated: win.view = "modules" }
+    Shortcut { sequence: "F6"; onActivated: win.view = "mixer" }
     Shortcut { sequence: "F7"; onActivated: win.dualWindow = !win.dualWindow }
     property alias arrangeView: arrange
     // Para la autoprueba: guardar y abrir proyectos sin diálogo
@@ -137,109 +131,17 @@ Window {
     }
     onBpmChanged: { sq.rerenderAll(); markDirty() }   // el patrón depende del tempo: se vuelve a sintetizar
     onHiddenChanged: { syncTrackStates(); sq.arm() }   // módulo quitado = sus pistas desconectadas (no suenan ni graban)
-    onTracksChanged: { markDirty(); Qt.callLater(function () { win.geomRev++ }) }   // las filas de Pistas se movieron
-    property var rowCenter: null                  // función de TracksBody: centro de la fila i (coord. del módulo)
+    onTracksChanged: markDirty()
+    // La selección manda (DISENO_DAW §1.3): al elegir una pista, Efectos muestra su cadena y el panel de
+    // detalle abre su editor (patrón, notas, clips)
+    function followSelection(t) {
+        if (!t || loading) return
+        if (t.id > 0) rackTrack = t.id
+        var ed = ({ inst: "piano", drum: "drums", audio: "pistas", ia: "pistas", voz: "pistas" })[t.type]
+        if (ed && ["piano", "drums", "pistas", "inst"].indexOf(detZ.current) >= 0) detZ.current = ed
+    }
     readonly property real bar16: 16 * 4 * 60 / Math.max(40, bpm)
     property real stripScroll: 0               // desplazamiento horizontal de las tiras de la consola
-    onStripScrollChanged: geomRev++
-    // Cables fijos + uno del Afinador a la tira de cada voz que va a afinar (intensidad > 0 %)
-    readonly property var cableLinks: {
-        var out = L.links(hidden)
-        // Cada pista de Instrumento, Batería o IA tiene su cable desde su módulo hasta su fila en Pistas
-        var sources = {}, trackLinks = []
-        for (var i = 0; i < tracks.length; i++) {
-            var src = tracks[i].type === "inst" ? "piano" : sq.src[tracks[i].type]   // instrumento → piano → pistas
-            if (src === "pistas" || hidden[src] || hidden.pistas || sq.disconnected(tracks[i])) continue
-            var slot = sources[src] || 0; sources[src] = slot + 1
-            trackLinks.push({ key: "track-" + tracks[i].uid, f: src, t: "pistas", i: i, slot: slot })
-        }
-        trackLinks.forEach(function (l) { l.total = sources[l.f] })
-        // Una fuente sin pistas todavía también va a Pistas (ahí creará las suyas)
-        ;["piano", "drums", "ia", "cinta"].forEach(function (f) {
-            if (!sources[f] && !hidden[f] && !hidden.pistas) trackLinks.push({ key: f + "-pistas", f: f, t: "pistas" })
-        })
-        out.splice.apply(out, [out.length && out[0].key === "inst-piano" ? 1 : 0, 0].concat(trackLinks))
-        var ab = abSource === "master" ? "fxm" : "fx"          // Antes / Después mide ese rack
-        if (!hidden[ab] && !hidden.antes) out.push({ key: ab + "-antes", f: ab, t: "antes" })
-        if (mx.tuneStrength > 0 && !hidden.afina && !hidden.mezcla) {
-            mx.items; mx.tune; tracks
-            var S = mx.tunedStrips()
-            for (var k = 0; k < S.length; k++)
-                out.push({ key: "afina-tira-" + S[k].i, f: "afina", t: "mezcla", mx: S[k].i, slot: k, total: S.length, name: S[k].name })
-        }
-        return out
-    }
-    readonly property var portList: {
-        var out = []
-        for (var i = 0; i < cableLinks.length; i++) {
-            out.push({ key: cableLinks[i].key, end: "from", pid: cableLinks[i].f, link: cableLinks[i] })
-            out.push({ key: cableLinks[i].key, end: "to", pid: cableLinks[i].t, link: cableLinks[i] })
-        }
-        return out
-    }
-    // Puesto de cada conector en su placa: los de un mismo lado de un módulo se apilan de arriba abajo
-    readonly property var jackSlot: {
-        var n = {}, out = {}
-        for (var i = 0; i < portList.length; i++) {
-            var p = portList[i], l = p.link
-            if (l.i !== undefined || l.mx !== undefined) continue      // filas de Pistas y tiras de la consola
-            var side = p.pid + ":" + p.end
-            out[p.key + ":" + p.end] = n[side] || 0
-            n[side] = (n[side] || 0) + 1
-        }
-        return out
-    }
-
-    // Rótulo del conector: qué sale o qué entra por él
-    function jackText(link, end) {
-        var s = ""
-        if (link.i !== undefined) s = end === "from" && tracks[link.i] ? tracks[link.i].name : "PISTA " + (link.i + 1)
-        else if (link.mx !== undefined) s = end === "from" ? "AFINADA" : "AFINADA · " + (link.name || "")
-        else { var j = L.JACKS[link.key]; s = j ? j[end === "from" ? 0 : 1] : "" }
-        s = String(s).toUpperCase()
-        return s.length > 16 ? s.slice(0, 15) + "…" : s
-    }
-    function jackTip(link, end) {
-        var o = L.panelName(link.f), d = L.panelName(link.t), a = jackText(link, "from"), b = jackText(link, "to")
-        return (end === "from" ? "Salida" : "Entrada") + " · " + o + (a ? " «" + a + "»" : "") + " → " + d + (b ? " «" + b + "»" : "") +
-               "
-Las entradas van a la izquierda y las salidas a la derecha. Arrastra para moverlo por este borde."
-    }
-
-    // ---------------- geometría ----------------
-    function geom(id) {
-        var p = panelItems[id]
-        return p ? { x: p.x, y: p.y, w: p.width, h: p.height } : { x: 0, y: 0, w: 1, h: 1 }
-    }
-    function anchorOf(link, end) {
-        var id = end === "from" ? link.f : link.t, g = geom(id), o = portOverride[link.key + ":" + end]
-        var pin = o && o.side === L.sideOf(end) ? o : defaultPin(link, end, g)
-        // el jack está en la placa de ENTRADAS (izquierda) o SALIDAS (derecha), a 18 px de su borde exterior
-        var ext = plateW - 21
-        return L.anchor(end === "from" ? { x: g.x, y: g.y, w: g.w + ext, h: g.h } : { x: g.x - ext, y: g.y, w: g.w + ext, h: g.h }, pin)
-    }
-    function defaultPin(link, end, g) {
-        if (link.i !== undefined) {                 // pista → su fila en Pistas
-            if (end === "from") return { side: "right", u: L.clamp(.12 + .76 * (link.slot + 1) / (link.total + 1), .08, .92) }
-            var y = rowCenter ? rowCenter(link.i) : 40
-            return { side: "left", u: L.clamp(y / g.h, .05, .95) }
-        }
-        if (link.mx === undefined) return { side: L.sideOf(end), u: L.clamp((84 + 66 * (jackSlot[link.key + ":" + end] || 0)) / g.h, .05, .95) }
-        if (end === "to") return { side: "left", u: L.clamp(.42 + .5 * (link.slot + 1) / (link.total + 1), .3, .95) }   // entra a la consola
-        return { side: "right", u: L.clamp(.12 + .76 * (link.slot + 1) / (link.total + 1), .08, .92) }
-    }
-    function fitIds(ids) {
-        var rs = []
-        for (var i = 0; i < ids.length; i++) if (panelItems[ids[i]] && !hidden[ids[i]]) rs.push(geom(ids[i]))
-        if (!rs.length) return
-        var v = L.fit(rs, viewport.width, viewport.height)
-        zoom = v.z; tx = v.tx; ty = v.ty
-    }
-    function visibleIds() { return panelList.map(function (p) { return p.pid }).filter(function (i) { return !hidden[i] }) }
-    function zoomAt(f, cx, cy) {
-        var z = Math.max(.2, Math.min(1.6, zoom * f)); f = z / zoom
-        tx = cx - (cx - tx) * f; ty = cy - (cy - ty) * f; zoom = z
-    }
     function setDark(b) { setTheme(b ? "AllForOne Oscuro" : "AllForOne") }
     // ---------------- temas (carpeta templates/) ----------------
     property var themes: []
@@ -254,7 +156,7 @@ Las entradas van a la izquierda y las salidas a la derecha. Arrastra para moverl
     // Para la autoprueba y las comparaciones: estado del mezclador, mezclar y encuadrar un módulo a zoom 1
     function mixerSnapshot() {
         return { items: mx.items, runs: mx.runs, busy: mx.busy, status: mx.status, live: mx.live,
-                 tune: mx.tune, links: cableLinks.map(function (l) { return l.key }),
+                 tune: mx.tune, tuned: (mx.tuneStrength > 0 ? mx.tunedStrips() : []).map(function (k) { return k.name }),
                  lastTuned: mx.lastTuned, master: mx.masterStats, mastering: mx.mastering, rackTrack: rackTrack,
                  versions: mx.versions.map(function (v) { return { name: v.name, kind: v.kind, fx: v.chain.length, lufs: v.lufs } }),
                  versionSel: mx.versionSel,
@@ -294,27 +196,28 @@ Las entradas van a la izquierda y las salidas a la derecha. Arrastra para moverl
         else if (what === "meter") meterMode = a
         return mixerSnapshot()
     }
-    // Para la autoprueba: menú lateral, choques, maximizar y racks extra
+    // Para la autoprueba: zonas fijas, ir a una página, plegar, contraste, vistas y temas
+    function zoneRects() {
+        var out = {}, z = { cabecera: header, navegador: navZ, principal: mainArea, inspector: inspZ, detalle: detZ, estado: statusBar }
+        for (var k in z) { var it = z[k], p = it.mapToItem(null, 0, 0); out[k] = { x: Math.round(p.x), y: Math.round(p.y), w: Math.round(it.width), h: Math.round(it.height), visible: it.visible } }
+        return out
+    }
     function layoutCommand(what, a, b) {
+        if (what === "zones") return zoneRects()
+        if (what === "pages") return navZ.tabs.concat(inspZ.tabs, detZ.tabs).map(function (t) { return t[0] })
         if (what === "overlaps") {
-            var ids = visibleIds(), out = []
-            for (var i = 0; i < ids.length; i++)
-                for (var j = i + 1; j < ids.length; j++) {
-                    var p = geom(ids[i]), q = geom(ids[j])
-                    if (p.x < q.x + q.w && q.x < p.x + p.w && p.y < q.y + q.h && q.y < p.y + p.h) out.push(ids[i] + "/" + ids[j])
+            var r = zoneRects(), ks = Object.keys(r).filter(function (k) { return r[k].visible && r[k].w > 0 && r[k].h > 0 }), out = []
+            for (var i = 0; i < ks.length; i++)
+                for (var j = i + 1; j < ks.length; j++) {
+                    var p = r[ks[i]], q = r[ks[j]]
+                    if (p.x < q.x + q.w && q.x < p.x + p.w && p.y < q.y + q.h && q.y < p.y + p.h) out.push(ks[i] + "/" + ks[j])
                 }
             return out
         }
-        if (what === "drag") {
-            var pn = panelItems[a], to = slideTo(pn, pn.x + b[0], pn.y + b[1]), from = [pn.x, pn.y]
-            pn.x = to.x; pn.y = to.y; pushFrom(pn)
-            return { from: from, to: [to.x, to.y] }
-        }
-        if (what === "max") { toggleMax(a); var m = panelItems[a]; return { maxId: maxId, w: m.width, h: m.height, vw: viewport.width, vh: viewport.height, zoom: zoom } }
-        if (what === "extra") return addExtra(a)
-        if (what === "remove") { removeExtra(a); return panelList.map(function (q) { return q.pid }) }
-        if (what === "rename") { renamePanel(a, b); return { title: titleOf(a), panel: panelItems[a] ? panelItems[a].title : "" } }
-        if (what === "goto") { goTo(a); return { currentId: currentId, hidden: !!hidden[a] } }
+        if (what === "goto") { goTo(a); var zn = zoneOf(a); return { currentId: currentId, zone: zn ? zn.title : "", page: zn ? zn.current : "",
+                                                                     folded: zn ? zn.folded : true, view: view } }
+        if (what === "fold") { var zf = ({ nav: navZ, insp: inspZ, detail: detZ })[a]; zf.folded = !!b; return zoneRects() }
+        if (what === "select") { sq.pick(a); return { detail: detZ.current, rack: rackTrack } }
         if (what === "contrast") {                // pares texto/fondo del tema actual (guía de diseño §8)
             var c = function (x) { return String(x) }, out2 = [
                 ["texto/fondo", c(Theme.ink), c(Theme.bg)], ["texto/cabecera", c(Theme.ink), c(Theme.header)],
@@ -330,7 +233,7 @@ Las entradas van a la izquierda y las salidas a la derecha. Arrastra para moverl
         }
         if (what === "view") { if (a) view = a
                                return { view: view, lanes: arrange.laneCount, inserts: arrange.insertCount, rows: arrange.rows.length,
-                                        visible: arrange.visible, modules: viewport.visible,
+                                        visible: arrange.visible, modules: mixPage.visible,
                                         auxes: arrange.auxes.length, sends: arrange.sendCount, sendsH: arrange.sendsH } }
         // Bus Aux desde la consola (autoprueba): a = [nombre del bus, id de la pista que envía, dB]
         if (what === "aux") { var at = arrange.addAux()
@@ -338,212 +241,61 @@ Las entradas van a la izquierda y las salidas a la derecha. Arrastra para moverl
                               arrange.setSend(a[1], at.id, a[2], false)
                               return { ok: true, id: at.id, sends: arrange.sendCount, uid: at.uid } }
         if (what === "auxRemove") { var ai = sq.indexOf(a); if (ai >= 0) removeTrackAt(ai); return ai >= 0 }
-        if (what === "heights") { var hs = {}; for (var hid in panelItems) hs[hid] = panelItems[hid].height; return hs }
         if (what === "theme") { var ok = setTheme(a, true); return { ok: ok, name: Theme.name, frame: Theme.frame, knob: Theme.knobStyle,
                                                                    themes: loadThemes().map(function (t) { return t.name }) } }
-        return panelList.map(function (q) { return q.pid })
+        return null
     }
-    function setView(z, x, y) { zoom = z; tx = x; ty = y }
-    function showPanelAt(id, x, y) { var p = panelItems[id]; zoom = 1; tx = x - p.x; ty = y - p.y }
-    function setHidden(id, b) {
-        if (b && maxId === id) toggleMax(id)
-        var h = Object.assign({}, hidden); h[id] = b; hidden = h
-        if (!b) Qt.callLater(function () { placeFree(id); fitIds([id]) })
-    }
+    // Conectar / desconectar una fuente (sus pistas dejan de sonar y de grabar; nada se borra)
+    function setHidden(id, b) { var h = Object.assign({}, hidden); h[id] = !!b; hidden = h }
 
     // ---------------- diseño guardado ----------------
     function saveLayout() {
-        var pos = {}
-        for (var id in panelItems) {
-            var p = panelItems[id], o = [p.x, p.y, p.width]
-            if (id === maxId && maxSaved) o = [maxSaved.x, maxSaved.y, maxSaved.w, maxSaved.h]
-            else o.push(p.fixedHeight)
-            pos[id] = o
-        }
-        var extra = panelList.filter(function (q) { return q.extra }).map(function (q) { return { pid: q.pid, base: q.base } })
-        layoutStore.save(JSON.stringify({ v: L.VERSION, pos: pos, ports: portOverride, bends: bends, theme: Theme.name,
-                                          names: names, extra: extra, targets: extraTargets, view: view, darkDefault: 1, look2: 1 }))
+        layoutStore.save(JSON.stringify({ v: layoutVersion, theme: Theme.name, view: view, look2: 1, detailH: detailH,
+                                          fold: { nav: navZ.folded, insp: inspZ.folded, detail: detZ.folded },
+                                          tab: { nav: navZ.current, insp: inspZ.current, detail: detZ.current } }))
     }
-    // Un diseño de otra versión del lienzo (módulos distintos) no se aplica: se usa el de fábrica y
-    // solo se conserva el tema
+    // Versión de la distribución: un diseño guardado de otra (el lienzo de módulos) no se aplica; solo
+    // se conserva el tema
+    readonly property int layoutVersion: 7
     property var savedLayout: {
         var d
         try { d = JSON.parse(layoutStore.load()) } catch (e) { return {} }
-        return d.v === L.VERSION ? d : { theme: d.theme }
+        return d.v === layoutVersion ? d : { theme: d.theme, look2: d.look2 }
     }
     function resetLayout() {
-        if (maxId) toggleMax(maxId)
-        for (var i = 0; i < L.PANELS.length; i++) {
-            var d = L.PANELS[i], p = panelItems[d[0]]
-            p.x = d[3][0]; p.y = d[3][1]; p.width = d[3][2]; p.resized = false; p.fixedHeight = d[4]
-        }
-        panelList.forEach(function (q) { if (q.extra) placeFree(q.pid) })
-        portOverride = {}; bends = {}; portRev++
-        Qt.callLater(function () { settleAll(); fitIds(["inst", "drums", "pistas"]) })
+        navZ.folded = false; inspZ.folded = false; detZ.folded = false; detailH = 360
+        navZ.current = "add"; inspZ.current = "mastia"; detZ.current = "fx"
         saveLayout()
-        toast("Diseño original restaurado")
+        toast("Distribución de fábrica restaurada")
     }
 
-    // ---------------- módulos que chocan ----------------
-    // Ningún módulo se monta sobre otro: al arrastrar se detiene contra los demás (y se desliza por
-    // su borde), al redimensionar el borde se para y si un módulo crece empuja hacia abajo a los de debajo.
-    readonly property int gap: 28
-    // En horizontal caben además las placas de ENTRADAS y SALIDAS de los dos módulos y el cable entre ellas
-    readonly property int plateW: 92
-    readonly property int gapX: gap + 2 * plateW + 24
-    function obstacles(p) {
-        var out = []
-        for (var id in panelItems) {
-            var q = panelItems[id]
-            if (q !== p && q.visible && !hidden[id]) out.push({ x: q.x, y: q.y, w: q.width, h: q.height, item: q })
-        }
-        return out
-    }
-    function hits(a, b) { return a.x < b.x + b.w + gapX && b.x < a.x + a.w + gapX && a.y < b.y + b.h + gap && b.y < a.y + a.h + gap }
-    function spanY(y, h, b) { return y < b.y + b.h + gap && b.y < y + h + gap }
-    function spanX(x, w, b) { return x < b.x + b.w + gapX && b.x < x + w + gapX }
-    // Arrastre: primero en horizontal y luego en vertical, parando en el primer módulo del camino.
-    // Los que ya se solapaban al empezar no frenan (para poder sacar un módulo de encima de otro).
-    function slideTo(p, x, y) {
-        if (maxId) return { x: x, y: y }
-        var cur = { x: p.x, y: p.y, w: p.width, h: p.height }
-        var os = obstacles(p).filter(function (b) { return !hits(cur, b) })
-        var nx = x
-        os.forEach(function (b) {
-            if (!spanY(p.y, p.height, b)) return
-            if (x > p.x && b.x >= p.x + p.width && b.x - gapX - p.width < nx) nx = Math.max(p.x, b.x - gapX - p.width)
-            if (x < p.x && b.x + b.w <= p.x && b.x + b.w + gapX > nx) nx = Math.min(p.x, b.x + b.w + gapX)
-        })
-        var ny = y
-        os.forEach(function (b) {
-            if (!spanX(nx, p.width, b)) return
-            if (y > p.y && b.y >= p.y + p.height && b.y - gap - p.height < ny) ny = Math.max(p.y, b.y - gap - p.height)
-            if (y < p.y && b.y + b.h <= p.y && b.y + b.h + gap > ny) ny = Math.min(p.y, b.y + b.h + gap)
-        })
-        // si al mover en y aparece un choque en x (esquinas), no se mueve en ese eje
-        var r = { x: nx, y: ny, w: p.width, h: p.height }
-        if (os.some(function (b) { return hits(r, b) })) {
-            r.x = p.x
-            if (os.some(function (b) { return hits(r, b) })) r.y = p.y
-        }
-        return { x: r.x, y: r.y }
-    }
-    // Redimensionar: el borde que se mueve se para delante del primer módulo
-    function sizeTo(p, r) {
-        if (maxId) return r
-        var cur = { x: p.x, y: p.y, w: p.width, h: p.height }
-        var os = obstacles(p).filter(function (b) { return !hits(cur, b) })
-        var right = r.x + r.w, bottom = r.y + r.h
-        os.forEach(function (b) {
-            if (spanY(r.y, r.h, b)) {
-                if (right > p.x + p.width && b.x >= p.x + p.width && b.x - gapX < right) right = Math.max(p.x + p.width, b.x - gapX)
-                if (r.x < p.x && b.x + b.w <= p.x && b.x + b.w + gapX > r.x) r.x = Math.min(p.x, b.x + b.w + gapX)
-            }
-        })
-        os.forEach(function (b) {
-            if (spanX(r.x, right - r.x, b)) {
-                if (bottom > p.y + p.height && b.y >= p.y + p.height && b.y - gap < bottom) bottom = Math.max(p.y + p.height, b.y - gap)
-                if (r.y < p.y && b.y + b.h <= p.y && b.y + b.h + gap > r.y) r.y = Math.min(p.y, b.y + b.h + gap)
-            }
-        })
-        return { x: r.x, y: r.y, w: Math.max(p.minW, right - r.x), h: Math.max(p.minH, bottom - r.y) }
-    }
-    // Un módulo que ocupa sitio ajeno empuja hacia abajo a los que pisa (y estos a los suyos)
-    function pushFrom(p, depth) {
-        if (maxId || (depth || 0) > 30) return
-        var r = { x: p.x, y: p.y, w: p.width, h: p.height }
-        obstacles(p).forEach(function (b) {
-            if (hits(r, b) && b.y >= p.y) { b.item.y = p.y + p.height + gap; pushFrom(b.item, (depth || 0) + 1) }
-        })
-    }
-    // Recoloca todo de arriba abajo para que nada se solape (al abrir y al restaurar el diseño)
-    function settleAll() {
-        if (maxId) return
-        var ids = visibleIds().filter(function (i) { return !!panelItems[i] })
-        ids.sort(function (a, b) { return panelItems[a].y - panelItems[b].y || panelItems[a].x - panelItems[b].x })
-        for (var k = 0; k < ids.length; k++) pushFrom(panelItems[ids[k]])
-    }
-    // Lleva un módulo a un hueco libre (a la derecha de lo que pisa) sin mover a los demás
-    function placeFree(id) {
-        var p = panelItems[id]
-        if (!p || maxId) return
-        for (var n = 0; n < 60; n++) {
-            var r = { x: p.x, y: p.y, w: p.width, h: p.height }
-            var hit = obstacles(p).filter(function (b) { return hits(r, b) })[0]
-            if (!hit) return
-            p.x = hit.x + hit.w + gapX
-        }
-    }
-
-    // ---------------- maximizar ----------------
-    // El módulo ocupa todo el visor a zoom 1; los demás no se mueven y vuelven al restaurar
-    function toggleMax(id) {
-        var p = panelItems[id]
-        if (!p) return
-        if (maxId === id) {
-            var s = maxSaved
-            p.maximized = false
-            p.x = s.x; p.y = s.y; p.width = s.w; p.fixedHeight = s.h; p.resized = s.resized
-            maxId = ""; maxSaved = null
-            zoom = s.zoom; tx = s.tx; ty = s.ty
-            return
-        }
-        if (maxId) toggleMax(maxId)
-        if (hidden[id]) { var h = Object.assign({}, hidden); h[id] = false; hidden = h }
-        maxSaved = { x: p.x, y: p.y, w: p.width, h: p.fixedHeight, resized: p.resized, zoom: zoom, tx: tx, ty: ty }
-        maxId = id
-        p.maximized = true
-        p.z = ++zTop
-        fitMax()
-    }
-    function fitMax() {
-        var p = panelItems[maxId]
-        if (!p) return
-        p.resized = true
-        p.width = Math.max(p.minW, viewport.width - 24)
-        p.fixedHeight = Math.max(p.minH, viewport.height - 24)
-        zoom = 1; tx = 12 - p.x; ty = 12 - p.y
-    }
-
-    // ---------------- menú lateral ----------------
-    function baseOf(id) { return String(id).split("~")[0] }
-    function spec(id) { var b = baseOf(id); return L.PANELS.filter(function (p) { return p[0] === b })[0] }
+    // ---------------- ir a una página ----------------
+    // Cada cuerpo de módulo vive en una página de una zona fija (DISENO_DAW §2). goTo abre su zona y su
+    // pestaña; la consola es la vista Mezclador.
+    readonly property var pageZone: ({ ia: "nav", audios: "nav", add: "nav", fxlist: "nav",
+                                       mastia: "insp", antes: "insp", master: "insp", cinta: "insp",
+                                       pistas: "detail", inst: "detail", piano: "detail", drums: "detail",
+                                       fx: "detail", fxm: "detail", afina: "detail" })
+    function zoneOf(id) { return ({ nav: navZ, insp: inspZ, detail: detZ })[pageZone[id]] || null }
     function titleOf(id) {
-        if (names[id]) return names[id]
-        var d = spec(id), n = String(id).split("~")[1]
-        return d ? d[1] + (n ? " " + n : "") : id
+        return ({ ia: "IA", audios: "Archivos", add: "Añadir", fxlist: "Efectos", mastia: "Master IA", antes: "Antes / Después",
+                  master: "Versiones", cinta: "Grabar", pistas: "Clips", inst: "Instrumento", piano: "Piano roll",
+                  drums: "Batería", fx: "Efectos", fxm: "Efectos master", afina: "Afinador", mezcla: "Mezclador" })[id] || id
     }
-    function modelOf(id) { var d = spec(id); return d ? d[2] : "" }
-    function renamePanel(id, name) {
-        var n = Object.assign({}, names)
-        if (String(name).trim().length) n[id] = String(name).trim(); else delete n[id]
-        names = n; saveLayout()
-    }
-    // Ir a un módulo: se muestra si estaba oculto y se encuadra (o se maximiza si hay uno maximizado)
     function goTo(id) {
-        view = "modules"
         currentId = id
-        var p = panelItems[id]
-        if (!p) return
-        p.z = ++zTop
-        if (maxId) { if (maxId !== id) toggleMax(id); return }
-        if (hidden[id]) { setHidden(id, false); return }
-        fitIds([id])
-    }
-    // Qué hace el «+» de cada módulo (null = solo existe uno)
-    function addLabel(base) {
-        return ({ piano: "Nueva pista de instrumento", inst: "Nueva pista de instrumento", drums: "Nueva pista de batería",
-                  ia: "Generar una instrumental con IA", cinta: "Nueva pista de voz para grabar", audios: "Importar audio…",
-                  pistas: "Importar audio…", fx: "Otro rack de efectos (para ver otro canal a la vez)" })[base] || null
+        if (id === "mezcla") { if (!dualWindow) view = "mixer"; return }
+        var z = zoneOf(id)
+        if (!z) return
+        z.current = id; z.folded = false
     }
     function addMore(base) {
         var type = ({ piano: "inst", inst: "inst", drums: "drum", ia: "ia", cinta: "voz" })[base]
-        if (type) { sq.addTrack(type); goTo(sq.src[type]); return }
+        if (type) { sq.addTrack(type); goTo(sq.src[type] === "inst" ? "piano" : sq.src[type]); return }
         if (base === "audios" || base === "pistas") {
             if (engineOk) importAudio(); else toast("Motor nativo no disponible")
-            goTo("pistas"); return
+            goTo("pistas")
         }
-        if (base === "fx") addExtra("fx")
     }
     function addInstrument(voice) {
         sq.addTrack("inst"); sq.setCfg("inst", "v", voice); goTo("inst")
@@ -551,40 +303,9 @@ Las entradas van a la izquierda y las salidas a la derecha. Arrastra para moverl
     }
     function addEffect(key) {
         if (!fxBody || !key) return
-        if (hidden.fx) setHidden("fx", false)
         fxBody.add(key); goTo("fx")
     }
-    function addExtra(base, pid, target) {
-        if (!pid) {
-            var n = 2
-            while (panelItems[base + "~" + n]) n++
-            pid = base + "~" + n
-        }
-        if (target !== undefined) { var t = Object.assign({}, extraTargets); t[pid] = target; extraTargets = t }
-        panelModel.append({ pid: pid, base: base })
-        panelList = panelList.concat([{ pid: pid, base: base, extra: true }])
-        Qt.callLater(function () {
-            var p = panelItems[pid], b = panelItems[base]
-            if (p && b && !(savedLayout.pos || {})[pid]) { p.x = b.x; p.y = b.y + b.height + gap; placeFree(pid) }
-            if (!loading) { goTo(pid); saveLayout() }
-        })
-        return pid
-    }
-    function removeExtra(id) {
-        if (maxId === id) toggleMax(id)
-        for (var i = 0; i < panelModel.count; i++) if (panelModel.get(i).pid === id) { panelModel.remove(i); break }
-        var m = Object.assign({}, panelItems); delete m[id]; panelItems = m
-        panelList = panelList.filter(function (q) { return q.pid !== id })
-        var n = Object.assign({}, names); delete n[id]; names = n
-        var t = Object.assign({}, extraTargets); delete t[id]; extraTargets = t
-        saveLayout()
-    }
-    function setExtraTarget(id, track) {
-        if (extraTargets[id] === track) return
-        var t = Object.assign({}, extraTargets); t[id] = track; extraTargets = t; saveLayout()
-    }
     property bool loading: true
-    ListModel { id: panelModel }
 
     // ---------------- plugins VST3 externos ----------------
     function scanPlugins() {
@@ -615,7 +336,6 @@ Las entradas van a la izquierda y las salidas a la derecha. Arrastra para moverl
     }
     function addPluginEffect(p) {
         if (!fxBody) return
-        if (hidden.fx) setHidden("fx", false)
         fxBody.addPlugin(p.id); goTo("fx")
     }
     function addPluginInstrument(p) {
@@ -797,27 +517,27 @@ Las entradas van a la izquierda y las salidas a la derecha. Arrastra para moverl
             Row {                                   // .transport
                 spacing: 6
                 NeoButton {
-                    text: "☰"; tip: "Mostrar u ocultar el menú lateral (módulos, instrumentos y efectos)"
-                    readonly property bool on: win.menuOpen && win.view === "modules"
+                    text: "☰"; tip: "Mostrar u ocultar el navegador: añadir instrumentos y efectos, IA y archivos (Ctrl+B)"
+                    readonly property bool on: !navZ.folded
                     pressedState: on
                     color: on ? Theme.pressedBg : Theme.button; textColor: on ? Theme.pressedInk : Theme.ink
-                    onClicked: { if (win.view !== "modules") { win.view = "modules"; win.menuOpen = true } else win.menuOpen = !win.menuOpen }
+                    onClicked: navZ.folded = !navZ.folded
                 }
                 NeoButton {
-                    text: "Arreglo"; tip: "Vista Arreglo: pistas con sus clips, curvas de automatización y consola con inserts (F5)"
+                    text: "Arreglo"; tip: "Vista Arreglo: pistas con sus clips y curvas de automatización (F5; Tab cambia de vista)"
                     pressedState: win.view === "arrange"
                     color: win.view === "arrange" ? Theme.pressedBg : Theme.button; textColor: win.view === "arrange" ? Theme.pressedInk : Theme.ink
-                    onClicked: win.view = "arrange"
+                    onClicked: { if (win.dualWindow) flowWin.raise(); else win.view = "arrange" }
                 }
                 NeoButton {
-                    text: "Módulos"; tip: "Vista Módulos: el lienzo con todos los aparatos y sus cables (F6)"
-                    pressedState: win.view === "modules"
-                    color: win.view === "modules" ? Theme.pressedBg : Theme.button; textColor: win.view === "modules" ? Theme.pressedInk : Theme.ink
-                    onClicked: win.view = "modules"
+                    text: "Mezclador"; tip: "Vista Mezclador: la consola con una tira por pista y el master (F6; Tab cambia de vista)"
+                    pressedState: win.view === "mixer"
+                    color: win.view === "mixer" ? Theme.pressedBg : Theme.button; textColor: win.view === "mixer" ? Theme.pressedInk : Theme.ink
+                    onClicked: win.view = "mixer"
                 }
                 NeoButton {
                     text: "⧉"; tip: win.dualWindow ? "Cerrar la ventana del Arreglo (F7)"
-                                                   : "Doble flujo: el Arreglo en una ventana aparte (otro monitor) y los módulos aquí (F7)"
+                                                   : "Doble flujo: el Arreglo en una ventana aparte (otro monitor) y el Mezclador aquí (F7)"
                     pressedState: win.dualWindow
                     color: win.dualWindow ? Theme.pressedBg : Theme.button; textColor: win.dualWindow ? Theme.pressedInk : Theme.ink
                     onClicked: win.dualWindow = !win.dualWindow
@@ -880,11 +600,7 @@ Las entradas van a la izquierda y las salidas a la derecha. Arrastra para moverl
             }
             Row {                                   // .zoom
                 spacing: 6
-                // controles del lienzo: solo en la vista Módulos (en Arreglo tiene los suyos)
-                NeoButton { visible: win.view === "modules"; text: "−"; tip: "Alejar el lienzo"; onClicked: win.zoomAt(.8, viewport.width / 2, viewport.height / 2) }
-                NeoButton { visible: win.view === "modules"; text: "+"; tip: "Acercar el lienzo"; onClicked: win.zoomAt(1.25, viewport.width / 2, viewport.height / 2) }
-                NeoButton { visible: win.view === "modules"; text: "Ver todo"; tip: "Encuadrar todos los módulos visibles"; onClicked: win.fitIds(win.visibleIds()) }
-                NeoButton { visible: win.view === "modules"; text: "Restaurar diseño"; tip: "Restaurar posiciones, tamaños y cables iniciales"; onClicked: win.resetLayout() }
+                NeoButton { text: "Restaurar zonas"; tip: "Abre todas las zonas con su tamaño y sus pestañas de fábrica"; onClicked: win.resetLayout() }
                 Row {                               // selector de tema (carpetas de templates/)
                     spacing: 4
                     Text { text: "Tema"; anchors.verticalCenter: parent.verticalCenter; color: Theme.ink
@@ -912,362 +628,100 @@ Las entradas van a la izquierda y las salidas a la derecha. Arrastra para moverl
 
     }
 
-    // ---------------- menú lateral ----------------
-    SideMenu {
-        id: sideMenu
-        studio: win
+    // ---------------- zonas fijas (DISENO_DAW §2) ----------------
+    // Fuente que conecta / desconecta cada página (como quitar el módulo en el lienzo antiguo)
+    function sourceOf(page) { return ({ inst: "inst", piano: "inst", drums: "drums", ia: "ia", cinta: "cinta" })[page] || "" }
+    Component {
+        id: srcToggle
+        NeoButton {
+            readonly property var zone: parent && parent.parent ? parent.parent.parent : null
+            readonly property string key: zone ? win.sourceOf(zone.current) : ""
+            readonly property bool off: !!key && !!win.hidden[key]
+            visible: key.length > 0
+            text: off ? "○ Apagada" : "● Activa"; fontSize: 12; padY: 2; padX: 8
+            pressedState: off
+            color: off ? Theme.pressedBg : Theme.button; textColor: off ? Theme.pressedInk : Theme.ink
+            tip: off ? "Sus pistas no suenan ni graban. Pulsa para volver a conectarlas"
+                     : "Desconecta esta fuente: sus pistas dejan de sonar y de grabar (no se borra nada)"
+            onClicked: win.setHidden(key, !off)
+        }
+    }
+
+    // Navegador (izquierda): lo que se añade al proyecto
+    Zone {
+        id: navZ
         z: 4
-        anchors { top: header.bottom; bottom: statusBar.top; left: parent.left }
-        width: win.menuOpen && win.view === "modules" ? 290 : 0     // el menú lleva a módulos: solo en esa vista
-        visible: width > 0
+        title: "Navegador"; vertical: true
+        anchors { top: header.bottom; bottom: detZ.top; left: parent.left }
+        width: folded ? 34 : 360
+        foldTip: folded ? "Mostrar el navegador (Ctrl+B)" : "Plegar el navegador (Ctrl+B)"
+        tabs: [["add", "Añadir", "Instrumentos, batería, voz, audio y plugins VST3: cada uno crea su pista"],
+               ["fxlist", "Efectos", "Efectos nativos y VST3: se añaden a la pista elegida"],
+               ["ia", "IA", "Canción, MIDI y partes con IA, en tu equipo"],
+               ["audios", "Archivos", "Audios del proyecto: tipo y rol para la Mezcla IA"]]
+        current: "add"
+        extra: srcToggle
+        onFoldedChanged: if (!win.loading) win.saveLayout()
+        onPicked: if (!win.loading) win.saveLayout()
+        SideMenu {
+            id: sideMenu
+            studio: win
+            anchors.fill: parent
+            showTabs: false
+            tab: navZ.current === "fxlist" ? 2 : 1
+            visible: navZ.current === "add" || navZ.current === "fxlist"
+        }
+        ZonePage { zid: "ia"; tint: "ia"; minWidth: 300; IaBody { seq: sq } }
+        ZonePage { zid: "audios"; tint: "audios"; minWidth: 300; AudiosBody { mixer: mx; studio: win } }
     }
 
-    // ---------------- lienzo infinito ----------------
-    ArrangeView {
-        id: arrange
-        studio: win
-        anchors { top: header.bottom; left: sideMenu.right; right: parent.right; bottom: statusBar.top }
-        visible: win.view === "arrange"
-        z: 3
+    // Inspector (derecha): asistente de mezcla y master, versiones y grabación
+    Zone {
+        id: inspZ
+        z: 4
+        title: "Inspector"; vertical: true
+        anchors { top: header.bottom; bottom: detZ.top; right: parent.right }
+        width: folded ? 34 : 460
+        foldTip: folded ? "Mostrar el inspector (Ctrl+I)" : "Plegar el inspector (Ctrl+I)"
+        tabs: [["mastia", "Master IA", "Masterizar automáticamente y ajustar el master"],
+               ["antes", "A/B", "Antes / Después: escucha con y sin los efectos"],
+               ["master", "Versiones", "Versiones del master guardadas (Rebobinado)"],
+               ["cinta", "Grabar", "Grabador de voz: entrada, monitor y tomas de la pista de voz"]]
+        current: "mastia"
+        extra: srcToggle
+        onFoldedChanged: if (!win.loading) win.saveLayout()
+        onPicked: if (!win.loading) win.saveLayout()
+        ZonePage { zid: "mastia"; tint: "mastia"; minWidth: 380; MasteringBody { mixer: mx; studio: win } }
+        ZonePage { id: abPage; zid: "antes"; tint: "antes"; minWidth: 360; ReviewBody { mixer: mx; studio: win; shown: abPage.visible } }
+        ZonePage { zid: "master"; tint: "master"; minWidth: 380; MasterBody { studio: win; mixer: mx } }
+        ZonePage { zid: "cinta"; tint: "cinta"; minWidth: 360; CintaBody { seq: sq; studio: win } }
     }
+
+    // Vista principal: Arreglo ⇄ Mezclador (Tab)
     Item {
-        id: viewport
-        anchors { top: header.bottom; left: sideMenu.right; right: parent.right; bottom: statusBar.top }
-        visible: win.view === "modules"
+        id: mainArea
+        z: 3
+        anchors { top: header.bottom; left: navZ.right; right: inspZ.left; bottom: detZ.top }
         clip: true
-        onWidthChanged: if (win.maxId) win.fitMax()
-        onHeightChanged: if (win.maxId) win.fitMax()
-
-        Canvas {                                    // rejilla de puntos
-            id: dots
+        ArrangeView {
+            id: arrange
+            studio: win
             anchors.fill: parent
-            property real s: 34 * win.zoom
-            property real ox: win.tx
-            property real oy: win.ty
-            property var spec: Theme.spec
-            onSChanged: requestPaint(); onOxChanged: requestPaint(); onOyChanged: requestPaint()
-            onSpecChanged: requestPaint(); onWidthChanged: requestPaint(); onHeightChanged: requestPaint()
-            onPaint: {
-                var ctx = getContext("2d"); ctx.reset()
-                ctx.fillStyle = Theme.canvas; ctx.fillRect(0, 0, width, height)
-                if (Theme.canvasStyle === "grid") {         // rejilla de líneas finas (temas tipo DAW)
-                    var g = Theme.gridStep * win.zoom
-                    ctx.strokeStyle = Theme.dot; ctx.lineWidth = 1
-                    ctx.beginPath()
-                    for (var gx = ((ox % g) + g) % g; gx < width; gx += g) { ctx.moveTo(Math.round(gx) + .5, 0); ctx.lineTo(Math.round(gx) + .5, height) }
-                    for (var gy = ((oy % g) + g) % g; gy < height; gy += g) { ctx.moveTo(0, Math.round(gy) + .5); ctx.lineTo(width, Math.round(gy) + .5) }
-                    ctx.stroke()
-                    return
-                }
-                ctx.fillStyle = Theme.dot
-                var x0 = ((ox % s) + s) % s + s / 2 - s, y0 = ((oy % s) + s) % s + s / 2 - s
-                for (var y = y0; y < height + s; y += s)
-                    for (var x = x0; x < width + s; x += s) { ctx.beginPath(); ctx.arc(x, y, 1.75, 0, 6.2832); ctx.fill() }
-            }
+            visible: win.view === "arrange"
         }
-        MouseArea {                                 // arrastrar el fondo mueve el lienzo
-            anchors.fill: parent
-            enabled: !win.maxId
-            cursorShape: pressed ? Qt.ClosedHandCursor : Qt.OpenHandCursor
-            property point start
-            property point orig
-            onPressed: function (m) { start = Qt.point(m.x, m.y); orig = Qt.point(win.tx, win.ty) }
-            onPositionChanged: function (m) { win.tx = orig.x + m.x - start.x; win.ty = orig.y + m.y - start.y }
-        }
-
         Item {
-            id: world
-            x: win.tx; y: win.ty
-            scale: win.zoom
-            transformOrigin: Item.TopLeft
-
-            // cables (debajo de los módulos, como el <svg id="cables">)
-            Repeater {
-                model: win.cableLinks
-                Item {
-                    id: cable
-                    required property var modelData
-                    visible: !win.maxId
-                    readonly property color c: Theme.pc[modelData.f] || Theme.line
-                    readonly property var geo: {
-                        win.geomRev; win.portRev
-                        var a = win.anchorOf(modelData, "from"), b = win.anchorOf(modelData, "to")
-                        var m = win.bends[modelData.key] || { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }
-                        return { d: L.cableShape(a, b, m), m: m }
-                    }
-                    z: 0
-                    Shape {                          // drop-shadow(4px 4px 0 #000)
-                        x: 4; y: 4
-                        preferredRendererType: Shape.CurveRenderer
-                        ShapePath { strokeColor: "#000"; strokeWidth: 12; fillColor: "transparent"; capStyle: ShapePath.RoundCap
-                                    PathSvg { path: cable.geo.d } }
-                    }
-                    Shape {
-                        preferredRendererType: Shape.CurveRenderer
-                        ShapePath { strokeColor: "#000"; strokeWidth: 12; fillColor: "transparent"; capStyle: ShapePath.RoundCap
-                                    PathSvg { path: cable.geo.d } }
-                        ShapePath { strokeColor: cable.c; strokeWidth: 6; fillColor: "transparent"; capStyle: ShapePath.RoundCap
-                                    PathSvg { path: cable.geo.d } }
-                        ShapePath {                  // flujo mientras suena
-                            id: flow
-                            strokeColor: win.playing ? Qt.rgba(1, 1, 1, 0.95) : "transparent"
-                            strokeWidth: 2.5; fillColor: "transparent"; capStyle: ShapePath.RoundCap
-                            strokeStyle: ShapePath.DashLine; dashPattern: [1.2, 6.4]
-                            NumberAnimation on dashOffset { from: 7.6; to: 0; duration: 600; loops: Animation.Infinite; running: win.playing }
-                            PathSvg { path: cable.geo.d }
-                        }
-                    }
-                    Rectangle {                      // etiqueta «CANAL → FX» del cable de la consola al rack
-                        readonly property string nm: { win.tracks; var t = win.tracks.filter(function (k) { return k.id === win.rackTrack })[0]; return t ? t.name : "" }
-                        visible: cable.modelData.key === "mezcla-fx" && nm.length > 0
-                        x: cable.geo.m.x - width / 2; y: cable.geo.m.y - height - 16
-                        width: cl.implicitWidth + 16; height: 26
-                        color: "#fff"; border.width: Theme.buttonBorder; border.color: Theme.line
-                        Text { id: cl; anchors.centerIn: parent; text: parent.nm.toUpperCase() + " → FX"; color: "#000"
-                               font.family: Theme.font; font.pixelSize: 12; font.weight: 700 }
-                    }
-                }
-            }
-
-            // módulos
-            Repeater {
-                model: panelModel
-                ModulePanel {
-                    id: panel
-                    required property string base
-                    required property int index
-                    required pid
-                    readonly property var spec: win.spec(base)
-                    readonly property bool extra: pid !== base
-                    title: win.titleOf(pid); modelName: spec[2]
-                    accent: Theme.pcOf(pid)
-                    viewZ: win.zoom
-                    visible: !win.hidden[pid] && (!win.maxId || win.maxId === pid)
-                    mover: win.slideTo
-                    sizer: win.sizeTo
-                    z: index + 1
-                    Component.onCompleted: {
-                        var o = (win.savedLayout.pos || {})[pid] || spec[3]
-                        x = L.clamp(o[0], -15000, 15000); y = L.clamp(o[1], -15000, 15000); width = L.clamp(o[2], 240, 5000)
-                        fixedHeight = spec[4]
-                        if (o.length > 3) { fixedHeight = L.clamp(o[3], 190, 4000); resized = true }
-                        var m = Object.assign({}, win.panelItems); m[pid] = panel; win.panelItems = m
-                    }
-                    onXChanged: win.geomRev++
-                    onYChanged: win.geomRev++
-                    onWidthChanged: win.geomRev++
-                    onHeightChanged: win.geomRev++
-                    onVisibleChanged: win.geomRev++
-                    onRaiseRequested: z = ++win.zTop
-                    onEditFinished: { win.pushFrom(panel); win.saveLayout() }
-                    onFocusRequested: win.fitIds([pid])
-                    onCloseRequested: extra ? win.removeExtra(pid) : win.setHidden(pid, true)
-                    onMaximizeRequested: win.toggleMax(pid)
-                    onRenamed: function (name) { win.renamePanel(pid, name) }
-
-                    Loader {
-                        width: panel.bodyWidth
-                        sourceComponent: ({ pistas: tracksComp, audios: audiosComp, mezcla: mixComp, master: masterComp,
-                                            afina: tuneComp, mastia: masteringComp, antes: reviewComp,
-                                            inst: instComp, drums: drumsComp, piano: pianoComp, ia: iaComp,
-                                            cinta: cintaComp, fx: panel.extra ? fxExtraComp : fxComp, fxm: fxmComp })[panel.base]
-                    }
-                    Component { id: audiosComp; AudiosBody { mixer: mx; studio: win } }
-                    Component { id: mixComp; MixBody { mixer: mx; studio: win } }
-                    Component { id: masterComp; MasterBody { studio: win; mixer: mx } }
-                    Component { id: tuneComp; TuneBody { mixer: mx } }
-                    Component { id: masteringComp; MasteringBody { mixer: mx; studio: win } }
-                    Component { id: reviewComp; ReviewBody { mixer: mx; studio: win; shown: panel.visible } }
-                    Component { id: instComp; InstBody { seq: sq } }
-                    Component { id: drumsComp; DrumsBody { seq: sq; curStep: win.playing && win.step >= 0 ? win.step % 16 : -1 } }
-                    Component { id: pianoComp; PianoBody { seq: sq } }
-                    Component { id: iaComp; IaBody { seq: sq } }
-                    Component { id: cintaComp; CintaBody { seq: sq; studio: win } }
-                    Component { id: fxComp; FxBody { studio: win; shown: panel.visible } }
-                    Component {
-                        id: fxmComp
-                        Column {
-                            width: parent ? parent.width : 700
-                            FxBody { studio: win; shown: panel.visible; master: true }
-                            AutoMasterBox { mixer: mx }
-                        }
-                    }
-                    Component { id: fxExtraComp; FxBody { studio: win; shown: panel.visible; extraId: panel.pid } }
-                    Component {
-                        id: tracksComp
-                        TracksBody {
-                            tracks: win.tracks
-                            mixer: mx
-                            seq: sq
-                            host: panel
-                            studio: win
-                            posSec: win.posSec
-                            bpm: win.bpm
-                            Component.onCompleted: win.rowCenter = rowCenter
-                            onAddType: function (type) { sq.addTrack(type) }
-                            selected: win.selected
-                            bar16: win.bar16
-                            headPos: win.step < 0 ? 0 : (win.step % 256) / 256
-                            onAddAudio: { if (win.engineOk) win.importAudio(); else win.toast("Motor nativo no disponible") }
-                            onAddTone: {
-                                var r = win.call("addTestTone")
-                                if (r.ok) { win.addTrack(r.track, false); win.toast("Tono de prueba 440 Hz (sintético) añadido") } else win.toast(r.error)
-                            }
-                            onNotYet: function (what) { win.toast("«" + what + "» todavía no está en la interfaz nativa") }
-                            onSelectTrack: function (i) { sq.pick(i) }
-                            onToggleMute: function (i) { var t = win.tracks.slice(); t[i] = Object.assign({}, t[i], { mute: !t[i].mute }); win.tracks = t; win.syncTrackStates() }
-                            onToggleSolo: function (i) { var t = win.tracks.slice(); t[i] = Object.assign({}, t[i], { solo: !t[i].solo }); win.tracks = t; win.syncTrackStates() }
-                            onRemoveTrack: function (i) { win.removeTrackAt(i) }
-                            onSplitTrack: function (i) { sq.splitStems(win.tracks[i].id) }
-                        }
-                    }
-                }
-            }
-
-            // Placas de E/S, como la trasera de un rack: ENTRADAS a la izquierda del módulo y SALIDAS a la
-            // derecha. Solo aparecen en el lado que tiene conexiones reales (nada decorativo).
-            Repeater {
-                model: win.panelList
-                Item {
-                    id: io
-                    required property var modelData
-                    readonly property var pnl: win.panelItems[modelData.pid]
-                    readonly property var count: {
-                        var o = { to: 0, from: 0 }
-                        win.portList.forEach(function (p) { if (p.pid === io.modelData.pid) o[p.end]++ })
-                        return o
-                    }
-                    readonly property color mc: Theme.pc[modelData.base || modelData.pid] || Theme.ink
-                    visible: !!pnl && pnl.visible && !win.maxId
-                    z: pnl ? pnl.z + 0.3 : 0
-                    Repeater {
-                        model: [["to", "ENTRADAS"], ["from", "SALIDAS"]]
-                        Rectangle {
-                            id: plate
-                            required property var modelData
-                            readonly property bool out: modelData[0] === "from"
-                            visible: !!io.pnl && io.count[modelData[0]] > 0
-                            x: io.pnl ? (out ? io.pnl.x + io.pnl.width - 3 : io.pnl.x - win.plateW + 3) : 0
-                            y: io.pnl ? io.pnl.y + 16 : 0
-                            width: win.plateW; height: io.pnl ? io.pnl.height - 32 : 0
-                            color: "#1d1d1f"; border.width: Theme.border; border.color: Theme.line
-                            Rectangle { x: 4; y: 4; z: -1; width: parent.width; height: parent.height; color: "#000"; visible: Theme.buttonShadow > 0 }
-                            Rectangle {                  // cabecera de la placa con el color del módulo
-                                x: 3; y: 3; width: parent.width - 6; height: 24; color: io.mc
-                                Text { anchors.centerIn: parent; text: plate.modelData[1] + " · " + io.count[plate.modelData[0]]
-                                       color: "#000"; font.family: Theme.font; font.pixelSize: 11; font.weight: 700 }
-                            }
-                            Repeater {                   // tornillos del panel
-                                model: [[8, 33], [plate.width - 16, 33], [8, plate.height - 16], [plate.width - 16, plate.height - 16]]
-                                Rectangle { required property var modelData
-                                            x: modelData[0]; y: modelData[1]; width: 8; height: 8; radius: 4
-                                            color: "#6b6b6b"; border.width: 1; border.color: Theme.line }
-                            }
-                            HoverHandler { id: ph }
-                            ToolTipLite { text: (plate.out ? "Salidas de " : "Entradas de ") + L.panelName(io.modelData.base || io.modelData.pid) +
-                                                ": " + io.count[plate.modelData[0]] + " conexión(es). Las entradas van a la izquierda y las salidas a la derecha."
-                                          show: ph.hovered }
-                        }
-                    }
-                }
-            }
-
-            // jacks (en la placa de su módulo, por encima de ella)
-            Repeater {
-                model: win.portList
-                Item {
-                    id: port
-                    required property var modelData
-                    readonly property var pnl: win.panelItems[modelData.pid]
-                    readonly property var a: { win.geomRev; win.portRev; return win.anchorOf(modelData.link, modelData.end) }
-                    readonly property color c: Theme.pc[modelData.link.f] || Theme.line
-                    visible: !!pnl && pnl.visible && !win.maxId
-                    x: a.x - 13; y: a.y - 13
-                    z: pnl ? pnl.z + 0.5 : 0
-                    width: 26; height: 26
-                    scale: pm.containsMouse || pm.pressed ? 1.13 : 1
-                    Rectangle { x: 2; y: 2; width: 26; height: 26; radius: 13; color: "#000"; visible: Theme.buttonShadow > 0 }
-                    Rectangle {
-                        anchors.fill: parent; radius: 13; color: "#d0d0d0"; border.width: Theme.border; border.color: Theme.line
-                        Rectangle { anchors.centerIn: parent; width: 17; height: 17; radius: 8.5; color: "#111" }
-                        Rectangle { anchors.centerIn: parent; width: 10; height: 10; radius: 5; color: port.c }
-                        Rectangle { anchors.fill: parent; anchors.margins: 3; radius: 10; color: "transparent"
-                                    border.width: 1; border.color: "#fff"; visible: port.modelData.end === "from" }
-                    }
-                    Rectangle { anchors.fill: parent; anchors.margins: -5; radius: 18; color: "transparent"
-                                border.width: Theme.border; border.color: "#fff"; visible: pm.containsMouse || pm.pressed }
-                    MouseArea {
-                        id: pm
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        cursorShape: pressed ? Qt.ClosedHandCursor : Qt.OpenHandCursor
-                        onPositionChanged: function (m) {
-                            if (!pressed) return
-                            var p = mapToItem(world, m.x, m.y), o = Object.assign({}, win.portOverride)
-                            o[port.modelData.key + ":" + port.modelData.end] = L.slidePin(win.geom(port.modelData.pid), port.modelData.end, p.y)
-                            win.portOverride = o; win.portRev++
-                        }
-                        onReleased: win.saveLayout()
-                    }
-                    Text {                           // rótulo serigrafiado en la placa, encima del jack
-                        readonly property bool out: port.modelData.end === "from"
-                        readonly property real plateX: port.pnl ? (out ? port.pnl.x + port.pnl.width - 3 : port.pnl.x - win.plateW + 3) : 0
-                        x: plateX + 6 - port.x; y: -17
-                        width: win.plateW - 12; height: 15
-                        text: win.jackText(port.modelData.link, port.modelData.end)
-                        visible: text.length > 0
-                        horizontalAlignment: Text.AlignHCenter; elide: Text.ElideRight
-                        color: "#fff"; font.family: Theme.font; font.pixelSize: 10; font.weight: 700
-                    }
-                    ToolTipLite { text: win.jackTip(port.modelData.link, port.modelData.end); show: pm.containsMouse && !pm.pressed }
-                }
-            }
-
-            // cuadrado del cable para curvarlo (por encima de todo, como #handles)
-            Repeater {
-                model: win.cableLinks
-                Rectangle {
-                    id: bend
-                    required property var modelData
-                    readonly property var m: {
-                        win.geomRev; win.portRev
-                        var a = win.anchorOf(modelData, "from"), b = win.anchorOf(modelData, "to")
-                        return win.bends[modelData.key] || { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }
-                    }
-                    z: 0.5                           // sobre su cable, debajo de los módulos
-                    visible: !win.maxId
-                    x: m.x - 10.5; y: m.y - 10.5
-                    width: 21; height: 21; radius: 4
-                    color: bm.containsMouse ? "#ffc233" : Theme.grip
-                    border.width: Theme.border; border.color: Theme.line
-                    Rectangle { x: 2; y: 2; z: -1; width: 21; height: 21; radius: 4; color: "#000"; visible: Theme.buttonShadow > 0 }
-                    Rectangle { anchors.centerIn: parent; width: 8; height: 8; color: Theme.pc[bend.modelData.f]; border.width: 1; border.color: Theme.line }
-                    MouseArea {
-                        id: bm
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        cursorShape: Qt.SizeAllCursor
-                        onPositionChanged: function (m) {
-                            if (!pressed) return
-                            var p = mapToItem(world, m.x, m.y), o = Object.assign({}, win.bends)
-                            o[bend.modelData.key] = { x: p.x, y: p.y }
-                            win.bends = o; win.portRev++
-                        }
-                        onReleased: win.saveLayout()
-                    }
-                    ToolTipLite { text: "Arrastra para curvar este cable en cualquier dirección"; show: bm.containsMouse && !bm.pressed }
-                }
-            }
-        }
-
-        MouseArea {                                 // la rueda siempre hace zoom (como en la plantilla)
+            id: mixPage
             anchors.fill: parent
-            z: 10
-            acceptedButtons: Qt.NoButton
-            enabled: !win.maxId
-            onWheel: function (w) { win.zoomAt(w.angleDelta.y > 0 ? 1.12 : 1 / 1.12, w.x, w.y); w.accepted = true }
+            visible: win.view === "mixer"
+            Rectangle { anchors.fill: parent; color: Theme.panelColor("mezcla", Theme.pc.mezcla) }
+            Flickable {
+                id: mixFlick
+                x: 12; y: 10; width: parent.width - 24; height: parent.height - 20
+                contentWidth: mixBody.width; contentHeight: mixBody.height
+                clip: true; boundsBehavior: Flickable.StopAtBounds
+                MixBody { id: mixBody; width: Math.max(mixFlick.width, 700); mixer: mx; studio: win }
+            }
         }
-
         DropArea {                                  // arrastrar audios desde el Explorador
             anchors.fill: parent
             z: 11
@@ -1281,6 +735,88 @@ Las entradas van a la izquierda y las salidas a la derecha. Arrastra para moverl
                 if (paths.length) {
                     if (win.engineOk) win.importPaths(paths); else win.toast("Motor nativo no disponible")
                 }
+            }
+        }
+    }
+
+    // Panel de detalle (abajo): el editor de lo seleccionado
+    Zone {
+        id: detZ
+        z: 4
+        title: "Detalle"
+        anchors { left: parent.left; right: parent.right; bottom: statusBar.top }
+        height: folded ? headH : win.detailH
+        foldTip: folded ? "Mostrar el panel de detalle (Ctrl+E)" : "Plegar el panel de detalle (Ctrl+E)"
+        tabs: [["pistas", "Clips", "Clips de las pistas de audio: dividir (S), mover, fundidos, normalizar, rehacer con IA"],
+               ["piano", "Piano roll", "Notas de la pista de instrumento elegida"],
+               ["inst", "Instrumento", "Sonido de la pista de instrumento: sintetizador del motor o VST3"],
+               ["drums", "Batería", "Pads y patrón de 16 pasos de la pista de batería"],
+               ["fx", "Efectos", "Cadena de efectos de la pista elegida y su editor"],
+               ["afina", "Afinador", "Afinador AF-60 y afinación de las voces"],
+               ["fxm", "Efectos master", "Cadena del master y masterizado automático"]]
+        current: "fx"
+        extra: srcToggle
+        onFoldedChanged: if (!win.loading) win.saveLayout()
+        onPicked: if (!win.loading) win.saveLayout()
+        Rectangle {                                 // asa para cambiar el alto (solo lo cambia el usuario)
+            parent: detZ
+            z: 6
+            visible: !detZ.folded
+            width: parent.width; height: 6; color: dh.hovered || dm.pressed ? Theme.accent : "transparent"
+            HoverHandler { id: dh; cursorShape: Qt.SizeVerCursor }
+            MouseArea {
+                id: dm
+                anchors.fill: parent
+                cursorShape: Qt.SizeVerCursor
+                property real y0
+                property real h0
+                onPressed: function (m) { y0 = mapToItem(null, m.x, m.y).y; h0 = win.detailH }
+                onPositionChanged: function (m) {
+                    if (!pressed) return
+                    win.detailH = lu.clamp(h0 - (mapToItem(null, m.x, m.y).y - y0), 200, Math.max(200, win.height - 320))
+                }
+                onReleased: win.saveLayout()
+            }
+            ToolTipLite { text: "Arrastra para cambiar el alto del panel de detalle"; show: dh.hovered && !dm.pressed }
+        }
+        ZonePage {
+            zid: "pistas"; tint: "pistas"; minWidth: 900
+            TracksBody {
+                tracks: win.tracks
+                mixer: mx
+                seq: sq
+                host: null
+                studio: win
+                posSec: win.posSec
+                bpm: win.bpm
+                onAddType: function (type) { sq.addTrack(type) }
+                selected: win.selected
+                bar16: win.bar16
+                headPos: win.step < 0 ? 0 : (win.step % 256) / 256
+                onAddAudio: { if (win.engineOk) win.importAudio(); else win.toast("Motor nativo no disponible") }
+                onAddTone: {
+                    var r = win.call("addTestTone")
+                    if (r.ok) { win.addTrack(r.track, false); win.toast("Tono de prueba 440 Hz (sintético) añadido") } else win.toast(r.error)
+                }
+                onNotYet: function (what) { win.toast("«" + what + "» todavía no está en la interfaz nativa") }
+                onSelectTrack: function (i) { sq.pick(i) }
+                onToggleMute: function (i) { var t = win.tracks.slice(); t[i] = Object.assign({}, t[i], { mute: !t[i].mute }); win.tracks = t; win.syncTrackStates() }
+                onToggleSolo: function (i) { var t = win.tracks.slice(); t[i] = Object.assign({}, t[i], { solo: !t[i].solo }); win.tracks = t; win.syncTrackStates() }
+                onRemoveTrack: function (i) { win.removeTrackAt(i) }
+                onSplitTrack: function (i) { sq.splitStems(win.tracks[i].id) }
+            }
+        }
+        ZonePage { zid: "piano"; tint: "piano"; minWidth: 760; PianoBody { seq: sq } }
+        ZonePage { zid: "inst"; tint: "inst"; minWidth: 420; InstBody { seq: sq } }
+        ZonePage { zid: "drums"; tint: "drums"; minWidth: 760; DrumsBody { seq: sq; curStep: win.playing && win.step >= 0 ? win.step % 16 : -1 } }
+        ZonePage { id: fxPage; zid: "fx"; tint: "fx"; minWidth: 860; FxBody { studio: win; shown: fxPage.visible } }
+        ZonePage { zid: "afina"; tint: "afina"; minWidth: 620; TuneBody { mixer: mx } }
+        ZonePage {
+            id: fxmPage; zid: "fxm"; tint: "fxm"; minWidth: 860
+            Column {
+                width: parent ? parent.width : 860
+                FxBody { studio: win; shown: fxmPage.visible; master: true }
+                AutoMasterBox { mixer: mx }
             }
         }
     }
@@ -1310,7 +846,7 @@ Las entradas van a la izquierda y las salidas a la derecha. Arrastra para moverl
                 NeoButton { text: "Volver a una ventana"; tip: "Cierra esta ventana; el Arreglo sigue en la principal (F7)"
                             onClicked: { win.dualWindow = false; win.view = "arrange" } }
                 Text { anchors.verticalCenter: parent.verticalCenter; leftPadding: 10
-                       text: "Mismo proyecto que la ventana principal · ahí quedan los módulos"
+                       text: "Mismo proyecto que la ventana principal · ahí queda el Mezclador"
                        color: Theme.ink; font.family: Theme.font; font.pixelSize: 12 }
             }
         }
@@ -1350,17 +886,11 @@ Las entradas van a la izquierda y las salidas a la derecha. Arrastra para moverl
     }
 
     Component.onCompleted: {
-        var list = []
-        for (var i = 0; i < L.PANELS.length; i++) {
-            panelModel.append({ pid: L.PANELS[i][0], base: L.PANELS[i][0] })
-            list.push({ pid: L.PANELS[i][0], base: L.PANELS[i][0], extra: false })
-        }
-        panelList = list
-        var nm = savedLayout.names || {}, okn = {}
-        for (var k0 in nm) if (typeof nm[k0] === "string" && nm[k0].length) okn[k0] = nm[k0].slice(0, 60)
-        names = okn
-        extraTargets = savedLayout.targets || {}
-        ;(savedLayout.extra || []).forEach(function (e) { if (e && e.base === "fx" && /^fx~\d+$/.test(e.pid)) addExtra("fx", e.pid) })
+        var fo = savedLayout.fold || {}, tb = savedLayout.tab || {}
+        navZ.folded = !!fo.nav; inspZ.folded = !!fo.insp; detZ.folded = !!fo.detail
+        if (tb.nav && pageZone[tb.nav] === "nav") navZ.current = tb.nav
+        if (tb.insp && pageZone[tb.insp] === "insp") inspZ.current = tb.insp
+        if (tb.detail && pageZone[tb.detail] === "detail") detZ.current = tb.detail
         loadThemes()                              // tema guardado (los diseños antiguos guardaban "dark"/"light")
         // De fábrica: Professional (oscuro, plano, como un DAW de estudio; 23-11-2026). Un diseño guardado
         // antes con un tema de fábrica (AllForOne claro u oscuro) pasa una vez a Professional; después
@@ -1368,12 +898,6 @@ Las entradas van a la izquierda y las salidas a la derecha. Arrastra para moverl
         var tn = savedLayout.theme === "dark" ? "AllForOne Oscuro" : savedLayout.theme === "light" ? "AllForOne" : savedLayout.theme
         if (!tn || (!savedLayout.look2 && (tn === "AllForOne" || tn === "AllForOne Oscuro"))) tn = "Professional"
         if (!setTheme(tn, true)) setTheme("Professional", true)
-        var po = savedLayout.ports || {}, ok = {}
-        for (var k in po) if (po[k] && L.sideOf(k.split(":").pop()) === po[k].side && isFinite(po[k].u)) ok[k] = { side: po[k].side, u: L.clamp(po[k].u, .03, .97) }
-        portOverride = ok
-        var be = savedLayout.bends || {}, bk = {}
-        for (var b in be) if (be[b] && isFinite(be[b].x) && isFinite(be[b].y)) bk[b] = { x: L.clamp(be[b].x, -15000, 15000), y: L.clamp(be[b].y, -15000, 15000) }
-        bends = bk
 
         var info = call("hello")
         engineOk = !!info.engine
@@ -1390,8 +914,13 @@ Las entradas van a la izquierda y las salidas a la derecha. Arrastra para moverl
         sq.createDefaults()
         firstFit.start()
     }
-    Timer { id: firstFit; interval: 60; onTriggered: { win.settleAll(); win.loading = false; win.fitIds(["inst", "drums", "pistas"]) } }
-    Shortcut { sequence: "Escape"; enabled: !!win.maxId; onActivated: win.toggleMax(win.maxId) }
+    Timer { id: firstFit; interval: 60; onTriggered: win.loading = false }
+    // Tab cambia Arreglo ⇄ Mezclador (no mientras se escribe en un campo de texto)
+    readonly property bool typing: !!activeFocusItem && activeFocusItem.cursorPosition !== undefined
+    Shortcut { sequence: "Tab"; enabled: !win.typing && !win.dualWindow; onActivated: win.view = win.view === "arrange" ? "mixer" : "arrange" }
+    Shortcut { sequence: "Ctrl+B"; onActivated: navZ.folded = !navZ.folded }
+    Shortcut { sequence: "Ctrl+I"; onActivated: inspZ.folded = !inspZ.folded }
+    Shortcut { sequence: "Ctrl+E"; onActivated: detZ.folded = !detZ.folded }
     Shortcut {                                      // Espacio: reproducir / pausa, como en cualquier DAW
         sequence: "Space"; enabled: win.engineOk
         onActivated: { var r = win.call("togglePlay"); if (!r.ok) win.toast(r.error) }

@@ -152,6 +152,7 @@ QtObject {
     function pick(i) {
         var t = studio.tracks[i]; if (!t) return
         studio.selected = i
+        studio.followSelection(t)
         if (act[t.type] !== undefined) { var c = Object.assign({}, act); c[t.type] = t.uid; act = c }
         if (t.type === "voz") arm()
     }

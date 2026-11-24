@@ -2,29 +2,32 @@ import QtQuick
 import "../theme"
 import "../state/fxlibrary.js" as FL
 
-// Menú lateral: Módulos (ir a cada uno, + para agregar otro, doble clic para renombrar),
-// Instrumentos (crea una pista con ese instrumento) y Efectos (los agrega al rack del canal elegido).
+// Navegador › Añadir (instrumentos: cada uno crea su pista) y Efectos (se agregan a la cadena de la
+// pista elegida). Vive en la zona Navegador de la ventana (Main.qml), que pone sus propias pestañas.
 Rectangle {
     id: root
     property var studio
-    property int tab: 0
+    property int tab: 1                       // 1 instrumentos · 2 efectos
+    property bool showTabs: true
     property string filter: ""
     readonly property var fxBody: studio.fxBody
-    color: Theme.dark ? "#17141d" : "#fff6dc"
+    color: Theme.sidebar
     clip: true
     Rectangle { x: parent.width - 3; width: 3; height: parent.height; color: Theme.line; z: 3 }
 
     // pestañas
     Row {
         id: tabs
-        x: 10; y: 10; spacing: 4
+        x: 10; y: root.showTabs ? 10 : 0; spacing: 4
+        visible: root.showTabs; height: root.showTabs ? 30 : 0
         Repeater {
-            model: ["MÓDULOS", "INSTRUMENTOS", "EFECTOS"]
+            model: ["", "INSTRUMENTOS", "EFECTOS"]
             Rectangle {
                 required property var modelData
                 required property int index
                 readonly property bool on: root.tab === index
-                width: (root.width - 20 - 3 - 8) / 3; height: 30
+                visible: index > 0
+                width: (root.width - 20 - 3 - 4) / 2; height: 30
                 color: on ? "#000" : Theme.button
                 border.width: Theme.buttonBorder; border.color: Theme.line
                 Text { anchors.centerIn: parent; text: parent.modelData; color: parent.on ? Theme.accent : Theme.ink
@@ -45,114 +48,6 @@ Rectangle {
             id: content
             width: flick.width
             spacing: 6
-
-            // ---------------- módulos ----------------
-            Repeater {
-                model: root.tab === 0 ? root.studio.panelList : []
-                Item {
-                    id: entry
-                    required property var modelData
-                    readonly property string pid: modelData.pid
-                    readonly property var pnl: root.studio.panelItems[pid] || null
-                    readonly property bool shown: !root.studio.hidden[pid]
-                    readonly property bool cur: root.studio.currentId === pid
-                    readonly property var more: root.studio.addLabel(modelData.base)
-                    width: content.width; height: 58
-                    Rectangle { x: 3; y: 3; width: parent.width - 3; height: parent.height - 3; color: "#000"; visible: Theme.buttonShadow > 0 }
-                    Rectangle {
-                        width: parent.width - 3; height: parent.height - 3
-                        color: entry.cur ? Theme.tint(Theme.pcOf(entry.pid)) : Theme.button
-                        border.width: Theme.buttonBorder; border.color: Theme.line
-                        MouseArea {
-                            anchors.fill: parent; cursorShape: Qt.PointingHandCursor
-                            onClicked: root.studio.goTo(entry.pid)
-                        }
-                        Rectangle {                     // miniatura del módulo
-                            id: thumbBox
-                            x: 6; y: 6; width: 70; height: parent.height - 12
-                            color: Theme.pcOf(entry.pid); border.width: Theme.buttonBorder; border.color: Theme.line; clip: true
-                            ShaderEffectSource {
-                                id: thumb
-                                visible: !!entry.pnl && entry.shown
-                                readonly property real k: entry.pnl ? Math.min((parent.width - 4) / entry.pnl.width, (parent.height - 4) / entry.pnl.height) : 1
-                                anchors.centerIn: parent
-                                width: entry.pnl ? entry.pnl.width * k : 0; height: entry.pnl ? entry.pnl.height * k : 0
-                                sourceItem: entry.shown ? entry.pnl : null
-                                live: false
-                                textureSize: Qt.size(Math.max(1, Math.round(width * 2)), Math.max(1, Math.round(height * 2)))
-                                Connections { target: thumbTimer; function onTriggered() { if (thumb.visible) thumb.scheduleUpdate() } }
-                            }
-                            Text { visible: !thumb.visible; anchors.centerIn: parent; text: "oculto"; color: "#000"
-                                   font.family: Theme.font; font.pixelSize: 10; font.weight: 700 }
-                        }
-                        Column {
-                            x: thumbBox.x + thumbBox.width + 8; anchors.verticalCenter: parent.verticalCenter
-                            width: parent.width - x - btns.width - 8
-                            spacing: 1
-                            Text {
-                                id: nm
-                                visible: !nmEdit.visible
-                                width: parent.width; elide: Text.ElideRight
-                                text: root.studio.titleOf(entry.pid)
-                                color: Theme.ink; font.family: Theme.font; font.pixelSize: 13; font.weight: 700
-                                MouseArea {
-                                    anchors.fill: parent; cursorShape: Qt.PointingHandCursor
-                                    onClicked: root.studio.goTo(entry.pid)
-                                    onDoubleClicked: { nmEdit.text = nm.text; nmEdit.visible = true; nmEdit.forceActiveFocus(); nmEdit.selectAll() }
-                                }
-                                ToolTipLite { text: "Clic: ir al módulo · Doble clic: renombrar"; show: false }
-                            }
-                            Rectangle {
-                                visible: nmEdit.visible
-                                width: parent.width; height: 22; color: Theme.input; border.width: Theme.buttonBorder; border.color: Theme.line
-                                TextInput {
-                                    id: nmEdit
-                                    visible: false
-                                    x: 4; width: parent.width - 8; anchors.verticalCenter: parent.verticalCenter
-                                    color: Theme.ink; selectByMouse: true; clip: true
-                                    font.family: Theme.font; font.pixelSize: 12; font.weight: 700
-                                    onAccepted: { visible = false; root.studio.renamePanel(entry.pid, text) }
-                                    onActiveFocusChanged: if (!activeFocus && visible) accepted()
-                                    Keys.onEscapePressed: visible = false
-                                }
-                            }
-                            Text {
-                                width: parent.width; elide: Text.ElideRight
-                                text: root.studio.modelOf(entry.pid) + (entry.shown ? "" : " · oculto")
-                                color: Theme.ink; opacity: 0.7; font.family: Theme.font; font.pixelSize: 10; font.weight: 600
-                            }
-                        }
-                        Row {
-                            id: btns
-                            x: parent.width - width - 6; anchors.verticalCenter: parent.verticalCenter
-                            spacing: 4
-                            SmallBtn {
-                                glyph: entry.shown ? "◉" : "○"
-                                tip: entry.shown ? "Ocultar del lienzo (sus pistas dejan de sonar si es una fuente)" : "Mostrar en el lienzo"
-                                visible: !entry.modelData.extra
-                                onClicked: entry.shown ? root.studio.setHidden(entry.pid, true) : root.studio.goTo(entry.pid)
-                            }
-                            SmallBtn {
-                                glyph: "✕"; tip: "Quitar este rack"
-                                visible: !!entry.modelData.extra
-                                onClicked: root.studio.removeExtra(entry.pid)
-                            }
-                            SmallBtn {
-                                glyph: "+"; accent: true
-                                visible: !!entry.more
-                                tip: entry.more || ""
-                                onClicked: root.studio.addMore(entry.modelData.base)
-                            }
-                        }
-                    }
-                }
-            }
-            Text {
-                visible: root.tab === 0
-                width: content.width; wrapMode: Text.Wrap; topPadding: 4
-                text: "Clic: ir al módulo · □ en su cabecera: maximizar · Doble clic en el nombre: renombrar · +: agregar otro"
-                color: Theme.ink; opacity: 0.7; font.family: Theme.font; font.pixelSize: 11; font.weight: 500
-            }
 
             // ---------------- instrumentos ----------------
             Section { visible: root.tab === 1; text: "INSTRUMENTOS DEL MOTOR" }
@@ -274,7 +169,6 @@ Rectangle {
             PluginScan { visible: root.tab === 2 }
         }
     }
-    Timer { id: thumbTimer; interval: 1500; repeat: true; running: root.visible && root.tab === 0; triggeredOnStart: true }
 
     component Section: Text {
         width: content.width; topPadding: 8

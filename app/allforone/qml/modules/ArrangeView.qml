@@ -176,7 +176,6 @@ Rectangle {
     function fitAll() { pps = Math.max(2, Math.min(80, (flick.width - headW - 30) / Math.max(1, songLen))) }
     function openInFx(id) {
         studio.rackTrack = id
-        studio.view = "modules"
         studio.goTo(id === 0 ? "fxm" : "fx")
     }
 

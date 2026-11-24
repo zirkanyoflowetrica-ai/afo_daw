@@ -63,17 +63,15 @@ Rectangle {
         horizontalAlignment: Text.AlignRight
         elide: Text.ElideRight
         text: root.studio.view === "arrange"
-              ? "Clic en la regla o un clip: mover el cursor · en una curva: clic añade punto, clic derecho lo borra · R/T/L/W: modo de automatización · Ctrl+rueda: zoom · F6: módulos"
-              : root.studio.maxId ? "Esc: volver al lienzo"
-              : "Arrastra la cabecera para mover · □ maximizar · bordes: tamaño · Espacio: reproducir · Ctrl+S: guardar"
+              ? "Clic en la regla o un clip: mover el cursor · en una curva: clic añade punto, clic derecho lo borra · R/T/L/W: automatización · Ctrl+rueda: zoom · Tab: Mezclador"
+              : "Clic en una tira: su cadena en Efectos · Tab: Arreglo · Ctrl+B / Ctrl+I / Ctrl+E: plegar navegador, inspector y detalle"
         color: Theme.ink; font.family: Theme.font; font.pixelSize: 12; font.weight: 500
     }
     Text {
         id: zoomText
         anchors.verticalCenter: parent.verticalCenter
         anchors.right: parent.right; anchors.rightMargin: 12
-        text: root.studio.view === "arrange" ? root.studio.arrangeView.pps.toFixed(0) + " px/s"
-              : "Zoom " + Math.round(root.studio.zoom * 100) + " %"
+        text: root.studio.view === "arrange" ? root.studio.arrangeView.pps.toFixed(0) + " px/s" : "Mezclador"
         color: Theme.ink; font.family: Theme.font; font.pixelSize: 12; font.weight: 600
     }
 }

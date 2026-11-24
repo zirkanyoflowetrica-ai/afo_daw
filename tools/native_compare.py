@@ -84,7 +84,7 @@ def main() -> int:
 
     host = EngineHost.create()
     qml_engine, qwin, _b2 = build_native_window(host)
-    qwin.setProperty("view", "modules")          # la plantilla es el lienzo de módulos
+    qwin.setProperty("view", "arrange")          # la plantilla era el lienzo de módulos (retirado): se compara color y tipografía
     qwin.setWidth(w)
     qwin.setHeight(h)
     qwin.show()

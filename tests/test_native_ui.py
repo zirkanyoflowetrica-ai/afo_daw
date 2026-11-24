@@ -21,7 +21,8 @@ def test_selftest(tmp_path):
     failed = [x for x in data["results"] if x["status"] == "fail"]
     names = {x["name"] for x in data["results"] if x["status"] == "ok"}
     assert r.returncode == 0 and not failed, (failed, r.stdout[-2000:], r.stderr[-2000:])
-    assert "interfaz QML cargada sin avisos" in names and "14 módulos en el lienzo" in names
+    assert "interfaz QML cargada sin avisos" in names
+    assert any(n.startswith("zonas fijas") for n in names) and any(n.startswith("los 14 módulos tienen su sitio") for n in names)
 
 
 def test_layout_store_roundtrip(tmp_path):

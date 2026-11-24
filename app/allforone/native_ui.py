@@ -175,23 +175,25 @@ def _native_daw_checks(rep, app, host, window, bridge, track_id) -> None:
     def lay(what, a=None, b=None):
         return call("layoutCommand", what, a, b)
 
-    h0 = lay("heights")
-    rep.check("ningún módulo se monta sobre otro al abrir", lay("overlaps") == [], lay("overlaps"))
-    d = lay("drag", "inst", [0, 3000])
-    rep.check("arrastrar un módulo contra otro: se detiene antes de chocar", lay("overlaps") == [] and d["to"][1] < d["from"][1] + 3000, d)
-    m = lay("max", "pistas")
-    rep.check("maximizar: el módulo ocupa el visor a zoom 1",
-              m["maxId"] == "pistas" and m["zoom"] == 1 and abs(m["w"] - (m["vw"] - 24)) < 1 and abs(m["h"] - (m["vh"] - 24)) < 1, m)
-    m = lay("max", "pistas")
-    rep.check("restaurar tras maximizar", m["maxId"] == "" and m["w"] < m["vw"], m)
-    pid = lay("extra", "fx")
-    _wait(app, lambda: False, 0.3, host)
-    r = lay("rename", pid, "Rack voces")
-    rep.check("«+» del menú crea otro rack de Efectos y se puede renombrar",
-              pid == "fx~2" and r["title"] == "Rack voces" and r["panel"] == "Rack voces" and lay("overlaps") == [], {"pid": pid, **r})
-    rep.check("quitar el rack extra", pid not in lay("remove", pid))
+    # Ventana con zonas fijas (docs/DISENO_DAW.md §2): nada se solapa, cada zona se pliega y la vista
+    # principal ocupa lo que dejan
+    z0 = lay("zones")
+    rep.check("zonas fijas: cabecera, navegador, vista principal, inspector, detalle y barra de estado sin solaparse",
+              lay("overlaps") == [] and all(z0[k]["visible"] and z0[k]["w"] > 0 and z0[k]["h"] > 0 for k in z0), z0)
+    zf = lay("fold", "nav", True)
+    zi = lay("fold", "insp", True)
+    zd = lay("fold", "detail", True)
+    rep.check("plegar navegador, inspector y detalle agranda la vista principal",
+              zi["principal"]["w"] > z0["principal"]["w"] + 600 and zd["principal"]["h"] > z0["principal"]["h"] + 100
+              and zf["navegador"]["w"] < 40 and lay("overlaps") == [], {"antes": z0["principal"], "después": zd["principal"]})
+    for k in ("nav", "insp", "detail"):
+        lay("fold", k, False)
     g = lay("goto", "afina")
-    rep.check("el menú lleva al módulo", g["currentId"] == "afina" and not g["hidden"], g)
+    rep.check("ir a un módulo abre su zona y su pestaña (Afinador → detalle)",
+              g["currentId"] == "afina" and g["zone"] == "Detalle" and g["page"] == "afina" and not g["folded"], g)
+    g = lay("goto", "mezcla")
+    rep.check("Mezcla es la vista Mezclador (Tab)", g["view"] == "mixer", g)
+    lay("view", "arrange")
 
     # Edición de clips de audio (la pista del tono de 8 s)
     def edit(op):
@@ -220,9 +222,19 @@ def _native_daw_checks(rep, app, host, window, bridge, track_id) -> None:
     rep.check("los cortes suenan en el render (silencio entre los clips)", out.exists(), str(out))
     edit({"op": "set", "clips": [{"start": 0, "length": 8, "offset": 0}]})
     call("refreshClips", "a" + str(track_id))
-    h1 = lay("heights")
-    rep.check("tamaño fijo: ningún módulo cambia de alto por su contenido", h0 == h1,
-              {k: (h0.get(k), h1.get(k)) for k in h1 if h0.get(k) != h1.get(k)})
+    z1 = lay("zones")
+    rep.check("tamaño fijo: ninguna zona cambia de tamaño por su contenido", z0 == z1,
+              {k: (z0.get(k), z1.get(k)) for k in z1 if z0.get(k) != z1.get(k)})
+    tracks = call("mixerSnapshot")["tracks"]
+    i_drum = next((i for i, t in enumerate(tracks) if t["type"] == "drum"), -1)
+    i_tone = next((i for i, t in enumerate(tracks) if t["id"] == track_id), -1)
+    lay("goto", "drums")
+    s_tone = lay("select", i_tone)
+    lay("goto", "piano")
+    s_drum = lay("select", i_drum)
+    rep.check("la selección manda: elegir una pista abre su editor en el detalle y su cadena en Efectos",
+              s_tone["detail"] == "pistas" and s_tone["rack"] == track_id and s_drum["detail"] == "drums",
+              {"tono": s_tone, "batería": s_drum})
 
     # Temas: carpetas de templates/ (copiar la carpeta = compartir el tema)
     t = lay("theme", "Professional")
@@ -339,7 +351,7 @@ def _native_project_checks(rep, app, host, window) -> None:
 
 def run_native_selftest(app, host, report_path: str | None, screenshot_path: str | None, rep=None) -> int:
     """Parte de `AllForOne --selftest`: la interfaz QML con el motor real, comprobada de verdad."""
-    from PySide6.QtCore import QMetaObject, Q_ARG
+    from PySide6.QtCore import QMetaObject, Q_ARG, Q_RETURN_ARG
     from PySide6.QtQuick import QQuickWindow  # noqa: F401  (tipa la ventana raíz)
 
     from .selftest import Report, _finish, _wait
@@ -364,22 +376,15 @@ def run_native_selftest(app, host, report_path: str | None, screenshot_path: str
     errors = engine._afo[2]
     rep.check("interfaz QML cargada sin avisos", not errors, errors[:5])
     rep.check("fuente Space Grotesk 500/600/700 cargada", len(load_fonts()) >= 3)
-    # Las comprobaciones del lienzo usan la vista Módulos; la vista Arreglo se prueba tras la mezcla
-    window.setProperty("view", "modules")
+    # La distribución fija se prueba aquí; la vista Arreglo, tras la mezcla
     _wait(app, lambda: False, 0.2, host)
-
-    panels = prop("panelItems")
-    rep.check("14 módulos en el lienzo", len(panels or {}) == 14, sorted(panels or {}))
-    links = [l["key"] for l in (prop("cableLinks") or [])]
-    seq = [t for t in (prop("tracks") or []) if t["type"] in ("inst", "drum", "ia", "voz")]
-    flow = ["inst-piano", "audios-pistas", "pistas-mezcla", "mezcla-fx", "fx-antes", "mezcla-mastia", "mastia-fxm", "fxm-master"]
-    src = {"inst": "piano", "drum": "drums", "ia": "ia", "voz": "cinta"}
-    idle = [f + "-pistas" for f in ("piano", "drums", "ia", "cinta") if f not in {src[t["type"]] for t in seq}]
-    rep.check("cables del camino del sonido: instrumento → piano → pistas → mezcla → mastering → efectos master → rebobinado",
-              all(k in links for k in flow + idle) and len([k for k in links if k.startswith("track-")]) == len(seq)
-              and len(links) == len(flow) + len(idle) + len(seq), links)
+    pv = QMetaObject.invokeMethod(window, "layoutCommand", Q_RETURN_ARG("QVariant"), Q_ARG("QVariant", "pages"),
+                                  Q_ARG("QVariant", None), Q_ARG("QVariant", None))
+    ids = sorted((pv.toVariant() if hasattr(pv, "toVariant") else pv) or [])
+    rep.check("los 14 módulos tienen su sitio: 13 páginas en las zonas y la consola como vista Mezclador",
+              ids == sorted(["add", "fxlist", "ia", "audios", "mastia", "antes", "master", "cinta", "pistas", "piano",
+                             "inst", "drums", "fx", "afina", "fxm"]), ids)
     rep.check("motor conectado desde QML", bool(prop("engineOk")))
-    rep.check("encuadre inicial aplicado", abs(float(prop("zoom")) - 1.0) > 1e-6, prop("zoom"))
 
     _native_sequencer_checks(rep, app, host, window, prop)
 
@@ -414,7 +419,7 @@ def run_native_selftest(app, host, report_path: str | None, screenshot_path: str
     QMetaObject.invokeMethod(window, "saveLayout")
     saved = json.loads((paths.user_data_dir() / LAYOUT_FILE).read_text(encoding="utf-8"))
     rep.check("diseño y tema guardados en la carpeta de datos",
-              saved.get("theme") == "AllForOne Oscuro" and len(saved.get("pos", {})) == 14)
+              saved.get("theme") == "AllForOne Oscuro" and saved.get("v") == 7 and set(saved.get("fold", {})) == {"nav", "insp", "detail"}, saved)
     QMetaObject.invokeMethod(window, "setDark", Q_ARG("QVariant", False))
 
     shot = Path(screenshot_path) if screenshot_path else paths.logs_dir() / "selftest_nativo.png"
@@ -426,15 +431,15 @@ def run_native_selftest(app, host, report_path: str | None, screenshot_path: str
 
 
 def _native_dual_checks(rep, app, host, window, prop) -> None:
-    """Doble flujo: el Arreglo en una ventana aparte y los módulos en la principal, mismo proyecto."""
+    """Doble flujo: el Arreglo en una ventana aparte y el Mezclador en la principal, mismo proyecto."""
     from .selftest import _wait
     before = prop("view")
     window.setProperty("dualWindow", True)
     _wait(app, lambda: False, 1.0, host)
     flow = prop("flowWindow")
     shown = bool(flow is not None and flow.isVisible())
-    rep.check("Doble flujo: Arreglo en su ventana y módulos en la principal",
-              shown and prop("view") == "modules", {"ventana": shown, "vista": prop("view")})
+    rep.check("Doble flujo: Arreglo en su ventana y Mezclador en la principal",
+              shown and prop("view") == "mixer", {"ventana": shown, "vista": prop("view")})
     if shown:
         shot = paths.logs_dir() / "selftest_doble_flujo.png"
         flow.grabWindow().save(str(shot))
@@ -534,7 +539,7 @@ def _native_mixer_checks(rep, app, host, window, bridge, prop) -> None:
                   json.loads(bridge.sendList(voz)))
     bridge.trackAutoSet(voz, "volume", "[]")       # el resto de la autoprueba mide el fader fijo
     bridge.autoMode(voz, "read")
-    window.setProperty("view", "modules")
+    window.setProperty("view", "mixer")
     _wait(app, lambda: False, 0.2, host)
     stems_ids = {i["trackId"] for i in st["items"]}
     faders = [t for t in st["tracks"] if t["id"] in stems_ids]
@@ -571,8 +576,8 @@ def _native_mixer_checks(rep, app, host, window, bridge, prop) -> None:
     # Fase 2: Afinador (cable a la tira de la voz), confirmar tonalidad, Master IA y Antes / Después
     call("setTuneStrength", 60)
     _wait(app, lambda: False, 0.3, host)
-    links = snap()["links"]
-    rep.check("el Afinador se cablea a la tira de la voz que afina", any(k.startswith("afina-tira-") for k in links), links)
+    tuned = snap()["tuned"]
+    rep.check("el Afinador marca la voz que afina", len(tuned) >= 1, tuned)
     call("tuneCommand", "mode", "Manual")
     call("tuneCommand", "confirm", "")
     tune = snap()["tune"]

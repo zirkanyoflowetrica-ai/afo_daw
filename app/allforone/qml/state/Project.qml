@@ -49,7 +49,7 @@ QtObject {
         load(r.doc)
         file = r.path; name = r.name
         studio.dirty = false
-        studio.fitIds(studio.visibleIds())     // el proyecto abierto se ve entero
+        studio.arrangeView.fitAll()            // el proyecto abierto se ve entero
         Qt.callLater(function () { studio.arrangeView.refresh(); studio.arrangeView.fitAll() })
         var miss = r.doc.missing || []
         studio.toast("Proyecto abierto: " + r.name + (miss.length ? " · falta el audio de: " + miss.join(", ") : ""))
@@ -76,7 +76,7 @@ QtObject {
         sq.sus = !!doc.sus
         if (doc.oct) sq.oct = doc.oct
         var h = doc.hidden || {}
-        for (var k in h) if (s.panelItems[k]) s.setHidden(k, !!h[k])
+        for (var k in h) if (["inst", "drums", "ia", "cinta"].indexOf(k) >= 0) s.setHidden(k, !!h[k])
         var idOf = {}                                      // uid guardado → id nuevo del motor (envíos a buses Aux)
         ;(doc.tracks || []).forEach(function (d) {
             var id = -1, uid = ""
