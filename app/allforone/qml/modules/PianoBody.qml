@@ -43,7 +43,7 @@ Column {
                     x: 13; anchors.verticalCenter: parent.verticalCenter
                     Text { text: "MIDI de: " + (root.t ? root.t.name : ""); color: "#6fb0e8"; font.family: Theme.font; font.pixelSize: 11; font.weight: 500 }
                     Text { text: root.t ? root.pad3(root.t.cfg.v + 1) + " " + root.seq.insts[root.t.cfg.v][0] : ""
-                           color: "#9fd8ff"; font.family: Theme.font; font.pixelSize: 17; font.weight: 700 }
+                           color: "#9fd8ff"; font.family: Theme.font; font.pixelSize: 15; font.weight: 700 }
                     Text { text: "Octava " + root.seq.oct + (root.seq.sus ? ", sostenido" : ""); color: "#6fb0e8"
                            font.family: Theme.font; font.pixelSize: 11; font.weight: 500 }
                 }
@@ -52,15 +52,15 @@ Column {
                 id: ybtn
                 x: lcd.x + lcd.width + 14; anchors.verticalCenter: parent.verticalCenter
                 width: Math.min(300, parent.width - x - 11); spacing: 6
-                NeoButton { text: "◀ Voz"; fontSize: 12; padX: 8; padY: 4; color: Theme.dark ? "#3b3646" : "#d6d6dc"
+                NeoButton { text: "◀ Voz"; fontSize: 13; padX: 8; padY: 4; color: Theme.dark ? "#3b3646" : "#d6d6dc"
                             onClicked: root.seq.setVoice(root.t.cfg.v - 1) }
-                NeoButton { text: "Voz ▶"; fontSize: 12; padX: 8; padY: 4; color: Theme.dark ? "#3b3646" : "#d6d6dc"
+                NeoButton { text: "Voz ▶"; fontSize: 13; padX: 8; padY: 4; color: Theme.dark ? "#3b3646" : "#d6d6dc"
                             onClicked: root.seq.setVoice(root.t.cfg.v + 1) }
-                NeoButton { text: "Octava −"; fontSize: 12; padX: 8; padY: 4; color: Theme.dark ? "#3b3646" : "#d6d6dc"
+                NeoButton { text: "Octava −"; fontSize: 13; padX: 8; padY: 4; color: Theme.dark ? "#3b3646" : "#d6d6dc"
                             onClicked: root.seq.setOct(-1) }
-                NeoButton { text: "Octava +"; fontSize: 12; padX: 8; padY: 4; color: Theme.dark ? "#3b3646" : "#d6d6dc"
+                NeoButton { text: "Octava +"; fontSize: 13; padX: 8; padY: 4; color: Theme.dark ? "#3b3646" : "#d6d6dc"
                             onClicked: root.seq.setOct(1) }
-                NeoButton { text: "Sostenido"; fontSize: 12; padX: 8; padY: 4; pressedState: root.seq.sus
+                NeoButton { text: "Sostenido"; fontSize: 13; padX: 8; padY: 4; pressedState: root.seq.sus
                             color: root.seq.sus ? Theme.lcd : (Theme.dark ? "#3b3646" : "#d6d6dc")
                             textColor: root.seq.sus ? "#000" : Theme.ink
                             onClicked: root.seq.toggleSus() }
@@ -71,8 +71,8 @@ Column {
     Rectangle {                                 // .roll: 44 px de teclas + 16 pasos
         visible: !!root.t
         width: Math.max(root.width, 480); height: visible ? 13 * 20 + 6 : 0
-        color: "#16130e"; border.width: Theme.border; border.color: Theme.line
-        Rectangle { anchors.fill: parent; anchors.margins: 3; color: "transparent"; border.width: Theme.buttonBorder; border.color: "#4a4030"; z: 3 }
+        color: Theme.screen; border.width: Theme.border; border.color: Theme.line
+        Rectangle { anchors.fill: parent; anchors.margins: 3; color: "transparent"; border.width: Theme.buttonBorder; border.color: Theme.screenLine; z: 3 }
         Column {
             x: 3; y: 3
             Repeater {
@@ -86,7 +86,7 @@ Column {
                         color: noteRow.modelData.indexOf("#") >= 0 ? Qt.rgba(0, 0, 0, 0.4) : "transparent"
                         Rectangle { y: 19; width: parent.width; height: 1; color: Qt.rgba(1, 1, 1, 0.12) }
                         Text { x: 4; anchors.verticalCenter: parent.verticalCenter; text: noteRow.modelData
-                               color: "#bdb398"; font.family: Theme.font; font.pixelSize: 11; font.weight: 500 }
+                               color: Theme.screenDim; font.family: Theme.font; font.pixelSize: 11; font.weight: 500 }
                     }
                     Repeater {
                         model: 16
@@ -135,7 +135,7 @@ Column {
                         }
                         Rectangle { width: parent.width; height: 6; color: wm.pressed ? "#cfc7ff" : "#fff"; border.width: 1; border.color: Theme.line }
                         Text { anchors.horizontalCenter: parent.horizontalCenter; anchors.bottom: parent.bottom; anchors.bottomMargin: 2
-                               text: wk.index % 7 ? "" : "C" + wk.oct; color: "#555"; font.family: Theme.font; font.pixelSize: 10 }
+                               text: wk.index % 7 ? "" : "C" + wk.oct; color: "#555"; font.family: Theme.font; font.pixelSize: 11 }
                         MouseArea { id: wm; anchors.fill: parent
                                     onPressed: root.seq.previewMidi(root.t.cfg, wk.note, 0.6) }
                     }
