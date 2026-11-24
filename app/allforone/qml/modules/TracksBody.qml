@@ -200,7 +200,7 @@ Column {
     }
     Rectangle {                           // datos del clip elegido
         width: root.width; height: 22
-        color: "#1d1912"
+        color: Theme.screen
         Text {
             x: 8; anchors.verticalCenter: parent.verticalCenter; width: parent.width - 16; elide: Text.ElideRight
             text: root.selInfo
@@ -216,9 +216,9 @@ Column {
         id: scroll
         width: root.width
         height: content.height + 6
-        color: "#16130e"
+        color: Theme.screen
         border.width: Theme.border; border.color: Theme.line
-        Rectangle { anchors.fill: parent; anchors.margins: 3; color: "transparent"; border.width: Theme.buttonBorder; border.color: "#4a4030" }
+        Rectangle { anchors.fill: parent; anchors.margins: 3; color: "transparent"; border.width: Theme.buttonBorder; border.color: Theme.screenLine }
         Flickable {
             id: hflick
             x: 3; y: 3
@@ -235,9 +235,9 @@ Column {
                 width: hflick.contentWidth
                 Item {                       // regla: compases (y segundos); clic = mover el cursor
                     width: content.width; height: 22
-                    Rectangle { width: 170; height: parent.height; color: "#2b2720"
-                                Text { x: 10; anchors.verticalCenter: parent.verticalCenter; text: "COMPÁS"; color: "#bdb398"
-                                       font.family: Theme.font; font.pixelSize: 10; font.weight: 700 } }
+                    Rectangle { width: 170; height: parent.height; color: Theme.screenCard
+                                Text { x: 10; anchors.verticalCenter: parent.verticalCenter; text: "COMPÁS"; color: Theme.screenDim
+                                       font.family: Theme.font; font.pixelSize: 11; font.weight: 700 } }
                     Item {
                         x: 170; width: root.laneW; height: parent.height
                         Repeater {
@@ -248,8 +248,8 @@ Column {
                                 x: bx; height: parent.height
                                 visible: bx < root.laneW && (root.pps * 4 * root.beat > 26 || index % 4 === 0)
                                 Rectangle { width: 1; height: parent.height; color: Qt.rgba(1, 1, 1, 0.35) }
-                                Text { x: 3; y: 3; text: String(parent.index + 1); color: "#f3e7c4"
-                                       font.family: Theme.font; font.pixelSize: 10; font.weight: 700 }
+                                Text { x: 3; y: 3; text: String(parent.index + 1); color: Theme.screenInk
+                                       font.family: Theme.font; font.pixelSize: 11; font.weight: 700 }
                             }
                         }
                         MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor
@@ -272,7 +272,7 @@ Column {
                             id: th
                             width: 170; height: row.height - 2
                             implicitHeight: thCol.implicitHeight + 12
-                            color: row.index === root.selected ? "#51452e" : "#2b2720"
+                            color: row.index === root.selected ? Theme.screenLine : Theme.screenCard
                             Rectangle { width: 8; height: parent.height; color: root.colorOf(row.modelData) }
                             Rectangle { x: parent.width - 2; width: 2; height: parent.height; color: "#000" }
                             MouseArea { anchors.fill: parent; onClicked: root.selectTrack(row.index) }
@@ -281,13 +281,13 @@ Column {
                                 x: 16; y: 6; width: 170 - 16 - 10
                                 spacing: 3
                                 Text { width: parent.width; text: row.modelData.name; elide: Text.ElideRight
-                                       color: "#f3e7c4"; font.family: Theme.font; font.pixelSize: 14; font.weight: 700 }
+                                       color: Theme.screenInk; font.family: Theme.font; font.pixelSize: 15; font.weight: 700 }
                                 Text { width: parent.width; wrapMode: Text.Wrap
                                        text: row.modelData.type === "audio"
                                              ? "Audio: " + L.fmt(row.modelData.len) + " · " + (row.modelData.aclips || []).length + " clip"
                                                + ((row.modelData.aclips || []).length === 1 ? "" : "s") + (row.modelData.note ? " · " + row.modelData.note : "")
                                              : root.seq.tn[row.modelData.type] + ": " + root.seq.sub(row.modelData)
-                                       color: "#bdb398"; font.family: Theme.font; font.pixelSize: 12; font.weight: 500 }
+                                       color: Theme.screenDim; font.family: Theme.font; font.pixelSize: 13; font.weight: 500 }
                                 Row {
                                     spacing: 4
                                     NeoButton { text: "M"; fontSize: 12; padX: 6; padY: 0; shadow: 2; pressedState: row.modelData.mute
@@ -316,7 +316,7 @@ Column {
                                         color: MD.kindColor(trole.item ? trole.item.kind : ""); border.width: Theme.buttonBorder; border.color: Theme.line
                                         Text { x: 4; width: parent.width - 8; anchors.verticalCenter: parent.verticalCenter; elide: Text.ElideRight
                                                text: MD.kindShort(trole.item ? trole.item.kind : ""); color: "#000"
-                                               font.family: Theme.font; font.pixelSize: 9; font.weight: 700 }
+                                               font.family: Theme.font; font.pixelSize: 11; font.weight: 700 }
                                     }
                                     Select {
                                         width: 58; options: MD.ROLES; current: trole.item ? trole.item.role : "—"
@@ -392,7 +392,7 @@ Column {
                                 visible: row.modelData.type === "voz" && !row.audio
                                 x: 10; anchors.verticalCenter: parent.verticalCenter
                                 text: "Sin toma: graba desde el Grabador de cintas"
-                                color: "#bdb398"; font.family: Theme.font; font.pixelSize: 12; font.weight: 500
+                                color: Theme.screenDim; font.family: Theme.font; font.pixelSize: 13; font.weight: 500
                             }
 
                             // clips de audio editables
@@ -426,7 +426,7 @@ Column {
                                             width: parent.width; height: 14; color: Qt.rgba(0, 0, 0, 0.35)
                                             Text { x: 4; width: parent.width - 8; anchors.verticalCenter: parent.verticalCenter; elide: Text.ElideRight
                                                    text: row.modelData.name + (Math.abs(ac.v.gain_db) > 0.05 ? "  " + root.db(ac.v.gain_db) : "")
-                                                   color: "#fff"; font.family: Theme.font; font.pixelSize: 9; font.weight: 700 }
+                                                   color: "#fff"; font.family: Theme.font; font.pixelSize: 11; font.weight: 700 }
                                         }
                                         Canvas {             // forma de onda del trozo que suena, con su volumen y fundidos
                                             id: wave
@@ -486,7 +486,7 @@ Column {
                                         width: gainTxt.implicitWidth + 12; height: 16; radius: 8
                                         color: gm.pressed ? Theme.accent : "#fff"; border.width: Theme.buttonBorder; border.color: Theme.line
                                         Text { id: gainTxt; anchors.centerIn: parent; text: root.db(ac.v.gain_db); color: "#000"
-                                               font.family: Theme.font; font.pixelSize: 9; font.weight: 700 }
+                                               font.family: Theme.font; font.pixelSize: 11; font.weight: 700 }
                                         MouseArea {
                                             id: gm; anchors.fill: parent; preventStealing: true; cursorShape: Qt.SizeVerCursor
                                             property real y0
@@ -559,7 +559,7 @@ Column {
                     visible: root.tracks.length === 0
                     x: 8; width: content.width - 16
                     height: visible ? implicitHeight : 0
-                    strokeColor: "#f3e7c4"; textColor: "#f3e7c4"; fill: "transparent"
+                    strokeColor: Theme.screenInk; textColor: Theme.screenInk; fill: "transparent"
                     text: "Sin pistas. Agrega una arriba o arrastra archivos de audio a la ventana."
                 }
                 Item { width: 1; height: root.tracks.length === 0 ? 8 : 0 }
@@ -578,16 +578,16 @@ Column {
         width: root.width; topPadding: 8
         wrapMode: Text.Wrap
         text: "Audio: arrastra un clip para moverlo, sus bordes para recortarlo, el cuadrito de cada esquina para el fundido y la etiqueta de dB para el volumen. S divide en el cursor, Supr borra, Ctrl+D duplica, Ctrl+Z deshace. Cada pista se conecta con su módulo."
-        color: Theme.ink; font.family: Theme.font; font.pixelSize: 12; font.weight: 500
+        color: Theme.ink; font.family: Theme.font; font.pixelSize: 13; font.weight: 500
     }
 
     component Tb: NeoButton {
         property bool on: false
         property bool active: true
         fontSize: 12; padX: 7; padY: 2; shadow: 0
-        color: on ? Theme.accent : "#2b2720"; textColor: on ? "#000" : "#f3e7c4"
+        color: on ? Theme.accent : Theme.screenCard; textColor: on ? "#000" : Theme.screenInk
         opacity: active ? 1 : 0.4
         enabled: active
     }
-    component Sep: Rectangle { width: 2; height: 24; color: "#4a4030" }
+    component Sep: Rectangle { width: 2; height: 24; color: Theme.screenLine }
 }
