@@ -468,6 +468,37 @@ inline const FxDesc& infinityDesc()
     return d;
 }
 
+inline const FxDesc& granularDesc()
+{
+    static const FxDesc d { "granular", "AF-57", "AFO Granular FX", "Granular y espectral",
+        "Rompe el sonido en granos que se repiten, se transportan, se dan la vuelta y se abren en estéreo; «Congelar» se queda con lo último que sonó.",
+        { { "size", "Tamaño", 10, 500, 80, "ms", 80, nullptr, "Duración de cada grano" },
+          { "density", "Densidad", 1, 100, 20, "/s", 20, nullptr, "Granos por segundo" },
+          { "pitch", "Tono", -24, 24, 0, "st", 0, nullptr, "Transporte de los granos en semitonos" },
+          { "pitchRand", "Tono al azar", 0, 12, 0, "st", 0, nullptr, "Cada grano se desvía hasta tantos semitonos" },
+          { "distance", "Distancia", 0, 2000, 100, "ms", 300, nullptr, "De cuánto antes sale cada grano" },
+          { "spray", "Dispersión", 0, 1000, 50, "ms", 200, nullptr, "Variación al azar de esa distancia" },
+          { "reverse", "Reversa", 0, 100, 0, "%", 0, nullptr, "Parte de los granos que suenan al revés" },
+          { "spread", "Apertura", 0, 100, 70, "%", 0, nullptr, "Reparto de los granos entre izquierda y derecha" },
+          { "freeze", "Congelar", 0, 1, 0, "", 0, "No|Sí", "Deja de escuchar la entrada y sigue granulando lo último que sonó" },
+          { "mix", "Mezcla", 0, 100, 50, "%", 0, nullptr, "Seco/granos" } },
+        "granos" };
+    return d;
+}
+
+inline const FxDesc& spectralDesc()
+{
+    static const FxDesc d { "spectral", "AF-58", "AFO Spectral FX", "Granular y espectral",
+        "Procesa el sonido por frecuencias (STFT de 2048 puntos): lo desenfoca, lo vuelve robot o susurro, quita lo que está bajo un umbral, lo congela o lo desplaza.",
+        { { "mode", "Modo", 0, 4, 0, "", 0, "Desenfoque|Robot|Susurro|Puerta|Congelar", "Qué se hace con cada franja de frecuencias" },
+          { "amount", "Cantidad", 0, 100, 50, "%", 0, nullptr, "Desenfoque: cuánto se arrastra en el tiempo; Robot y Susurro: cuánto del efecto" },
+          { "threshold", "Umbral", -90, 0, -50, "dB", 0, nullptr, "Puerta: las frecuencias por debajo se quitan" },
+          { "shift", "Desplazar", -2000, 2000, 0, "Hz", 0, nullptr, "Mueve todo el espectro (suena metálico, inarmónico)" },
+          { "mix", "Mezcla", 0, 100, 100, "%", 0, nullptr, "Seco/procesado (el seco va retrasado lo mismo: sin desfase)" } },
+        "" };
+    return d;
+}
+
 inline const FxDesc& spaceDesc()
 {
     static const FxDesc d { "space", "AF-35", "AFO Space", "Reverberación y espacios",
@@ -1192,6 +1223,215 @@ private:
 };
 
 //==============================================================================
+// AF-57: búfer circular de 6 s (mono) y hasta 32 granos con ventana de Hann. Cada grano lleva su
+// distancia a la escritura («back»): avanza 1 − ratio por muestra (al revés, 1 + ratio); congelado,
+// la escritura se para. Azar con semilla fija: el mismo render siempre
+class GranularFx : public FxBase
+{
+public:
+    GranularFx (te::PluginCreationInfo i) : FxBase (i, granularDesc()) {}
+    AFO_FX_TYPE ("afoFxGranular", granularDesc)
+    double getTailLength() const override { return 3.0; }
+    std::vector<float> extraMeters() override { return { (float) active.load() }; }
+protected:
+    void prepareFx (double sr) override { buf.assign ((size_t) (6.0 * sr), 0.0f); resetFx(); }
+    void resetFx() override
+    {
+        std::fill (buf.begin(), buf.end(), 0.0f);
+        for (auto& g : grains) g.on = false;
+        w = 0; untilNext = 0; rng.setSeed (57);
+    }
+    void processFx (float* l, float* r, int n) override
+    {
+        const float density = juce::jmax (1.0f, p (1)), size = p (0) * 0.001f;
+        const bool frozen = choice (8) == 1;
+        const float mix = p (9) / 100.0f, norm = 1.0f / std::sqrt (juce::jmax (1.0f, density * size * 0.5f));
+        const int B = (int) buf.size();
+        int count = 0;
+        for (int i = 0; i < n; ++i)
+        {
+            if (! frozen) { buf[(size_t) w] = 0.5f * (l[i] + r[i]); if (++w >= B) w = 0; }
+            if (--untilNext <= 0)
+            {
+                spawn (size, norm, frozen);
+                untilNext = juce::jmax (1, (int) (sampleRate / density * (0.5f + rng.nextFloat())));
+            }
+            float gl = 0.0f, gr = 0.0f;
+            for (auto& g : grains)
+            {
+                if (! g.on) continue;
+                double pos = (double) w - g.back;
+                while (pos < 0) pos += B;
+                const int a = (int) pos % B, b = (a + 1) % B;
+                const float f = (float) (pos - std::floor (pos));
+                const float x = buf[(size_t) a] + f * (buf[(size_t) b] - buf[(size_t) a]);
+                const float s = std::sin ((float) pi * (float) g.age / (float) g.len);
+                gl += s * s * x * g.gl; gr += s * s * x * g.gr;
+                g.back += (frozen ? 0.0 : 1.0) + (g.rev ? g.ratio : -g.ratio);
+                if (++g.age >= g.len) g.on = false;
+            }
+            l[i] += mix * (gl - l[i]);
+            r[i] += mix * (gr - r[i]);
+        }
+        for (auto& g : grains) count += g.on ? 1 : 0;
+        active.store (count);
+    }
+private:
+    struct Grain { bool on = false, rev = false; double back = 0, ratio = 1; int age = 0, len = 1; float gl = 0, gr = 0; };
+    void spawn (float size, float norm, bool frozen)
+    {
+        Grain* g = nullptr;
+        for (auto& x : grains) if (! x.on) { g = &x; break; }
+        if (g == nullptr) return;                       // 32 sonando: este se salta
+        g->len = juce::jmax (16, (int) (size * sampleRate));
+        g->ratio = std::pow (2.0, (p (2) + (2.0f * rng.nextFloat() - 1.0f) * p (3)) / 12.0);
+        g->rev = rng.nextFloat() * 100.0f < p (6);
+        const double B = (double) buf.size();
+        // Hacia delante la lectura se acerca a la escritura: que no la alcance antes de acabar
+        const double ahead = g->rev ? 0.0 : (frozen ? g->ratio : g->ratio - 1.0) * g->len;
+        const double behind = g->rev ? (frozen ? g->ratio : 1.0 + g->ratio) * g->len : 0.0;
+        double back = (p (4) + rng.nextFloat() * p (5)) * 0.001 * sampleRate;
+        back = juce::jlimit (4.0 + juce::jmax (0.0, ahead), juce::jmax (4.0 + ahead, B - 8.0 - behind), back);
+        g->back = back; g->age = 0;
+        const float pan = (2.0f * rng.nextFloat() - 1.0f) * p (7) / 100.0f;
+        g->gl = norm * (1.0f - juce::jmax (0.0f, pan));
+        g->gr = norm * (1.0f + juce::jmin (0.0f, pan));
+        g->on = true;
+    }
+    std::vector<float> buf;
+    std::array<Grain, 32> grains;
+    int w = 0, untilNext = 0;
+    juce::Random rng { 57 };
+    std::atomic<int> active { 0 };
+};
+
+//==============================================================================
+// AF-58: STFT de N = 2048 con ventana de Hann en análisis y síntesis y salto N/4 (la suma de las
+// ventanas² es 1,5). Latencia N muestras, informada a Tracktion; el seco va retrasado lo mismo
+class SpectralFx : public FxBase
+{
+public:
+    SpectralFx (te::PluginCreationInfo i) : FxBase (i, spectralDesc()) {}
+    AFO_FX_TYPE ("afoFxSpectral", spectralDesc)
+    double getLatencySeconds() override { return N / sampleRate; }
+    double getTailLength() const override { return 0.1; }
+    static constexpr int order = 11, N = 1 << order, hop = N / 4, bins = N / 2 + 1;
+protected:
+    void prepareFx (double) override
+    {
+        fft = std::make_unique<juce::dsp::FFT> (order);
+        win.resize (N);
+        for (int i = 0; i < N; ++i) win[(size_t) i] = 0.5f - 0.5f * std::cos (2.0f * (float) pi * (float) i / (float) N);
+        frame.assign (2 * N, 0.0f);
+        // Escala de ida y vuelta de la FFT de JUCE, medida (no supuesta)
+        frame[0] = 1.0f;
+        fft->performRealOnlyForwardTransform (frame.data());
+        fft->performRealOnlyInverseTransform (frame.data());
+        scale = 1.0f / (frame[0] * 1.5f);
+        for (auto& c : ch) { c.in.assign (N, 0.0f); c.out.assign (N, 0.0f); c.dry.assign (N, 0.0f); c.mag.assign (bins, 0.0f); c.ph.assign (bins, 0.0f); }
+        resetFx();
+    }
+    void resetFx() override
+    {
+        for (auto& c : ch)
+        {
+            std::fill (c.in.begin(), c.in.end(), 0.0f); std::fill (c.out.begin(), c.out.end(), 0.0f);
+            std::fill (c.dry.begin(), c.dry.end(), 0.0f); std::fill (c.mag.begin(), c.mag.end(), 0.0f);
+            std::fill (c.ph.begin(), c.ph.end(), 0.0f);
+        }
+        for (auto& c : ch) c.frames = 0;
+        w = 0; count = 0; wasFrozen = false; rng.setSeed (58);
+    }
+    void processFx (float* l, float* r, int n) override
+    {
+        const float mix = p (4) / 100.0f;
+        float* io[2] = { l, r };
+        for (int i = 0; i < n; ++i)
+        {
+            for (int c = 0; c < 2; ++c)
+            {
+                auto& s = ch[(size_t) c];
+                const float x = io[c][i];
+                const float wet = s.out[(size_t) w], dry = s.dry[(size_t) w];
+                s.out[(size_t) w] = 0.0f;
+                s.in[(size_t) w] = x; s.dry[(size_t) w] = x;
+                io[c][i] = dry + mix * (wet - dry);
+            }
+            if (++w >= N) w = 0;
+            if (++count >= hop) { count = 0; for (int c = 0; c < 2; ++c) doFrame (ch[(size_t) c]); wasFrozen = choice (0) == 4; }
+        }
+    }
+private:
+    struct Chan { std::vector<float> in, out, dry, mag, ph; int frames = 0; };
+    void doFrame (Chan& s)
+    {
+        const int mode = juce::jlimit (0, 4, choice (0));
+        const float amount = p (1) / 100.0f;
+        for (int i = 0; i < N; ++i) frame[(size_t) i] = s.in[(size_t) ((w + i) % N)] * win[(size_t) i];
+        std::fill (frame.begin() + N, frame.end(), 0.0f);
+        fft->performRealOnlyForwardTransform (frame.data());
+        const float ref = 0.25f * N;                    // pico de un seno de amplitud 1 con Hann
+        const float thr = dbToGain (p (2)) * ref;
+        const bool freezeNow = mode == 4, capture = freezeNow && ! wasFrozen;
+        std::array<float, 2>* bin = reinterpret_cast<std::array<float, 2>*> (frame.data());
+        for (int k = 0; k < bins; ++k)
+        {
+            const float re = bin[k][0], im = bin[k][1];
+            float m = std::sqrt (re * re + im * im), ph = std::atan2 (im, re);
+            if (mode == 0)
+            {
+                const float a = 0.97f * amount;
+                m = a * s.mag[(size_t) k] + (1.0f - a) * m;
+                s.mag[(size_t) k] = m;
+            }
+            else if (mode == 1 || mode == 2)
+            {
+                const float ph2 = mode == 1 ? 0.0f : (float) (2.0 * pi) * rng.nextFloat();
+                const float mr = (1.0f - amount) * re + amount * m * std::cos (ph2), mi = (1.0f - amount) * im + amount * m * std::sin (ph2);
+                m = std::sqrt (mr * mr + mi * mi); ph = std::atan2 (mi, mr);
+            }
+            else if (mode == 3)
+            {
+                if (m < thr) m = 0.0f;
+            }
+            else
+            {
+                if (capture) { s.mag[(size_t) k] = m; s.ph[(size_t) k] = ph; }
+                s.ph[(size_t) k] += (float) (2.0 * pi * k * hop / N);
+                s.ph[(size_t) k] = std::remainder (s.ph[(size_t) k], (float) (2.0 * pi));
+                m = s.mag[(size_t) k]; ph = s.ph[(size_t) k];
+            }
+            spec[(size_t) k] = { m * std::cos (ph), m * std::sin (ph) };
+        }
+        // Desplazar «shift» franjas: la nueva frecuencia avanza shift·hop/N vueltas más en cada salto
+        // (con hop = N/4, un cuarto de vuelta por franja); sin ese giro saldría en múltiplos de sr/hop
+        const int shift = juce::roundToInt (p (3) / (sampleRate / N));
+        const int quarter = ((shift % 4) * (s.frames % 4) % 4 + 4) % 4;
+        s.frames = (s.frames + 1) % 4;
+        for (int k = 0; k < bins; ++k)
+        {
+            const int src = k - shift;
+            const bool ok = src >= 0 && src < bins;
+            const float re = ok ? spec[(size_t) src][0] : 0.0f, im = ok ? spec[(size_t) src][1] : 0.0f;
+            bin[k][0] = quarter == 0 ? re : quarter == 1 ? -im : quarter == 2 ? -re : im;
+            bin[k][1] = quarter == 0 ? im : quarter == 1 ? re : quarter == 2 ? -im : -re;
+        }
+        bin[0][1] = 0.0f; bin[bins - 1][1] = 0.0f;
+        for (int k = 1; k < N / 2; ++k) { bin[N - k][0] = bin[k][0]; bin[N - k][1] = -bin[k][1]; }
+        fft->performRealOnlyInverseTransform (frame.data());
+        for (int i = 0; i < N; ++i) s.out[(size_t) ((w + i) % N)] += frame[(size_t) i] * win[(size_t) i] * scale;
+    }
+    std::unique_ptr<juce::dsp::FFT> fft;
+    std::vector<float> win, frame;
+    std::array<std::array<float, 2>, bins> spec {};
+    std::array<Chan, 2> ch;
+    float scale = 1.0f;
+    int w = 0, count = 0;
+    bool wasFrozen = false;
+    juce::Random rng { 58 };
+};
+
+//==============================================================================
 // AF-43: una línea mono con hasta 8 lecturas a distancias iguales; el último eco realimenta la línea
 class MultiTapFx : public FxBase
 {
@@ -1595,7 +1835,8 @@ inline const std::vector<FxType>& fxTypes()
         { transientDesc, TransientFx::xmlTypeName }, { satDesc, SaturatorFx::xmlTypeName },
         { delayDesc, DelayFx::xmlTypeName }, { spaceDesc, SpaceFx::xmlTypeName }, { analyzerDesc, AnalyzerFx::xmlTypeName },
         { tuneDesc, TuneFx::xmlTypeName }, { multitapDesc, MultiTapFx::xmlTypeName }, { tranceDesc, TranceGateFx::xmlTypeName },
-        { shimmerDesc, ShimmerFx::xmlTypeName }, { textureDesc, TextureVerbFx::xmlTypeName }, { infinityDesc, InfinityFx::xmlTypeName } };
+        { shimmerDesc, ShimmerFx::xmlTypeName }, { textureDesc, TextureVerbFx::xmlTypeName }, { infinityDesc, InfinityFx::xmlTypeName },
+        { granularDesc, GranularFx::xmlTypeName }, { spectralDesc, SpectralFx::xmlTypeName } };
     return t;
 }
 
@@ -1608,6 +1849,7 @@ inline void registerFx (te::PluginManager& pm)
     pm.createBuiltInType<GlueFx>();     pm.createBuiltInType<TransientFx>();
     pm.createBuiltInType<MultiTapFx>(); pm.createBuiltInType<TranceGateFx>();
     pm.createBuiltInType<ShimmerFx>();  pm.createBuiltInType<TextureVerbFx>(); pm.createBuiltInType<InfinityFx>();
+    pm.createBuiltInType<GranularFx>(); pm.createBuiltInType<SpectralFx>();
 }
 
 inline const char* xmlTypeFor (const std::string& key)

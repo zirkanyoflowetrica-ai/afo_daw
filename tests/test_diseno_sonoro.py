@@ -1,4 +1,4 @@
-"""Hito 3 · Diseño sonoro (docs/BIBLIOTECA_NATIVA.md): AF-55 Trance Gate y AF-43 MultiTap.
+"""Hito 3 · Diseño sonoro (docs/BIBLIOTECA_NATIVA.md): Trance Gate, MultiTap, reverbs, Granular y Spectral.
 
 Se mide el render real del motor: el Trance Gate abre y cierra justo en la rejilla de la canción (la
 saca de la posición del transporte y del tempo) y el MultiTap pone cada eco a su distancia, con su
@@ -319,3 +319,185 @@ def test_cinematico_completo_con_las_reverbs(host, tmp_path):
     gain = hi(with_sh) - hi(without)
     print(f"coros: agudos +{gain:.1f} dB con Shimmer")
     assert gain > 6
+
+
+# ---------------------------------------------------------------- granular y espectral (AF-57, AF-58)
+def _peak_hz(x, lo=50.0, hi=5000.0):
+    X = np.abs(np.fft.rfft(x * np.hanning(len(x))))
+    f = np.fft.rfftfreq(len(x), 1 / SR)
+    m = (f > lo) & (f < hi)
+    return float(f[m][np.argmax(X[m])])
+
+
+def test_catalogo_granular_y_espectral():
+    cat = {c["key"]: c for c in afo_audio.effect_catalog()}
+    assert cat["granular"]["af"] == "AF-57" and cat["spectral"]["af"] == "AF-58"
+    assert {cat[k]["family"] for k in ("granular", "spectral")} == {"Granular y espectral"}
+
+
+def test_granular_transporta_una_octava(host, tmp_path):
+    """Un La 440 con granos a +12 st: la energía pasa a 880 Hz (más de 20 dB sobre los 440)."""
+    eng = host.engine
+    tid = eng.add_audio_track(_tone(tmp_path, seconds=4.0, hz=440.0), "la")["id"]
+    _fx(eng, tid, "granular", size=80, density=30, pitch=12, pitchRand=0, distance=100, spray=0,
+        reverse=0, spread=0, mix=100)
+    y = _render(eng, tmp_path)[int(1.0 * SR): int(3.5 * SR), 0]
+    up, base = _band_db(y, 880.0), _band_db(y, 440.0)
+    print(f"granos +12 st: 880 Hz {up:.1f} dB, 440 Hz {base:.1f} dB")
+    assert up - base > 20 and np.isfinite(y).all()
+
+
+def _saw(tmp_path, hz=100.0, seconds=4.0):
+    t = np.arange(int(seconds * SR)) / SR
+    return _wav(tmp_path, 0.25 * (2 * ((t * hz) % 1.0) - 1), "sierra.wav")
+
+
+def test_granular_reversa_da_la_vuelta(host, tmp_path):
+    """Una sierra que sube (y cae de golpe): granos hacia delante la dejan subiendo; con Reversa
+    100 % casi todas las muestras bajan."""
+    eng = host.engine
+    tid = eng.add_audio_track(_saw(tmp_path), "sierra")["id"]
+    fx = _fx(eng, tid, "granular", size=200, density=10, pitch=0, distance=300, spray=0, reverse=0, spread=0, mix=100)
+
+    def falling(y):
+        d = np.diff(y[int(1.0 * SR): int(3.5 * SR), 0])
+        d = d[np.abs(d) > 1e-6]
+        return float(np.mean(d < 0))
+    fwd = falling(_render(eng, tmp_path, "fwd.wav"))
+    eng.set_effect_param(fx, "reverse", 100)
+    rev = falling(_render(eng, tmp_path, "rev.wav"))
+    print(f"muestras que bajan: hacia delante {fwd:.2f}, en reversa {rev:.2f}")
+    assert fwd < 0.25 and rev > 0.75
+
+
+def test_granular_congelar_sigue_sonando(host, tmp_path):
+    """Un La de 1 s. Sin congelar, a los 2,5–4,5 s ya no queda nada; congelando a los 0,9 s
+    (automatización), los granos siguen sonando con lo último que entró, en 440 Hz."""
+    eng = host.engine
+    tid = eng.add_audio_track(_burst(tmp_path, on=1.0, seconds=5.0), "la")["id"]
+    fx = _fx(eng, tid, "granular", size=100, density=30, distance=100, spray=200, spread=50, mix=100)
+    tail = lambda y: y[int(2.5 * SR): int(4.5 * SR), 0]                 # noqa: E731
+    free = db(rms(tail(_render(eng, tmp_path, "free.wav"))))
+    assert eng.set_effect_automation(fx, "freeze", [(0.0, 0.0), (0.9, 0.0), (0.9001, 1.0), (5.0, 1.0)])
+    z = tail(_render(eng, tmp_path, "frozen.wav"))
+    print(f"cola sin congelar {free:.1f} dB; congelada {db(rms(z)):.1f} dB, pico en {_peak_hz(z):.0f} Hz")
+    assert free < -80 and db(rms(z)) > -40 and abs(_peak_hz(z) - 440) < 5
+
+
+def _noisy_tone(tmp_path, seconds=4.0, hz=440.0, noise_db=-50.0):
+    rng = np.random.default_rng(58)
+    t = np.arange(int(seconds * SR)) / SR
+    y = 0.25 * np.sin(2 * np.pi * hz * t) + 10 ** (noise_db / 20) * rng.standard_normal(len(t))
+    return _wav(tmp_path, y, "tono_ruido.wav")
+
+
+def test_spectral_neutro_y_alineado(host, tmp_path):
+    """Desenfoque 0 % sin desplazar = el mismo sonido, en su sitio: el motor compensa los 2048
+    puntos de latencia (resta con el original < −60 dB)."""
+    eng = host.engine
+    tid = eng.add_audio_track(_noisy_tone(tmp_path, noise_db=-30.0), "x")["id"]
+    a = _render(eng, tmp_path, "seco.wav")
+    _fx(eng, tid, "spectral", mode=0, amount=0, shift=0, mix=100)
+    b = _render(eng, tmp_path, "fx.wav")
+    n = min(len(a), len(b))
+    seg = slice(int(0.5 * SR), n - int(0.5 * SR))
+    res = db(rms(b[seg] - a[seg])) - db(rms(a[seg]))
+    print(f"Spectral neutro: diferencia {res:.1f} dB")
+    assert res < -60
+
+
+def test_spectral_puerta_quita_el_ruido(host, tmp_path):
+    """La 440 a −12 dB con ruido a −50 dB. Puerta a −40 dB: el ruido de 2–10 kHz baja más de 20 dB y
+    el La se queda (±1 dB)."""
+    eng = host.engine
+    tid = eng.add_audio_track(_noisy_tone(tmp_path), "x")["id"]
+    a = _render(eng, tmp_path, "seco.wav")[int(1 * SR): int(3.5 * SR), 0]
+    _fx(eng, tid, "spectral", mode=3, threshold=-40, mix=100)
+    b = _render(eng, tmp_path, "gate.wav")[int(1 * SR): int(3.5 * SR), 0]
+
+    def hiss(x):
+        X = np.abs(np.fft.rfft(x * np.hanning(len(x)))) ** 2
+        f = np.fft.rfftfreq(len(x), 1 / SR)
+        return 10 * np.log10(X[(f > 2000) & (f < 10000)].sum() + 1e-20)
+    cut, tone = hiss(a) - hiss(b), _band_db(b, 440.0) - _band_db(a, 440.0)
+    print(f"Puerta: ruido −{cut:.1f} dB, La {tone:+.2f} dB")
+    assert cut > 20 and abs(tone) < 1
+
+
+def test_spectral_desplaza_y_robot(host, tmp_path):
+    """Desplazar +500 Hz lleva el La 440 a ≈ 932 Hz (21 franjas de 23,4 Hz); Robot fija la fase y
+    deja solo armónicos de 48000/512 = 93,75 Hz."""
+    eng = host.engine
+    tid = eng.add_audio_track(_tone(tmp_path, seconds=4.0, hz=440.0), "la")["id"]
+    fx = _fx(eng, tid, "spectral", mode=0, amount=0, shift=500, mix=100)
+    y = _render(eng, tmp_path, "shift.wav")[int(1 * SR): int(3.5 * SR), 0]
+    pk = _peak_hz(y)
+    left = _band_db(y, 440.0) - _band_db(y, pk)
+    eng.set_effect_param(fx, "shift", 0)
+    eng.set_effect_param(fx, "mode", 1)
+    eng.set_effect_param(fx, "amount", 100)
+    r = _render(eng, tmp_path, "robot.wav")[int(1 * SR): int(3.5 * SR), 0]
+    rk = _peak_hz(r)
+    print(f"desplazado: pico {pk:.1f} Hz (440 Hz a {left:.1f} dB); robot: pico {rk:.2f} Hz")
+    assert 920 < pk < 945 and left < -30
+    assert abs(rk / 93.75 - round(rk / 93.75)) * 93.75 < 1.0 and abs(rk - 440) > 5
+
+
+def test_spectral_congelar(host, tmp_path):
+    """Un La de 1 s; el modo pasa a Congelar a los 0,8 s (automatización): el La sigue sonando,
+    estable, cuando la entrada ya calló."""
+    eng = host.engine
+    tid = eng.add_audio_track(_burst(tmp_path, on=1.0, seconds=5.0), "la")["id"]
+    fx = _fx(eng, tid, "spectral", mode=0, amount=0, mix=100)
+    assert eng.set_effect_automation(fx, "mode", [(0.0, 0.0), (0.8, 0.0), (0.8001, 4.0), (5.0, 4.0)])
+    y = _render(eng, tmp_path, "freeze.wav")[:, 0]
+    a, b = y[int(2.0 * SR): int(2.8 * SR)], y[int(3.8 * SR): int(4.6 * SR)]
+    print(f"congelado: {db(rms(a)):.1f} dB y {db(rms(b)):.1f} dB, pico en {_peak_hz(b):.0f} Hz")
+    assert db(rms(a)) > -30 and abs(db(rms(a)) - db(rms(b))) < 3 and abs(_peak_hz(b) - 440) < 15
+
+
+def test_lofi_completo_con_granular_y_spectral(host, tmp_path):
+    """Un lo-fi entero: voz con granos una octava arriba, pad desenfocado y batería por el Spectral.
+    La mezcla sale limpia; la batería por el Spectral neutro sigue en su sitio (latencia compensada)
+    y desenfocada pierde pegada; la voz granulada sube su brillo."""
+    from song_factory import write_song
+    song = write_song("lofi", tmp_path / "lofi")
+    g = song["genre"]
+    eng = host.engine
+    eng.set_tempo(g.bpm)
+    ids = {Path(p).stem.split("_", 1)[1]: eng.add_audio_track(p, Path(p).stem)["id"] for p in song["paths"]}
+    for k, t in ids.items():
+        eng.set_track_mute(t, k != "Drums")
+    dry = _render(eng, tmp_path, "drums0.wav")[:, 0]
+    sp = _fx(eng, ids["Drums"], "spectral", mode=0, amount=0, mix=100)
+    neutral = _render(eng, tmp_path, "drums1.wav")[:, 0]
+    # Desde 0,5 s: el primer bloque de un render con latencia no se compensa bien con bloques que no
+    # dividen la latencia (pasa igual con Limiter, Saturator y Tune; pendiente en docs/TAREAS.md)
+    n = min(len(dry), len(neutral))
+    seg = slice(int(0.5 * SR), n)
+    res = db(rms(neutral[seg] - dry[seg])) - db(rms(dry[seg]))
+    eng.set_effect_param(sp, "amount", 95)
+    blur = _render(eng, tmp_path, "drums2.wav")[:, 0]
+    crest = lambda x: db(np.abs(x).max()) - db(rms(x))                  # noqa: E731
+    punch = crest(dry) - crest(blur)
+
+    for k, t in ids.items():
+        eng.set_track_mute(t, k != "Voz_Lead")
+
+    def centroid(x):
+        X = np.abs(np.fft.rfft(x)) ** 2
+        f = np.fft.rfftfreq(len(x), 1 / SR)
+        return float((X * f).sum() / X.sum())
+    v0 = centroid(_render(eng, tmp_path, "voz0.wav")[:, 0])
+    _fx(eng, ids["Voz_Lead"], "granular", size=120, density=25, pitch=12, distance=100, spray=50, mix=100)
+    v1 = centroid(_render(eng, tmp_path, "voz1.wav")[:, 0])
+
+    for t in ids.values():
+        eng.set_track_mute(t, False)
+    eng.set_effect_param(sp, "amount", 50)
+    _fx(eng, ids["Pad_Cuerdas"], "spectral", mode=0, amount=80, mix=60)
+    y = _render(eng, tmp_path, "mix.wav")
+    print(f"batería: neutro {res:.1f} dB, pegada −{punch:.1f} dB con desenfoque; voz: centroide "
+          f"{v0:.0f} → {v1:.0f} Hz; mezcla pico {np.abs(y).max():.2f}")
+    assert res < -50 and punch > 3 and v1 > 1.4 * v0
+    assert np.isfinite(y).all() and 0.05 < np.abs(y).max() <= 1.0

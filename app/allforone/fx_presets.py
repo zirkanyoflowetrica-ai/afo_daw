@@ -143,6 +143,22 @@ FACTORY: dict[str, dict[str, dict[str, float]]] = {
         "Colchón de ambiente": {"freeze": 0, "decay": 25, "size": 80, "damping": 4000, "lowcut": 200, "mix": 30},
         "Pad oscuro": {"freeze": 0, "decay": 30, "damping": 2500, "mix": 45},
     },
+    "granular": {
+        "Nube suave": {"size": 120, "density": 25, "distance": 150, "spray": 200, "spread": 80, "mix": 40},
+        "Octava arriba": {"size": 80, "density": 30, "pitch": 12, "distance": 100, "spray": 40, "mix": 45},
+        "Cristales": {"size": 25, "density": 60, "pitch": 12, "pitchRand": 7, "spray": 300, "spread": 100, "mix": 35},
+        "Reversa": {"size": 250, "density": 8, "reverse": 100, "distance": 400, "spray": 100, "mix": 45},
+        "Textura congelada": {"size": 200, "density": 30, "spray": 600, "freeze": 1, "mix": 60},
+    },
+    "spectral": {
+        "Desenfoque suave": {"mode": 0, "amount": 60, "mix": 50},
+        "Mancha larga": {"mode": 0, "amount": 95, "mix": 70},
+        "Robot": {"mode": 1, "amount": 100, "mix": 100},
+        "Susurro": {"mode": 2, "amount": 100, "mix": 100},
+        "Limpiar ruido": {"mode": 3, "threshold": -60, "mix": 100},
+        "Metálico": {"mode": 0, "amount": 0, "shift": 300, "mix": 60},
+        "Congelar": {"mode": 4, "mix": 100},
+    },
 }
 
 

@@ -20,7 +20,8 @@ Column {
         ["Tono y voz", ["tune", "saturator"]],
         ["Espacio", ["space", "shimmer", "textureverb", "infinity", "delay", "multitap"]],
         ["Utilidad", ["gain", "analyzer"]],
-        ["Ritmo", ["trancegate"]]]
+        ["Ritmo", ["trancegate"]],
+        ["Granular y espectral", ["granular", "spectral"]]]
     readonly property var catalog: studio && studio.fxBody ? studio.fxBody.catalog : []
     property string filter: ""
     property string selKey: ""                  // efecto nativo elegido («vst3:<id>» para un plugin)

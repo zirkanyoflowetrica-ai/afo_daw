@@ -181,6 +181,46 @@ function draw(ctx, w, h, fx, d, live) {
         }
         return
     }
+    if (key === "granular") {
+        // De dónde salen los granos (2 s hacia atrás desde «ahora», a la izquierda): la franja
+        // distancia…distancia+dispersión, y la forma de un grano (Hann) de su tamaño; la parte
+        // que suena al revés en el otro tono. Con el motor sonando, cuántos granos hay a la vez
+        var dist = v(fx, d, "distance"), spray = v(fx, d, "spray"), size = v(fx, d, "size"), rev = v(fx, d, "reverse") / 100
+        frame(ctx, w, h, [w * 0.25, w * 0.5, w * 0.75], [h - 2])
+        var x0 = w * Math.min(1, dist / 2000), x1 = w * Math.min(1, (dist + spray + size) / 2000)
+        ctx.fillStyle = "rgba(94,224,176,0.25)"; ctx.fillRect(x0, 2, Math.max(2, x1 - x0), h - 4)
+        var gw = Math.max(4, w * size / 2000), live2 = live && live.length > 2 ? live[2] : 0
+        ctx.beginPath()
+        for (var gi = 0; gi <= 40; gi++) {
+            var gs = Math.sin(Math.PI * gi / 40)
+            var gpx = x0 + gw * gi / 40, gpy = h - 2 - (h - 8) * gs * gs
+            if (gi) ctx.lineTo(gpx, gpy); else ctx.moveTo(gpx, gpy)
+        }
+        ctx.strokeStyle = pal.lcd; ctx.lineWidth = 2; ctx.stroke()
+        if (rev > 0) { ctx.fillStyle = pal.soft; ctx.fillRect(x0, h - 6, gw * rev, 4) }
+        if (v(fx, d, "freeze") > 0.5) { ctx.fillStyle = "#5ee0b0"; ctx.fillRect(0, 2, 4, h - 4) }
+        if (live2 > 0) { ctx.fillStyle = pal.lcd; for (var gk = 0; gk < live2; gk++) ctx.fillRect(w - 6 - gk * 5, 4, 3, 8) }
+        return
+    }
+    if (key === "spectral") {
+        // Lo que hace el modo sobre un ejemplo (armónicos de 220 Hz, -6 dB por armónico) en escala
+        // logarítmica; Puerta dibuja su umbral y Desplazar mueve todas las rayas los mismos Hz
+        var mode = Math.round(v(fx, d, "mode")), amt = v(fx, d, "amount") / 100, sh = v(fx, d, "shift"), thrS = v(fx, d, "threshold")
+        frame(ctx, w, h, [100, 1000, 10000].map(function (f) { return logX(f, w) }), [])
+        for (var hk = 1; hk <= 40; hk++) {
+            var f0 = mode === 1 ? 93.75 * Math.round(220 * hk / 93.75) : 220 * hk
+            var fs = f0 + sh
+            if (fs < 20 || fs > 20000) continue
+            var lvl = -6 * Math.log(hk) / Math.LN2 - 6, sx = logX(fs, w)
+            if (mode === 3 && lvl < thrS) continue
+            var bh2 = (h - 4) * Math.max(0, 1 + lvl / 90), bwid = mode === 0 ? 2 + 6 * amt : 2
+            ctx.fillStyle = mode === 2 ? pal.soft : pal.lcd
+            ctx.fillRect(sx - bwid / 2, h - 2 - bh2, bwid, bh2)
+        }
+        if (mode === 3) { ctx.fillStyle = "#5ee0b0"; ctx.fillRect(0, h - 2 - (h - 4) * (1 + thrS / 90), w, 2) }
+        if (mode === 4) { ctx.fillStyle = "#5ee0b0"; ctx.fillRect(0, 2, 4, h - 4) }
+        return
+    }
     if (key === "space" || key === "shimmer" || key === "textureverb" || key === "infinity") {
         // Curva de caída (RT60). Infinity congelada no cae: línea plana
         var pre = v(fx, d, "predelay"), dec = key === "infinity" && v(fx, d, "freeze") > 0.5 ? 1e6 : Math.max(0.1, v(fx, d, "decay")), wetS = v(fx, d, "mix") / 100, span = Math.max(1, dec * 1.3)
