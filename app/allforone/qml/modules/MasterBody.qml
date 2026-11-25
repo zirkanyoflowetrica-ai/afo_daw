@@ -2,7 +2,7 @@ import QtQuick
 import "../theme"
 import "../controls"
 
-// Módulo Rebobinado (Cinta M-2): aquí llegan los masters. Cada master automático (Efectos master →
+// Módulo Rebobinado (Cinta M-2): aquí llegan los masters. Cada master automático (Efectos › Master →
 // Masterizar automáticamente) o manual (Mastering → Guardar versión) queda como una cinta: clic para
 // ponerla en el master y escucharla, y Exportar saca el WAV con esa versión.
 Column {
@@ -41,7 +41,7 @@ Column {
 
     DashedBox {
         visible: root.vs.length === 0; width: root.width; height: visible ? implicitHeight : 0
-        text: "Aún no hay versiones. En «Efectos master» pulsa Masterizar automáticamente, o ajusta el master a mano y pulsa «Guardar versión» en Mastering."
+        text: "Aún no hay versiones. En Efectos, canal Master, pulsa Masterizar automáticamente, o ajusta el master a mano y pulsa «Guardar versión» en Mastering."
     }
 
     Repeater {

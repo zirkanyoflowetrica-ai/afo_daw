@@ -66,7 +66,7 @@ ideas comunes son de interacción, no de aspecto: no se copia la apariencia de n
 
 | Hoy (módulo) | Sitio nuevo |
 |---|---|
-| Pistas (`TracksBody`) | Cabeceras de pista del Arreglo + Inspector |
+| Pistas (`TracksBody`) | Cabeceras y clips del Arreglo + Inspector (la pestaña «Clips» se retiró el 25-11-2026) |
 | Arreglo (`ArrangeView`) | Vista principal |
 | Mezcla (`MixBody`) | Vista Mezclador (Tab) |
 | Efectos (`FxBody`) | Panel de detalle: cadena de la pista elegida y editor del efecto elegido |
@@ -80,6 +80,17 @@ ideas comunes son de interacción, no de aspecto: no se copia la apariencia de n
 
 El doble flujo (F7, Arreglo en otra ventana) se mantiene: la ventana aparte muestra la vista
 principal y la ventana principal pasa al Mezclador.
+
+### Uno de cada (25-11-2026)
+
+El usuario vio dos mezcladores, dos paneles de pistas y dos editores de efectos, y pidió que todo
+ocurra en uno de cada uno:
+
+| Antes (duplicado) | Ahora (uno solo) |
+|---|---|
+| Consola bajo el Arreglo **y** vista Mezclador | **Vista Mezclador**: cada tira lleva sus inserts en orden (doble clic = abrirlo en Efectos, «+» = añadir uno), sus envíos a los buses Aux (nivel, PRE) y «+ AUX». El botón «Mezclador» del Arreglo lleva a ella |
+| Pestaña «Clips» (`TracksBody`) **y** Arreglo | **Arreglo**: los clips de audio se eligen, mueven, recortan, cortan (S), duplican, borran, funden, cambian de volumen, normalizan, se rehacen o versionan con IA y se deshacen ahí mismo; la cabecera de cada pista la quita (con confirmación) o la separa con Demucs |
+| Pestañas «Efectos» **y** «Efectos master» | **Efectos**: el master es un canal más (en el selector, en la tira MASTER del Mezclador o en el Arreglo); con el master elegido, debajo del rack va «Masterizar automáticamente». El Inspector solo enlaza a Efectos y Navegador › Efectos sigue siendo el catálogo |
 
 ## 3. Efectos nativos organizados
 

@@ -5,7 +5,7 @@ import "mixdata.js" as MD
 // Estado del Mezclador Automático V4.2 en la interfaz nativa.
 // Un audio = una ficha (`items`) = una pista del motor = una tira de la consola.
 // La mezcla y el master son EN VIVO: el V4.2 decide y sus decisiones quedan como fader, paneo y
-// cadenas de efectos reales del motor (racks de Efectos y Efectos master). No se generan WAVs.
+// cadenas de efectos reales del motor (racks de Efectos: cada pista y el master). No se generan WAVs.
 QtObject {
     id: mx
     property var studio                        // la ventana (pistas, avisos, motor)

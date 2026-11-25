@@ -42,8 +42,8 @@ Column {
         for (var i = 0; i < catalog.length; i++) m[catalog[i].af] = catalog[i]
         return m
     }
-    // sin tira elegida, el rack del canal muestra la primera pista (el master tiene su propio rack)
-    readonly property int follow: master ? 0 : studio.rackTrack > 0 ? studio.rackTrack : targets.length > 1 ? Number(targets[1][0]) : -1
+    // la tira elegida en el Mezclador (0 = el master); sin ninguna, la primera pista
+    readonly property int follow: master ? 0 : studio.rackTrack >= 0 ? studio.rackTrack : targets.length > 1 ? Number(targets[1][0]) : 0
     onFollowChanged: if (follow >= 0 && follow !== target) pickTarget(follow)
     readonly property string targetName: (targets.filter(function (o) { return o[0] === String(target) })[0] || ["", "Master"])[1]
     readonly property var targets: {
@@ -84,7 +84,7 @@ Column {
     }
     function pickTarget(id, byUser) {
         target = id; sel = -1; menuFor = -1; reload()
-        if (byUser && !master && id > 0 && studio.rackTrack !== id) studio.rackTrack = id   // la consola marca esa tira
+        if (byUser && !master && studio.rackTrack !== id) studio.rackTrack = id   // el Mezclador marca esa tira (0 = master)
     }
     function add(key) {
         var r = studio.call("fxAdd", target, key, -1)
@@ -235,14 +235,14 @@ Column {
                    color: Theme.ink; font.family: Theme.font; font.pixelSize: 15; font.weight: 700; font.letterSpacing: 0.6 }
             Text { width: parent.width; elide: Text.ElideRight
                    text: "RACK " + root.targetName.toUpperCase() + " · " + root.chain.length + (root.chain.length === 1 ? " efecto" : " efectos")
-                         + " · " + (root.master ? "después de la mezcla, antes del limitador" : "antes del fader")
+                         + " · " + (root.target === 0 ? "después de la mezcla, antes del limitador" : "antes del fader")
                    color: Theme.ink; opacity: 0.75; font.family: Theme.font; font.pixelSize: 11; font.weight: 700; font.letterSpacing: 0.4 }
         }
         Column {
             id: pickBox
             visible: !root.master
             width: 190; spacing: 2
-            Text { text: "Canal (o elige una tira en Mezcla)"; color: Theme.ink; font.family: Theme.font; font.pixelSize: 11; font.weight: 600 }
+            Text { text: "Canal o Master (o una tira del Mezclador)"; color: Theme.ink; font.family: Theme.font; font.pixelSize: 11; font.weight: 600 }
             Select { width: parent.width; fontSize: 12; padY: 4; options: root.targets; current: String(root.target)
                      onPicked: function (v) { root.pickTarget(Number(v), true) } }
         }
@@ -508,8 +508,7 @@ Column {
     Component.onCompleted: {
         var r = studio.call("fxCatalog")
         catalog = r.ok ? r.catalog : []
-        if (master) studio.fxMasterBody = root
-        else { studio.fxBody = root; if (follow > 0) target = follow }
+        if (!master) { studio.fxBody = root; if (follow >= 0) target = follow }
         reload()
     }
 

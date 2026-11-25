@@ -3,15 +3,80 @@ import "../theme"
 import "../controls"
 import "../state/mixdata.js" as MD
 
-// Módulo Mezcla (Consola 6C): CANALES / MIXER con una tira por pista (cabecera de su color, rol de voz,
-// paneo, dB del fader, fader con medidor estéreo del motor en dB de pico, LUFS o RMS, Solo y Mute) y la
-// tira del master; clic en el nombre de una tira = su rack en Efectos. La mezcla IA V4.2 está en el Inspector › Asistente IA.
+// Vista Mezclador, la única consola: CANALES / MIXER con una tira por pista (cabecera de su color, rol
+// de voz, inserts en orden de la señal, envíos a los buses Aux, paneo, fader con medidor estéreo del
+// motor en dB de pico, LUFS o RMS, Solo y Mute) y la tira del master con sus inserts. Clic en el nombre
+// de una tira = su rack en Efectos (el master es un canal más); doble clic en un insert lo abre ahí.
+// Inserts y envíos se leen del motor (puente: dawLanes). La mezcla IA V4.2 está en el Inspector › Asistente IA.
 Column {
     id: root
     property var studio
     property var mixer
     width: parent ? parent.width : 700
     spacing: 0
+
+    // ---------------- inserts y envíos (del motor) ----------------
+    property var lanes: ({})                    // id de pista (0 = master) → {inserts, sends}
+    property var sends: ({})                    // id de pista → [{aux, db, pre}]
+    readonly property var auxes: (studio ? studio.tracks : []).filter(function (t) { return t.type === "aux" && t.id >= 0 })
+    readonly property int sendRows: Math.min(4, auxes.length)
+    readonly property int sendsH: auxes.length ? 20 + sendRows * 28 : 0
+    readonly property int sendCount: { var n = 0; for (var k in sends) n += (sends[k] || []).length; return n }
+    readonly property int insertCount: { var n = 0; for (var k in lanes) n += (lanes[k].inserts || []).length; return n }
+    readonly property int insertsH: 112
+    function refresh() {
+        if (!studio || !studio.engineOk) return
+        var ids = studio.tracks.filter(function (t) { return t.id >= 0 }).map(function (t) { return t.id })
+        ids.push(0)
+        var r = studio.call("dawLanes", JSON.stringify(ids))
+        if (!r.ok) return
+        lanes = r.tracks
+        var s = {}
+        for (var k in r.tracks) s[k] = r.tracks[k].sends || []
+        sends = s
+    }
+    function info(id) { return lanes[String(id)] || { inserts: [], sends: [] } }
+    // Envío de una pista a un bus: −∞ (db <= −100) lo quita
+    function sendOf(tid, auxId) {
+        var a = sends[String(tid)] || []
+        for (var i = 0; i < a.length; i++) if (a[i].aux === auxId) return a[i]
+        return null
+    }
+    function setSend(tid, auxId, db, pre) {
+        var r = studio.call("sendSet", tid, auxId, db, pre)
+        if (!r.ok) { studio.toast(r.error); return }
+        var c = Object.assign({}, sends); c[String(tid)] = r.sends; sends = c
+        studio.dirty = true
+    }
+    // Posición 0..1 del nivel de envío ↔ dB (0 = apagado; resto de −48 a +6 dB)
+    function sendDb(pos) { return pos <= 0.02 ? -100 : -48 + 54 * pos }
+    function sendPos(db) { return db <= -99 ? 0 : Math.max(0.03, Math.min(1, (db + 48) / 54)) }
+    function sendsTo(auxId) {
+        var n = 0
+        for (var k in sends) (sends[k] || []).forEach(function (e) { if (e.aux === auxId) n++ })
+        return n
+    }
+    function addAux() {
+        var t = studio.seq.addTrack("aux")
+        if (t && t.id >= 0)
+            studio.toast("Bus «" + t.name + "» creado: ponle una reverb o un eco (clic en el nombre de su tira) y súbele los envíos en las otras tiras")
+        Qt.callLater(refresh)
+        return t
+    }
+    function openInFx(id, library) {            // 0 = el master: en Efectos es un canal más
+        studio.rackTrack = id
+        studio.goTo("fx")
+        if (library && studio.fxBody) studio.fxBody.libOpen = true
+    }
+    onVisibleChanged: if (visible) refresh()
+    Component.onCompleted: refresh()
+    Connections {
+        target: root.studio
+        function onFxRevChanged() { root.refresh() }
+        function onTracksChanged() { Qt.callLater(root.refresh) }
+        function onEngineOkChanged() { root.refresh() }
+    }
+    Timer { interval: 2000; repeat: true; running: root.visible && !!root.studio && root.studio.engineOk; onTriggered: root.refresh() }
 
     // La Mezcla IA vive en el Inspector › Asistente IA (X17)
     Row {
@@ -38,6 +103,11 @@ Column {
                 Row {
                     anchors.right: parent.right; anchors.rightMargin: 10; anchors.verticalCenter: parent.verticalCenter
                     spacing: 6
+                    Chip {
+                        objectName: "mixAddAux"
+                        text: "+ AUX"; tip: "Nuevo bus Aux (reverb o eco compartidos): las pistas le mandan señal con sus envíos"
+                        onClicked: if (root.studio.engineOk) root.addAux(); else root.studio.toast("Motor nativo no disponible")
+                    }
                     Chip {
                         visible: !!root.rackName
                         text: root.rackName.toUpperCase(); fill: Theme.accent; ink: "#000"
@@ -79,21 +149,26 @@ Column {
                     }
                     Item {                           // tira del master
                         id: ms
-                        width: 96; height: stripH
+                        readonly property bool racked: root.studio.rackTrack === 0
+                        width: 112; height: stripH
                         Rectangle { x: 3; y: 3; width: parent.width; height: parent.height; color: Theme.shadowColor; visible: Theme.buttonShadow > 0 }
                         Rectangle {
                             anchors.fill: parent
-                            color: Theme.device; border.width: Theme.buttonBorder; border.color: Theme.line
+                            color: ms.racked ? Theme.pn2 : Theme.device
+                            border.width: ms.racked ? 3 : Theme.buttonBorder; border.color: Theme.line
                             Rectangle {
                                 x: 2; y: 2; width: parent.width - 4; height: 30; color: Theme.pc.mezcla
                                 Text { anchors.centerIn: parent; text: "MASTER"; color: "#000"
                                        font.family: Theme.font; font.pixelSize: 13; font.weight: 700 }
                                 Rectangle { y: parent.height; width: parent.width; height: 2; color: Theme.line }
+                                MouseArea { id: msMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
+                                            onClicked: root.studio.rackTrack = 0 }
+                                ToolTipLite { text: "Clic: ver el rack del master en Efectos"; show: msMouse.containsMouse }
                             }
                             Column {
-                                x: 6; y: 40; width: parent.width - 12; spacing: 6
-                                Text { width: parent.width; horizontalAlignment: Text.AlignHCenter; text: "SALIDA"; color: Theme.ink
-                                       font.family: Theme.font; font.pixelSize: 11; font.weight: 700; topPadding: 22; bottomPadding: 22 }
+                                x: 6; y: 38; width: parent.width - 12; spacing: 6
+                                Inserts { tid: 0; name: "Master" }
+                                Item { width: 1; height: root.sendsH }
                                 Text { width: parent.width; horizontalAlignment: Text.AlignHCenter
                                        text: MD.faderDbText(root.studio.masterPos); color: Theme.ink
                                        font.family: Theme.font; font.pixelSize: 13; font.weight: 700 }
@@ -119,8 +194,9 @@ Column {
     }
     DashedBox { visible: root.studio.tracks.length === 0; width: root.width; height: visible ? implicitHeight : 0; text: "Sin pistas." }
 
-    readonly property real stripH: 372
+    readonly property real stripH: 384 + insertsH + sendsH
     readonly property string rackName: {
+        if (root.studio.rackTrack === 0) return "Master"
         var t = root.studio.tracks
         for (var i = 0; i < t.length; i++) if (t[i].id === root.studio.rackTrack) return t[i].name
         return ""
@@ -136,9 +212,10 @@ Column {
         readonly property var live: root.mixer.live[tid]
         readonly property bool working: root.mixer.workingTrack === tid
         readonly property bool racked: root.studio.rackTrack === tid && tid > 0
+        readonly property bool isAux: track.type === "aux"
         readonly property color cc: Theme.pc[root.studio.seqSrc(track.type)] || Theme.pc.pistas
         readonly property var lr: root.studio.trackLR(tid)
-        width: 96; height: root.stripH
+        width: 112; height: root.stripH
         Rectangle {                              // brillo de «trabajando» (mezcla automática)
             visible: strip.working
             anchors.fill: parent; anchors.margins: -5
@@ -191,6 +268,8 @@ Column {
                         }
                     }
                 }
+                Inserts { tid: strip.tid; name: strip.track.name; enabled: strip.tid >= 0 }
+                Sends { tid: strip.tid; name: strip.track.name; isAux: strip.isAux; visible: root.sendsH > 0 }
                 Knob {
                     anchors.horizontalCenter: parent.horizontalCenter
                     label: "PAN"; value: strip.track.pan
@@ -229,6 +308,137 @@ Column {
             }
         }
     }
+    // Inserts de una tira en orden de la señal (● encendido, tachado = puenteado, ∿ = automatizado).
+    // Doble clic: abrirlo en Efectos; «+»: Efectos con la biblioteca para añadir uno.
+    component Inserts: Item {
+        id: ins
+        property int tid: -1
+        property string name: ""
+        readonly property var list: root.info(tid).inserts || []
+        width: parent ? parent.width : 100; height: root.insertsH
+        Row {
+            id: insHead
+            width: parent.width; height: 24; spacing: 4
+            Text { width: parent.width - addIns.width - 4; anchors.verticalCenter: parent.verticalCenter
+                   text: "INSERTS" + (ins.list.length ? " · " + ins.list.length : ""); color: Theme.ink
+                   font.family: Theme.font; font.pixelSize: 11; font.weight: 800 }
+            Chip { id: addIns; text: "+"; enabled: ins.enabled
+                   tip: "Añadir un efecto a " + ins.name + " (abre Efectos con la biblioteca)"
+                   onClicked: root.openInFx(ins.tid, true) }
+        }
+        Flickable {
+            id: insF
+            y: insHead.height + 2; width: parent.width; height: parent.height - y
+            contentHeight: insCol.height; clip: true
+            boundsBehavior: Flickable.StopAtBounds; flickableDirection: Flickable.VerticalFlick
+            Column {
+                id: insCol
+                width: parent.width; spacing: 2
+                Repeater {
+                    model: ins.list
+                    Rectangle {
+                        required property var modelData
+                        width: insCol.width; height: 24; radius: 3
+                        color: modelData.enabled ? Theme.button : Theme.input
+                        border.width: 1; border.color: Theme.line
+                        Rectangle { x: 5; anchors.verticalCenter: parent.verticalCenter; width: 8; height: 8; radius: 4
+                                    color: modelData.enabled ? "#2fbf71" : "#7a7a7a"; border.width: 1; border.color: Theme.line }
+                        Text { x: 17; width: parent.width - 21 - (aut.visible ? aut.width + 2 : 0); anchors.verticalCenter: parent.verticalCenter
+                               elide: Text.ElideRight; text: modelData.label; color: Theme.ink
+                               font.family: Theme.font; font.pixelSize: 11; font.weight: 600
+                               font.strikeout: !modelData.enabled }
+                        Text { id: aut; visible: modelData.automated > 0; anchors.right: parent.right; anchors.rightMargin: 4
+                               anchors.verticalCenter: parent.verticalCenter; text: "∿"; color: Theme.ink
+                               font.pixelSize: 13; font.weight: 800 }
+                        MouseArea { id: ima; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
+                                    onDoubleClicked: root.openInFx(ins.tid, false) }
+                        ToolTipLite { show: ima.containsMouse
+                                      text: modelData.label + (modelData.enabled ? "" : " (puenteado)")
+                                            + (modelData.automated ? " · " + modelData.automated + " parámetro(s) automatizado(s)" : "")
+                                            + (modelData.auto ? " · puesto por la mezcla automática" : "") + ". Doble clic: abrirlo en Efectos" }
+                    }
+                }
+                Text { visible: ins.list.length === 0; width: insCol.width; wrapMode: Text.Wrap
+                       text: "Sin inserts"; color: Theme.ink; opacity: 0.8
+                       font.family: Theme.font; font.pixelSize: 11 }
+            }
+        }
+        Text { visible: insF.contentHeight > insF.height + 1
+               anchors.right: parent.right; anchors.bottom: parent.bottom
+               text: "↓ más"; color: Theme.ink; font.family: Theme.font; font.pixelSize: 11; font.weight: 700
+               Rectangle { anchors.fill: parent; anchors.margins: -2; z: -1; color: Theme.device } }
+    }
+    // Envíos de una tira a los buses Aux (arrastrar = nivel, doble clic = apagado, PRE = antes del fader).
+    // En un bus Aux, cuántos envíos recibe.
+    component Sends: Item {
+        id: sd
+        property int tid: -1
+        property string name: ""
+        property bool isAux: false
+        width: parent ? parent.width : 100; height: root.sendsH
+        Text { y: 0; text: sd.isAux ? "RETORNO" : "ENVÍOS"; color: Theme.ink
+               font.family: Theme.font; font.pixelSize: 11; font.weight: 800 }
+        Text { visible: sd.isAux; y: 18; width: parent.width; wrapMode: Text.Wrap
+               text: { var n = root.sendsTo(sd.tid); return n ? "Recibe " + n + (n === 1 ? " envío" : " envíos") : "Sin envíos: súbelos en las otras tiras" }
+               color: Theme.ink; font.family: Theme.font; font.pixelSize: 11; font.weight: 600 }
+        Flickable {
+            visible: !sd.isAux
+            y: 18; width: parent.width; height: parent.height - 18
+            contentHeight: sendCol.height; clip: true
+            boundsBehavior: Flickable.StopAtBounds; flickableDirection: Flickable.VerticalFlick
+            Column {
+                id: sendCol
+                width: parent.width; spacing: 4
+                Repeater {
+                    model: root.auxes
+                    Item {
+                        id: sr
+                        required property var modelData
+                        readonly property var snd: root.sendOf(sd.tid, modelData.id)
+                        readonly property real pos: snd ? root.sendPos(snd.db) : 0
+                        readonly property bool pre: !!(snd && snd.pre)
+                        width: sendCol.width; height: 24
+                        Rectangle {                  // nivel del envío
+                            width: parent.width - 36; height: 24; radius: 3
+                            color: Theme.input; border.width: 1; border.color: Theme.line
+                            Rectangle { x: 1; y: 1; height: parent.height - 2; radius: 2
+                                        width: Math.max(0, (parent.width - 2) * sr.pos)
+                                        color: Qt.tint(Theme.input, Qt.rgba(Qt.color(Theme.pc.fx).r, Qt.color(Theme.pc.fx).g, Qt.color(Theme.pc.fx).b, 0.55)) }
+                            Text { x: 4; width: parent.width - 8 - sdb.width - 2; anchors.verticalCenter: parent.verticalCenter; elide: Text.ElideRight
+                                   text: sr.modelData.name; color: Theme.ink; font.family: Theme.font; font.pixelSize: 11; font.weight: 600 }
+                            Text { id: sdb; anchors.right: parent.right; anchors.rightMargin: 4; anchors.verticalCenter: parent.verticalCenter
+                                   text: sr.snd ? (sr.snd.db > 0.05 ? "+" : "") + sr.snd.db.toFixed(0) : "−∞"
+                                   color: Theme.ink; font.family: Theme.font; font.pixelSize: 11; font.weight: 800 }
+                            MouseArea {
+                                id: sma
+                                anchors.fill: parent; hoverEnabled: true; preventStealing: true
+                                function at(mx) { root.setSend(sd.tid, sr.modelData.id, root.sendDb(Math.max(0, Math.min(1, mx / width))), sr.pre) }
+                                onPressed: function (m) { at(m.x) }
+                                onPositionChanged: function (m) { if (pressed) at(m.x) }
+                                onDoubleClicked: root.setSend(sd.tid, sr.modelData.id, -100, sr.pre)
+                            }
+                            ToolTipLite { show: sma.containsMouse && !sma.pressed
+                                          text: "Envío de " + sd.name + " al bus «" + sr.modelData.name + "» ("
+                                                + (sr.pre ? "pre-fader: no sigue al volumen de la pista" : "post-fader: sigue al volumen de la pista")
+                                                + "). Arrastra para el nivel; doble clic lo apaga." }
+                        }
+                        Rectangle {                  // pre / post fader
+                            x: parent.width - 32; width: 32; height: 24; radius: 3
+                            color: sr.pre ? Theme.pressedBg : Theme.button
+                            border.width: 1; border.color: Theme.line
+                            Text { anchors.centerIn: parent; text: "PRE"; color: sr.pre ? Theme.pressedInk : Theme.ink
+                                   font.family: Theme.font; font.pixelSize: 10; font.weight: 800 }
+                            MouseArea { id: pma; anchors.fill: parent; hoverEnabled: true
+                                        onClicked: root.setSend(sd.tid, sr.modelData.id, sr.snd ? sr.snd.db : -12, !sr.pre) }
+                            ToolTipLite { show: pma.containsMouse
+                                          text: sr.pre ? "Pre-fader (activo): el envío no depende del fader. Clic: post-fader"
+                                                       : "Post-fader: el envío sigue al fader. Clic: pre-fader (para cascos o efectos que no deben bajar con la pista)" }
+                        }
+                    }
+                }
+            }
+        }
+    }
     // Medidor estéreo del color del canal (dos barras, -60..0 dBFS; la zona alta en ámbar y rojo)
     component StereoMeter: Rectangle {
         id: sm
@@ -259,6 +469,7 @@ Column {
         property string tip
         property color fill: Theme.button
         property color ink: Theme.ink
+        opacity: enabled ? 1 : 0.45
         signal clicked()
         width: Math.max(26, ct.implicitWidth + 16); height: 24
         color: fill; border.width: Theme.buttonBorder; border.color: Theme.line

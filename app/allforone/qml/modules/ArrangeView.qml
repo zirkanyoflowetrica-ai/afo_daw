@@ -6,9 +6,10 @@ import "../state/mixdata.js" as MD
 // Vista ARREGLO (como Studio One / Ableton): la canción entera de un vistazo. Arriba la regla de
 // compases; por pista su cabecera (color, nombre, tipo, M/S, inserts) y sus clips con la forma de
 // onda o las notas; debajo de cada pista sus carriles de automatización con la curva real que el
-// motor reproduce y el valor que tiene ahora bajo el cursor. Abajo la consola: una tira por pista
-// con sus inserts en orden, paneo, fader y medidor, y la del master. Todo sale del motor
-// (puente: dawLanes); nada es decorativo.
+// motor reproduce y el valor que tiene ahora bajo el cursor. Es el único panel de pistas: aquí se
+// editan los clips de audio (mover, recortar, dividir, fundidos, volumen, normalizar, rehacer con IA,
+// deshacer). La consola (inserts, envíos, paneo y fader) es la vista Mezclador. Todo sale del motor
+// (puente: dawLanes y clipEdit); nada es decorativo.
 Rectangle {
     id: root
     property var studio
@@ -17,7 +18,6 @@ Rectangle {
     property var lanes: ({})                  // id de pista (0 = master) → {inserts, lanes}
     property var closed: ({})                 // uid → carriles de automatización plegados
     property real pps: 8                      // píxeles por segundo
-    property bool showConsole: true
     readonly property int headW: 260
     readonly property int rowH: 70
     readonly property int laneH: 58
@@ -40,12 +40,7 @@ Rectangle {
     }
     readonly property int laneCount: { var n = 0; for (var k in lanes) n += (lanes[k].lanes || []).length; return n }
     readonly property int insertCount: { var n = 0; for (var k in lanes) n += (lanes[k].inserts || []).length; return n }
-    // Buses Aux y envíos (pista → [{aux, db, pre}]); se leen del motor con los carriles
-    property var sends: ({})
     readonly property var auxes: (studio ? studio.tracks : []).filter(function (t) { return t.type === "aux" && t.id >= 0 })
-    readonly property int sendRows: Math.min(4, auxes.length)
-    readonly property int sendsH: auxes.length ? 22 + sendRows * 28 : 0
-    readonly property int sendCount: { var n = 0; for (var k in sends) n += (sends[k] || []).length; return n }
 
     function refresh() {
         if (!studio || !studio.engineOk || !visible) return
@@ -54,37 +49,103 @@ Rectangle {
         var r = studio.call("dawLanes", JSON.stringify(ids))
         if (!r.ok) return
         lanes = r.tracks
-        var s = {}
-        for (var k in r.tracks) s[k] = r.tracks[k].sends || []
-        sends = s
-    }
-    // Envío de una pista a un bus: −∞ (db <= −100) lo quita
-    function sendOf(tid, auxId) {
-        var a = sends[String(tid)] || []
-        for (var i = 0; i < a.length; i++) if (a[i].aux === auxId) return a[i]
-        return null
-    }
-    function setSend(tid, auxId, db, pre) {
-        var r = studio.call("sendSet", tid, auxId, db, pre)
-        if (!r.ok) { studio.toast(r.error); return }
-        var c = Object.assign({}, sends); c[String(tid)] = r.sends; sends = c
-        studio.dirty = true
-    }
-    // Posición 0..1 del nivel de envío ↔ dB (0 = apagado; resto de −48 a +6 dB)
-    function sendDb(pos) { return pos <= 0.02 ? -100 : -48 + 54 * pos }
-    function sendPos(db) { return db <= -99 ? 0 : Math.max(0.03, Math.min(1, (db + 48) / 54)) }
-    function sendsTo(auxId) {
-        var n = 0
-        for (var k in sends) (sends[k] || []).forEach(function (e) { if (e.aux === auxId) n++ })
-        return n
     }
     function addAux() {
         var t = studio.seq.addTrack("aux")
-        if (t && t.id >= 0) {
-            showConsole = true
-            studio.toast("Bus «" + t.name + "» creado: ponle una reverb o un eco (doble clic en el nombre de su tira) y súbele los envíos en la consola")
-        }
+        if (t && t.id >= 0)
+            studio.toast("Bus «" + t.name + "» creado: ponle una reverb o un eco y súbele los envíos en el Mezclador")
         return t
+    }
+
+    // ---------------- edición de clips de audio (antes, la pestaña «Clips») ----------------
+    property string tool: "move"            // move | cut
+    property bool snap: true                // ajustar a los tiempos del compás
+    property real clipSel: 0                // id del clip elegido (0 = ninguno)
+    property string clipUid: ""             // pista del clip elegido
+    property var undoStack: []
+    property var redoStack: []
+    readonly property var selTrack: clipUid && studio ? studio.seq.trackOf(clipUid) : null
+    readonly property var selInfo: {
+        var cs = selTrack ? selTrack.aclips || [] : []
+        for (var i = 0; i < cs.length; i++) if (cs[i].id === clipSel) return cs[i]
+        return null
+    }
+    function snapT(t) { return snap ? Math.round(t / beat) * beat : t }
+    function fmtS(s) {
+        s = Math.max(0, s)
+        var m = Math.floor(s / 60), r = s - 60 * m
+        return m + ":" + (r < 10 ? "0" : "") + r.toFixed(2)
+    }
+    function dbTxt(v) { return (v > 0 ? "+" : "") + v.toFixed(1) + " dB" }
+    function pick(uid, id) {
+        clipUid = uid; clipSel = id
+        var i = studio.seq.indexOf(uid)
+        if (i >= 0) studio.seq.pick(i)
+    }
+    // Una edición en el motor; antes guarda los clips de la pista para deshacer
+    function edit(uid, op, noUndo) {
+        var t = studio.seq.trackOf(uid)
+        if (!t || !studio.engineOk) return null
+        if (!noUndo) { undoStack = undoStack.concat([{ uid: uid, clips: t.aclips || [] }]).slice(-60); redoStack = [] }
+        var r = studio.call("clipEdit", t.id, JSON.stringify(op))
+        if (!r.ok) { studio.toast(r.error); if (!noUndo) undoStack = undoStack.slice(0, -1); return null }
+        studio.seq.replace(uid, { aclips: r.clips })
+        if (clipUid === uid && !r.clips.some(function (c) { return c.id === clipSel })) clipSel = 0
+        return r
+    }
+    function restore(fromStack) {
+        if (!fromStack.length) return null
+        var e = fromStack[fromStack.length - 1], t = studio.seq.trackOf(e.uid)
+        if (!t) return null
+        var back = { uid: e.uid, clips: t.aclips || [] }
+        var op = { op: "set", clips: e.clips }
+        if (e.source) op.source = e.source                 // deshacer / rehacer un «Rehacer con IA»
+        var r = studio.call("clipEdit", t.id, JSON.stringify(op))
+        if (!r.ok) { studio.toast(r.error); return null }
+        if (e.source) { back.now = r.source; back.source = e.now; studio.seq.replace(e.uid, { aclips: r.clips, peaks: r.peaks || [] }) }
+        else studio.seq.replace(e.uid, { aclips: r.clips })
+        clipSel = 0
+        return back
+    }
+    function undo() {
+        var b = restore(undoStack); if (!b) return
+        undoStack = undoStack.slice(0, -1); redoStack = redoStack.concat([b])
+    }
+    function redo() {
+        var b = restore(redoStack); if (!b) return
+        redoStack = redoStack.slice(0, -1); undoStack = undoStack.concat([b])
+    }
+    // Dividir: el clip elegido en el cursor; si el cursor no lo cruza, el clip de esa pista bajo el cursor
+    function splitAt(uid, id, at) {
+        if (!uid) { studio.toast("Elige un clip de audio para dividir"); return }
+        var t = studio.seq.trackOf(uid), cs = t ? t.aclips || [] : []
+        var c = cs.filter(function (k) { return k.id === id && at > k.start && at < k.start + k.length })[0]
+             || cs.filter(function (k) { return at > k.start + 0.01 && at < k.start + k.length - 0.01 })[0]
+        if (!c) { studio.toast("El cursor no está sobre un clip de " + (t ? t.name : "la pista")); return }
+        edit(uid, { op: "split", clip: c.id, at: at })
+    }
+    function removeSel() { if (selInfo) edit(clipUid, { op: "remove", clip: clipSel }) }
+    function dupSel() { if (selInfo) { var r = edit(clipUid, { op: "dup", clip: clipSel }); if (r) clipSel = r.clips[r.clips.length - 1].id } }
+    function gainSel(d) { if (selInfo) edit(clipUid, { op: "gain", clip: clipSel, db: Math.round((selInfo.gain_db + d) * 10) / 10 }) }
+    function fadeSel(which, d) {
+        if (!selInfo) return
+        var fi = selInfo.fade_in, fo = selInfo.fade_out
+        if (which === "in") fi = Math.max(0, fi + d); else fo = Math.max(0, fo + d)
+        edit(clipUid, { op: "fades", clip: clipSel, "in": fi, out: fo })
+    }
+    readonly property bool keys: visible && !!studio && !studio.typing
+    Shortcut { sequence: "S"; enabled: root.keys && !!root.clipUid; onActivated: root.splitAt(root.clipUid, root.clipSel, root.studio.posSec) }
+    Shortcut { sequences: [StandardKey.Delete, "Backspace"]; enabled: root.keys && !!root.selInfo; onActivated: root.removeSel() }
+    Shortcut { sequence: "Ctrl+D"; enabled: root.keys && !!root.selInfo; onActivated: root.dupSel() }
+    Shortcut { sequences: [StandardKey.Undo]; enabled: root.keys && root.undoStack.length > 0; onActivated: root.undo() }
+    Shortcut { sequences: [StandardKey.Redo, "Ctrl+Y"]; enabled: root.keys && root.redoStack.length > 0; onActivated: root.redo() }
+    // «Rehacer con IA»: la pista cambió de archivo; Deshacer vuelve al anterior con sus clips
+    Connections {
+        target: root.studio ? root.studio.seq : null
+        function onSourceReplaced(uid, previous, clips) {
+            root.undoStack = root.undoStack.concat([{ uid: uid, clips: clips, source: previous, now: "" }]).slice(-60)
+            root.redoStack = []
+        }
     }
     function info(id) { return lanes[String(id)] || { inserts: [], lanes: [] } }
     function colorOf(t) {
@@ -174,9 +235,9 @@ Rectangle {
         refresh()
     }
     function fitAll() { pps = Math.max(2, Math.min(80, (flick.width - headW - 30) / Math.max(1, songLen))) }
-    function openInFx(id) {
+    function openInFx(id) {                    // 0 = el master: en Efectos es un canal más
         studio.rackTrack = id
-        studio.goTo(id === 0 ? "fxm" : "fx")
+        studio.goTo("fx")
     }
 
     onVisibleChanged: if (visible) { refresh(); if (pps === 8) Qt.callLater(fitAll) }
@@ -204,13 +265,15 @@ Rectangle {
                    anchors.verticalCenter: parent.verticalCenter }
             Text {
                 anchors.verticalCenter: parent.verticalCenter
+                width: Math.max(0, barBtns.x - 24 - x); elide: Text.ElideRight
                 color: Theme.deviceInk; font.family: Theme.font; font.pixelSize: 13; font.weight: 500
                 text: root.studio.tracks.length + " pistas · " + root.insertCount + " inserts · "
-                      + (root.auxes.length ? root.auxes.length + " Aux · " + root.sendCount + " envíos · " : "")
+                      + (root.auxes.length ? root.auxes.length + " Aux · " : "")
                       + root.laneCount + " curvas de automatización · " + root.fmtTime(root.songLen)
             }
         }
         Row {
+            id: barBtns
             anchors.right: parent.right; anchors.rightMargin: 12; anchors.verticalCenter: parent.verticalCenter; spacing: 6
             NeoButton { text: "+ Aux"; tip: "Nuevo bus Aux (reverb o eco compartidos): las pistas le mandan señal con sus envíos"
                         enabled: root.studio.engineOk; onClicked: root.addAux() }
@@ -220,17 +283,75 @@ Rectangle {
             NeoButton { text: "−"; tip: "Alejar (menos segundos por pantalla)"; onClicked: root.pps = Math.max(1, root.pps / 1.4) }
             NeoButton { text: "+"; tip: "Acercar"; onClicked: root.pps = Math.min(120, root.pps * 1.4) }
             NeoButton { text: "Ajustar"; tip: "Ver la canción entera a lo ancho"; onClicked: root.fitAll() }
-            NeoButton { text: "Consola"; pressedState: root.showConsole
-                        color: root.showConsole ? Theme.pressedBg : Theme.button; textColor: root.showConsole ? Theme.pressedInk : Theme.ink
-                        tip: "Mostrar u ocultar la consola (tiras con inserts, paneo, fader y medidores)"
-                        onClicked: root.showConsole = !root.showConsole }
+            NeoButton { objectName: "arrToMixer"; text: "Mezclador"
+                        tip: "Ir al Mezclador: tiras con inserts, envíos, paneo, fader y medidores (F6; Tab cambia de vista)"
+                        onClicked: root.studio.goTo("mezcla") }
+        }
+    }
+
+    // ---------------- herramientas de clips ----------------
+    Rectangle {
+        id: tools
+        y: bar.height; width: parent.width; height: toolFlow.height + 10
+        color: Theme.deviceHead
+        Rectangle { y: parent.height - 1; width: parent.width; height: 1; color: Theme.deviceBorder }
+        Flow {
+            id: toolFlow
+            x: 8; y: 5; width: parent.width - 16; spacing: 5
+            Tb { objectName: "arrMove"; text: "↖ Mover"; on: root.tool === "move"; tip: "Arrastra un clip para moverlo y sus bordes para recortarlo"; onClicked: root.tool = "move" }
+            Tb { objectName: "arrCut"; text: "✂ Cortar"; on: root.tool === "cut"; tip: "Clic sobre un clip: lo divide en ese punto"; onClicked: root.tool = "cut" }
+            Sep {}
+            Tb { objectName: "arrSplit"; text: "Dividir"; active: !!root.clipUid; tip: "Divide el clip en el cursor de reproducción (S)"
+                 onClicked: root.splitAt(root.clipUid, root.clipSel, root.studio.posSec) }
+            Tb { text: "Duplicar"; active: !!root.selInfo; tip: "Copia el clip detrás del último de la pista (Ctrl+D)"; onClicked: root.dupSel() }
+            Tb { text: "Borrar"; active: !!root.selInfo; tip: "Quita el clip (Supr)"; onClicked: root.removeSel() }
+            Tb { text: root.studio.seq.repaintUid ? "Rehaciendo…" : "Rehacer con IA"; active: !!root.selInfo && !root.studio.seq.generating
+                 tip: "La IA (en tu equipo) vuelve a tocar el trozo del clip elegido con el mismo estilo; el resto de la pista no cambia. Acota el trozo con «Dividir». Ctrl+Z vuelve al original"
+                 onClicked: root.studio.seq.repaintClip(root.clipUid, root.selInfo, "") }
+            Tb { text: root.studio.seq.coverUid ? "Haciendo versión…" : "Versión con IA"; active: !!root.selInfo && !root.studio.seq.generating
+                 tip: "La IA (en tu equipo) vuelve a tocar el clip elegido a su manera y lo pone en una pista nueva; el original no cambia. Acota el trozo con «Dividir»"
+                 onClicked: root.studio.seq.coverClip(root.clipUid, root.selInfo) }
+            Select { objectName: "coverMode"; width: 96; fontSize: 12; padY: 2; options: ["Parecida", "Libre"]; current: root.studio.seq.coverOpts.mode
+                     tip: "Parecida: guarda melodía y timbre. Libre: solo la forma; suena más distinta"
+                     onPicked: function (v) { root.studio.seq.coverOpts = Object.assign({}, root.studio.seq.coverOpts, { mode: v }) } }
+            Select { objectName: "coverStyle"; width: 110; fontSize: 12; padY: 2
+                     options: root.studio.seq.ai.styles && root.studio.seq.ai.styles.length ? root.studio.seq.ai.styles : ["Libre"]
+                     current: root.studio.seq.coverOpts.style
+                     tip: "Estilo de la versión («Libre»: el mismo que el original)"
+                     onPicked: function (v) { root.studio.seq.coverOpts = Object.assign({}, root.studio.seq.coverOpts, { style: v }) } }
+            Tb { text: "Normalizar"; active: !!root.selInfo; tip: "Sube o baja el clip para que su pico quede en −1 dBFS"
+                 onClicked: root.edit(root.clipUid, { op: "normalize", clip: root.clipSel, target: -1 }) }
+            Sep {}
+            Tb { text: "Vol −"; active: !!root.selInfo; tip: "Baja 1 dB el clip elegido (también se arrastra su etiqueta de dB)"; onClicked: root.gainSel(-1) }
+            Tb { text: "Vol +"; active: !!root.selInfo; tip: "Sube 1 dB el clip elegido"; onClicked: root.gainSel(1) }
+            Tb { text: "Fade in"; active: !!root.selInfo; tip: "Clic: +0,25 s · también se arrastra el cuadrito de la esquina del clip"
+                 onClicked: root.fadeSel("in", 0.25) }
+            Tb { text: "Fade out"; active: !!root.selInfo; tip: "Clic: +0,25 s · también se arrastra el cuadrito de la esquina del clip"
+                 onClicked: root.fadeSel("out", 0.25) }
+            Tb { text: "Sin fades"; active: !!root.selInfo && (root.selInfo.fade_in > 0 || root.selInfo.fade_out > 0)
+                 tip: "Quita los fundidos del clip elegido"
+                 onClicked: root.edit(root.clipUid, { op: "fades", clip: root.clipSel, "in": 0, out: 0 }) }
+            Sep {}
+            Tb { text: "⌗ Rejilla"; on: root.snap; tip: "Ajustar mover, recortar y cortar a los tiempos del compás"; onClicked: root.snap = !root.snap }
+            Tb { text: "Deshacer"; active: root.undoStack.length > 0; tip: "Deshacer la última edición de clips (Ctrl+Z)"; onClicked: root.undo() }
+            Tb { text: "Rehacer"; active: root.redoStack.length > 0; tip: "Rehacer (Ctrl+Y)"; onClicked: root.redo() }
+            Text {
+                height: 26; verticalAlignment: Text.AlignVCenter
+                width: Math.min(implicitWidth, toolFlow.width)
+                elide: Text.ElideRight
+                text: root.selInfo
+                      ? (root.selTrack ? root.selTrack.name : "") + " · inicio " + root.fmtS(root.selInfo.start) + " · dura " + root.fmtS(root.selInfo.length)
+                        + " · " + root.dbTxt(root.selInfo.gain_db) + " · fades " + root.selInfo.fade_in.toFixed(2) + " / " + root.selInfo.fade_out.toFixed(2) + " s"
+                      : "Clic en un clip de audio para editarlo"
+                color: Theme.deviceInk; font.family: Theme.font; font.pixelSize: 12; font.weight: 600
+            }
         }
     }
 
     // ---------------- regla de compases ----------------
     Rectangle {
         id: ruler
-        y: bar.height; width: parent.width; height: 30
+        y: tools.y + tools.height; width: parent.width; height: 30
         color: Theme.deviceHead
         clip: true
         Text { x: 12; anchors.verticalCenter: parent.verticalCenter; text: "Compás · tiempo"; color: Theme.deviceInk
@@ -269,7 +390,7 @@ Rectangle {
     // ---------------- pistas y carriles ----------------
     Flickable {
         id: flick
-        anchors { top: ruler.bottom; left: parent.left; right: parent.right; bottom: consoleBox.top }
+        anchors { top: ruler.bottom; left: parent.left; right: parent.right; bottom: parent.bottom }
         clip: true
         boundsBehavior: Flickable.StopAtBounds
         contentWidth: root.headW + root.songLen * root.pps + 40
@@ -306,37 +427,154 @@ Rectangle {
                                 Rectangle { x: index * 4 * root.beat * root.pps; width: 1; height: parent.height
                                             color: Theme.deviceInk; opacity: index % 4 ? 0.08 : 0.2 }
                             }
-                            MouseArea { anchors.fill: parent; onClicked: function (m) { root.seek(m.x / root.pps) } }
-                            // clips de audio con su forma de onda
+                            MouseArea { anchors.fill: parent; onClicked: function (m) { root.clipSel = 0; root.seek(m.x / root.pps) } }
+                            // clips de audio editables: elegir, mover, recortar, cortar, volumen y fundidos
                             Repeater {
                                 model: trk.t.aclips || []
-                                Rectangle {
+                                Item {
+                                    id: ac
                                     required property var modelData
-                                    readonly property var cl: modelData
-                                    x: cl.start * root.pps; y: 4; width: Math.max(3, cl.length * root.pps); height: parent.height - 8
-                                    color: Qt.darker(trk.c, trk.t.mute ? 2.2 : 1.0); border.width: Theme.buttonBorder; border.color: Theme.line; radius: 3
-                                    clip: true
-                                    Text { x: 5; y: 2; width: parent.width - 10; elide: Text.ElideRight; text: trk.t.name
-                                           color: "#000"; font.family: Theme.font; font.pixelSize: 11; font.weight: 700 }
-                                    Canvas {
-                                        y: 16; width: parent.width; height: parent.height - 18
-                                        property var peaks: trk.t.peaks || []
-                                        property var cv: parent.cl
-                                        onPeaksChanged: requestPaint(); onCvChanged: requestPaint(); onWidthChanged: requestPaint()
-                                        onPaint: {
-                                            var ctx = getContext("2d"); ctx.reset()
-                                            var p = peaks, c = cv, src = Math.max(0.01, c.source_length || trk.t.len || 1)
-                                            var g = Math.pow(10, (c.gain_db || 0) / 20), n = Math.max(1, Math.floor(width / 2))
-                                            ctx.fillStyle = "rgba(0,0,0,0.8)"
-                                            for (var j = 0; j < n && p.length; j++) {
-                                                var tt = c.length * j / n
-                                                var v = (p[Math.min(p.length - 1, Math.floor((c.offset + tt) / src * p.length))] || 0) * g
-                                                var h = Math.min(height - 2, 1 + v * (height - 4))
-                                                ctx.fillRect(width * j / n, (height - h) / 2, 1.4, h)
+                                    property bool busy: false
+                                    property var live: ({})
+                                    readonly property var v: busy ? live : modelData
+                                    readonly property bool picked: root.clipSel === modelData.id && root.clipUid === trk.t.uid
+                                    readonly property Item lane: parent
+                                    x: v.start * root.pps; y: 4
+                                    width: Math.max(4, v.length * root.pps); height: lane.height - 8
+                                    z: picked ? 2 : 1
+                                    function begin() { live = Object.assign({}, modelData); busy = true; root.pick(trk.t.uid, modelData.id) }
+                                    function set(k) { live = Object.assign({}, live, k) }
+                                    function commitRange() {
+                                        busy = false
+                                        if (live.start === modelData.start && live.length === modelData.length && live.offset === modelData.offset) return
+                                        root.edit(trk.t.uid, { op: "range", clip: modelData.id, start: live.start, length: live.length, offset: live.offset })
+                                    }
+                                    Rectangle {
+                                        anchors.fill: parent
+                                        color: Qt.darker(trk.c, trk.t.mute ? 2.2 : 1.0); radius: 3
+                                        border.width: ac.picked ? 3 : Theme.buttonBorder; border.color: ac.picked ? Theme.accent : Theme.line
+                                        clip: true
+                                        Text { x: 5; y: 2; width: parent.width - 10; elide: Text.ElideRight
+                                               text: trk.t.name + (Math.abs(ac.v.gain_db || 0) > 0.05 ? "  " + root.dbTxt(ac.v.gain_db) : "")
+                                               color: "#000"; font.family: Theme.font; font.pixelSize: 11; font.weight: 700 }
+                                        Canvas {             // forma de onda del trozo que suena, con su volumen y fundidos
+                                            y: 16; width: parent.width; height: parent.height - 18
+                                            property var peaks: trk.t.peaks || []
+                                            property var cv: ac.v
+                                            property real p: root.pps
+                                            onPeaksChanged: requestPaint(); onCvChanged: requestPaint(); onWidthChanged: requestPaint(); onPChanged: requestPaint()
+                                            onPaint: {
+                                                var ctx = getContext("2d"); ctx.reset()
+                                                var pk = peaks, c = cv, src = Math.max(0.01, c.source_length || trk.t.len || 1)
+                                                var g = Math.pow(10, (c.gain_db || 0) / 20), n = Math.max(1, Math.floor(width / 2))
+                                                var fin = c.fade_in || 0, fout = c.fade_out || 0
+                                                ctx.fillStyle = "rgba(0,0,0,0.8)"
+                                                for (var j = 0; j < n && pk.length; j++) {
+                                                    var tt = c.length * j / n, env = 1
+                                                    if (fin > 0 && tt < fin) env = tt / fin
+                                                    if (fout > 0 && tt > c.length - fout) env = Math.min(env, (c.length - tt) / fout)
+                                                    var v = (pk[Math.min(pk.length - 1, Math.floor((c.offset + tt) / src * pk.length))] || 0) * g * env
+                                                    var h = Math.min(height - 2, 1 + v * (height - 4))
+                                                    ctx.fillRect(width * j / n, (height - h) / 2, 1.4, h)
+                                                }
+                                                ctx.fillStyle = "rgba(0,0,0,0.28)"; ctx.strokeStyle = "rgba(0,0,0,0.9)"; ctx.lineWidth = 1.5
+                                                var fi = fin * p, fo = fout * p
+                                                if (fi > 1) { ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(fi, 0); ctx.lineTo(0, height); ctx.closePath(); ctx.fill()
+                                                              ctx.beginPath(); ctx.moveTo(0, height); ctx.lineTo(fi, 0); ctx.stroke() }
+                                                if (fo > 1) { ctx.beginPath(); ctx.moveTo(width, 0); ctx.lineTo(width - fo, 0); ctx.lineTo(width, height); ctx.closePath(); ctx.fill()
+                                                              ctx.beginPath(); ctx.moveTo(width - fo, 0); ctx.lineTo(width, height); ctx.stroke() }
                                             }
                                         }
                                     }
-                                    MouseArea { anchors.fill: parent; onClicked: function (m) { root.seek(parent.cl.start + m.x / root.pps) } }
+                                    MouseArea {              // cuerpo: elegir, mover o cortar
+                                        anchors.fill: parent
+                                        preventStealing: true
+                                        cursorShape: root.tool === "cut" ? Qt.IBeamCursor : pressed ? Qt.ClosedHandCursor : Qt.OpenHandCursor
+                                        property real px0
+                                        onPressed: function (m) {
+                                            if (root.tool === "cut") {
+                                                root.pick(trk.t.uid, ac.modelData.id)
+                                                root.splitAt(trk.t.uid, ac.modelData.id, root.snapT(ac.modelData.start + m.x / root.pps))
+                                                return
+                                            }
+                                            px0 = mapToItem(ac.lane, m.x, 0).x; ac.begin()
+                                        }
+                                        onPositionChanged: function (m) {
+                                            if (!ac.busy) return
+                                            var d = (mapToItem(ac.lane, m.x, 0).x - px0) / root.pps
+                                            ac.set({ start: Math.max(0, root.snapT(ac.modelData.start + d)) })
+                                        }
+                                        onReleased: if (ac.busy) ac.commitRange()
+                                    }
+                                    Rectangle {              // asa del volumen: arrastrar arriba/abajo
+                                        visible: ac.picked && ac.width > 70
+                                        x: (parent.width - width) / 2; y: 18
+                                        width: gainTxt.implicitWidth + 12; height: 18; radius: 9
+                                        color: gm.pressed ? Theme.accent : Theme.button; border.width: Theme.buttonBorder; border.color: Theme.line
+                                        Text { id: gainTxt; anchors.centerIn: parent; text: root.dbTxt(ac.v.gain_db || 0); color: gm.pressed ? "#000" : Theme.ink
+                                               font.family: Theme.font; font.pixelSize: 11; font.weight: 700 }
+                                        MouseArea {
+                                            id: gm; anchors.fill: parent; anchors.margins: -3; preventStealing: true; cursorShape: Qt.SizeVerCursor
+                                            property real y0
+                                            onPressed: function (m) { y0 = mapToItem(ac.lane, 0, m.y).y; ac.begin() }
+                                            onPositionChanged: function (m) {
+                                                var d = (y0 - mapToItem(ac.lane, 0, m.y).y) * 0.25
+                                                ac.set({ gain_db: Math.max(-60, Math.min(24, Math.round((ac.modelData.gain_db + d) * 10) / 10)) })
+                                            }
+                                            onReleased: { ac.busy = false; root.edit(trk.t.uid, { op: "gain", clip: ac.modelData.id, db: ac.live.gain_db }) }
+                                        }
+                                    }
+                                    Repeater {               // cuadritos de fundido (entrada y salida)
+                                        model: ac.picked ? ["in", "out"] : []
+                                        Rectangle {
+                                            required property string modelData
+                                            readonly property bool isIn: modelData === "in"
+                                            width: 12; height: 12
+                                            x: isIn ? Math.min(ac.width - 12, ac.v.fade_in * root.pps) : Math.max(0, ac.width - 12 - ac.v.fade_out * root.pps)
+                                            y: 16
+                                            color: fm.pressed ? Theme.accent : Theme.button; border.width: Theme.buttonBorder; border.color: Theme.line
+                                            MouseArea {
+                                                id: fm; anchors.fill: parent; anchors.margins: -6; preventStealing: true; cursorShape: Qt.SizeHorCursor
+                                                property real px0
+                                                onPressed: function (m) { px0 = mapToItem(ac.lane, m.x, 0).x; ac.begin() }
+                                                onPositionChanged: function (m) {
+                                                    var d = (mapToItem(ac.lane, m.x, 0).x - px0) / root.pps, L0 = ac.modelData.length
+                                                    if (parent.isIn) ac.set({ fade_in: Math.max(0, Math.min(L0 - ac.modelData.fade_out, ac.modelData.fade_in + d)) })
+                                                    else ac.set({ fade_out: Math.max(0, Math.min(L0 - ac.modelData.fade_in, ac.modelData.fade_out - d)) })
+                                                }
+                                                onReleased: { ac.busy = false
+                                                              root.edit(trk.t.uid, { op: "fades", clip: ac.modelData.id, "in": ac.live.fade_in, out: ac.live.fade_out }) }
+                                            }
+                                        }
+                                    }
+                                    Repeater {               // bordes: recortar el principio o el final
+                                        model: ["l", "r"]
+                                        MouseArea {
+                                            required property string modelData
+                                            readonly property bool isLeft: modelData === "l"
+                                            x: isLeft ? -3 : ac.width - 5; y: 30; width: 8; height: Math.max(8, ac.height - 30)
+                                            preventStealing: true
+                                            cursorShape: Qt.SizeHorCursor
+                                            hoverEnabled: true
+                                            property real px0
+                                            Rectangle { anchors.fill: parent; color: Theme.accent; opacity: parent.containsMouse || parent.pressed ? 0.7 : 0 }
+                                            onPressed: function (m) { px0 = mapToItem(ac.lane, m.x, 0).x; ac.begin() }
+                                            onPositionChanged: function (m) {
+                                                if (!ac.busy) return
+                                                var c = ac.modelData, d = (mapToItem(ac.lane, m.x, 0).x - px0) / root.pps
+                                                if (isLeft) {
+                                                    var s = root.snapT(c.start + d)
+                                                    s = Math.max(c.start - c.offset, Math.min(c.start + c.length - 0.05, s))   // no antes del principio del archivo
+                                                    ac.set({ start: Math.max(0, s), offset: c.offset + (Math.max(0, s) - c.start), length: c.length - (Math.max(0, s) - c.start) })
+                                                } else {
+                                                    var e = root.snapT(c.start + c.length + d)
+                                                    e = Math.max(c.start + 0.05, Math.min(c.start + (c.source_length - c.offset), e))
+                                                    ac.set({ length: e - c.start })
+                                                }
+                                            }
+                                            onReleased: if (ac.busy) ac.commitRange()
+                                        }
+                                    }
                                 }
                             }
                             // notas MIDI (pistas de instrumento con notas de duración propia)
@@ -388,6 +626,8 @@ Rectangle {
                             color: Theme.deviceHead
                             border.width: 1; border.color: Theme.deviceBorder
                             Rectangle { width: 8; height: parent.height; color: trk.c }
+                            MouseArea { anchors.fill: parent; enabled: !trk.master
+                                        onClicked: { var i = root.studio.seq.indexOf(trk.t.uid); if (i >= 0) root.studio.seq.pick(i) } }
                             Column {
                                 x: 16; y: 6; width: parent.width - 16 - btns.width - 10; spacing: 1
                                 Text { width: parent.width; elide: Text.ElideRight; text: trk.t.name; color: Theme.deviceInk
@@ -402,9 +642,12 @@ Rectangle {
                                           : "FX: sin inserts"
                                 }
                             }
-                            Row {
+                            Column {
                                 id: btns
                                 anchors.right: parent.right; anchors.rightMargin: 6; anchors.verticalCenter: parent.verticalCenter
+                                spacing: 4
+                            Row {
+                                x: btns.width - width
                                 spacing: 4
                                 NeoButton { visible: !trk.master; text: "M"; padX: 6; padY: 3; fontSize: 12; shadow: 2
                                             pressedState: !!trk.t.mute
@@ -427,6 +670,20 @@ Rectangle {
                                             text: (root.isOpen(trk.t) ? "▾ " : "▸ ") + "∿ " + trk.inf.lanes.length; padX: 6; padY: 3; fontSize: 12; shadow: 2
                                             tip: "Mostrar u ocultar sus " + trk.inf.lanes.length + " curvas de automatización"
                                             onClicked: root.toggleOpen(trk.t) }
+                            }
+                            Row {
+                                visible: !trk.master
+                                x: btns.width - width
+                                spacing: 4
+                                NeoButton { visible: trk.t.type === "audio" && trk.t.id >= 0
+                                            text: root.studio.seq.splitting ? "…" : "Separar"; padX: 6; padY: 3; fontSize: 12; shadow: 2
+                                            enabled: !root.studio.seq.splitting
+                                            tip: "Separar en pistas con IA (Demucs, en tu equipo): batería en bombo, caja / clap y platos, bajo, voz, guitarra, piano y otros. La original queda silenciada"
+                                            onClicked: root.studio.seq.splitStems(trk.t.id) }
+                                NeoButton { text: "✕"; padX: 6; padY: 3; fontSize: 12; shadow: 2; confirm: "¿Quitar?"
+                                            tip: "Quitar la pista (y su canal y efectos). Pide confirmación"
+                                            onClicked: { var i = root.studio.seq.indexOf(trk.t.uid); if (i >= 0) root.studio.removeTrackAt(i) } }
+                            }
                             }
                         }
                     }
@@ -572,7 +829,7 @@ Rectangle {
     Rectangle {
         readonly property real px: root.headW + root.studio.posSec * root.pps - flick.contentX
         visible: px >= root.headW && px <= root.width
-        x: px - 1; y: ruler.y; width: 2; height: consoleBox.y - ruler.y
+        x: px - 1; y: ruler.y; width: 2; height: root.height - ruler.y
         color: Theme.knobArc; z: 5
         Rectangle { x: -5; width: 12; height: 10; color: Theme.knobArc }
     }
@@ -581,206 +838,16 @@ Rectangle {
         visible: flick.contentWidth > flick.width
         x: root.headW + (flick.width - root.headW) * flick.contentX / flick.contentWidth
         width: Math.max(30, (flick.width - root.headW) * flick.width / flick.contentWidth)
-        y: consoleBox.y - 8; height: 6; radius: 3; color: Theme.deviceInk; opacity: 0.45; z: 6
+        y: root.height - 8; height: 6; radius: 3; color: Theme.deviceInk; opacity: 0.45; z: 6
     }
 
-    // ---------------- consola ----------------
-    Rectangle {
-        id: consoleBox
-        anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
-        height: root.showConsole ? Math.min(Math.max(320, root.height * 0.65), Math.min(400, Math.max(320, root.height * 0.42)) + root.sendsH) : 0
-        visible: root.showConsole
-        color: Theme.deviceHead
-        Rectangle { width: parent.width; height: 3; color: Theme.deviceBorder }
-        Text { x: 12; y: 8; text: "CONSOLA · inserts en orden de la señal (∿ = automatizado) · doble clic en un insert: abrirlo en Efectos"
-                                  + (root.auxes.length ? " · envíos: arrastra el nivel, doble clic lo apaga" : "")
-               color: Theme.deviceInk; font.family: Theme.font; font.pixelSize: 12; font.weight: 700 }
-        Flickable {
-            id: strips
-            x: 8; y: 30; width: parent.width - 16; height: parent.height - 36
-            contentWidth: stripRow.width; clip: true
-            boundsBehavior: Flickable.StopAtBounds
-            flickableDirection: Flickable.HorizontalFlick
-            Row {
-                id: stripRow
-                spacing: 6
-                Repeater {
-                    model: root.rows
-                    Rectangle {
-                        id: st
-                        required property var modelData
-                        readonly property var t: modelData
-                        readonly property bool master: t.type === "master"
-                        readonly property var inf: root.info(t.id)
-                        readonly property color c: root.colorOf(t)
-                        readonly property real fv: master ? root.studio.masterPos : (t.vol === undefined ? 70 : t.vol)
-                        readonly property var lr: master ? root.studio.masterDb : root.studio.trackLR(t.id)
-                        readonly property bool isAux: t.type === "aux"
-                        width: master ? 150 : 132; height: strips.height
-                        color: Theme.device; border.width: Theme.buttonBorder; border.color: st.master ? st.c : Theme.deviceBorder
-                        Rectangle { width: parent.width; height: 26; color: st.c
-                            Text { x: 6; width: parent.width - 12; anchors.verticalCenter: parent.verticalCenter; elide: Text.ElideRight
-                                   text: st.t.name; color: "#000"; font.family: Theme.font; font.pixelSize: 12; font.weight: 800 }
-                            MouseArea { id: hma; anchors.fill: parent; hoverEnabled: true; onDoubleClicked: root.openInFx(st.t.id) }
-                            ToolTipLite { show: hma.containsMouse; text: "Doble clic: abrir los efectos de " + st.t.name } }
-                        Flickable {                      // inserts (se desplazan si no caben)
-                            id: insF
-                            x: 4; y: 30; width: parent.width - 8; height: parent.height - 30 - 194 - root.sendsH
-                            contentHeight: insCol.height; clip: true
-                            boundsBehavior: Flickable.StopAtBounds
-                            flickableDirection: Flickable.VerticalFlick
-                        Column {
-                            id: insCol
-                            width: parent.width; spacing: 2
-                            Repeater {
-                                model: st.inf.inserts
-                                Rectangle {
-                                    required property var modelData
-                                    width: parent.width; height: 24; radius: 3
-                                    color: modelData.enabled ? Theme.button : Theme.deviceHead
-                                    border.width: 1; border.color: Theme.deviceBorder
-                                    Rectangle { x: 5; anchors.verticalCenter: parent.verticalCenter; width: 8; height: 8; radius: 4
-                                                color: modelData.enabled ? "#2fbf71" : "#7a7a7a"; border.width: 1; border.color: Theme.line }
-                                    Text { x: 17; width: parent.width - 21 - (aut.visible ? aut.width + 2 : 0); anchors.verticalCenter: parent.verticalCenter
-                                           elide: Text.ElideRight; text: modelData.label; color: Theme.ink
-                                           font.family: Theme.font; font.pixelSize: 11; font.weight: 600
-                                           font.strikeout: !modelData.enabled }
-                                    Text { id: aut; visible: modelData.automated > 0; anchors.right: parent.right; anchors.rightMargin: 4
-                                           anchors.verticalCenter: parent.verticalCenter; text: "∿"; color: Theme.ink
-                                           font.pixelSize: 13; font.weight: 800 }
-                                    MouseArea { id: ima; anchors.fill: parent; hoverEnabled: true; onDoubleClicked: root.openInFx(st.t.id) }
-                                    ToolTipLite { show: ima.containsMouse
-                                                  text: modelData.label + (modelData.enabled ? "" : " (puenteado)")
-                                                        + (modelData.automated ? " · " + modelData.automated + " parámetro(s) automatizado(s)" : "")
-                                                        + (modelData.auto ? " · puesto por la mezcla automática" : "") }
-                                }
-                            }
-                            Text { visible: st.inf.inserts.length === 0; text: "sin inserts"; color: Theme.deviceInk
-                                   font.family: Theme.font; font.pixelSize: 11 }
-                        }
-                        }
-                        Text {                           // aviso de que hay más inserts abajo
-                            visible: insF.contentHeight > insF.height
-                            x: 6; y: insF.y + insF.height + 2
-                            text: "+" + Math.max(0, st.inf.inserts.length - Math.floor((insF.height + 2) / 26)) + " más ↓ (rueda)"
-                            color: Theme.deviceInk; font.family: Theme.font; font.pixelSize: 11; font.weight: 700
-                        }
-                        // envíos a los buses Aux (pre = antes del fader)
-                        Item {
-                            visible: root.sendsH > 0 && !st.master
-                            x: 4; y: parent.height - 168 - root.sendsH; width: parent.width - 8; height: root.sendsH - 4
-                            Text { x: 2; y: 2; text: st.isAux ? "RETORNO" : "ENVÍOS"; color: Theme.deviceInk
-                                   font.family: Theme.font; font.pixelSize: 11; font.weight: 800 }
-                            Text { visible: st.isAux; x: 2; y: 22; width: parent.width - 4; wrapMode: Text.Wrap
-                                   text: { var n = root.sendsTo(st.t.id); return n ? "Recibe " + n + (n === 1 ? " envío" : " envíos") : "Sin envíos: súbelos en las otras tiras" }
-                                   color: Theme.deviceInk; font.family: Theme.font; font.pixelSize: 11; font.weight: 600 }
-                            Flickable {
-                                visible: !st.isAux
-                                y: 20; width: parent.width; height: parent.height - 20
-                                contentHeight: sendCol.height; clip: true
-                                boundsBehavior: Flickable.StopAtBounds; flickableDirection: Flickable.VerticalFlick
-                                Column {
-                                    id: sendCol
-                                    width: parent.width; spacing: 4
-                                    Repeater {
-                                        model: root.auxes
-                                        Item {
-                                            id: sr
-                                            required property var modelData
-                                            readonly property var snd: root.sendOf(st.t.id, modelData.id)
-                                            readonly property real pos: snd ? root.sendPos(snd.db) : 0
-                                            readonly property bool pre: !!(snd && snd.pre)
-                                            width: parent.width; height: 24
-                                            Rectangle {                  // nivel del envío
-                                                id: lvl
-                                                width: parent.width - 38; height: 24; radius: 3
-                                                color: Theme.input; border.width: 1; border.color: Theme.deviceBorder
-                                                Rectangle { x: 1; y: 1; height: parent.height - 2; radius: 2
-                                                            width: Math.max(0, (parent.width - 2) * sr.pos)
-                                                            color: Qt.tint(Theme.input, Qt.rgba(Qt.color(root.colorOf(sr.modelData)).r, Qt.color(root.colorOf(sr.modelData)).g, Qt.color(root.colorOf(sr.modelData)).b, 0.45)) }
-                                                Text { x: 5; width: parent.width - 10 - sdb.width - 4; anchors.verticalCenter: parent.verticalCenter; elide: Text.ElideRight
-                                                       text: sr.modelData.name
-                                                       color: Theme.ink; font.family: Theme.font; font.pixelSize: 11; font.weight: 600 }
-                                                Text { id: sdb; anchors.right: parent.right; anchors.rightMargin: 5; anchors.verticalCenter: parent.verticalCenter
-                                                       text: sr.snd ? (sr.snd.db > 0.05 ? "+" : "") + sr.snd.db.toFixed(1) : "−∞"
-                                                       color: Theme.ink; font.family: Theme.font; font.pixelSize: 11; font.weight: 800 }
-                                                MouseArea {
-                                                    id: sma
-                                                    anchors.fill: parent; hoverEnabled: true; preventStealing: true
-                                                    function at(mx) { root.setSend(st.t.id, sr.modelData.id, root.sendDb(Math.max(0, Math.min(1, mx / width))), sr.pre) }
-                                                    onPressed: function (m) { at(m.x) }
-                                                    onPositionChanged: function (m) { if (pressed) at(m.x) }
-                                                    onDoubleClicked: root.setSend(st.t.id, sr.modelData.id, -100, sr.pre)
-                                                }
-                                                ToolTipLite { show: sma.containsMouse && !sma.pressed
-                                                              text: "Envío de " + st.t.name + " al bus «" + sr.modelData.name + "» ("
-                                                                    + (sr.pre ? "pre-fader: no sigue al volumen de la pista" : "post-fader: sigue al volumen de la pista")
-                                                                    + "). Arrastra para el nivel; doble clic lo apaga." }
-                                            }
-                                            Rectangle {                  // pre / post fader
-                                                id: preB
-                                                x: parent.width - 34; width: 34; height: 24; radius: 3
-                                                color: sr.pre ? Theme.pressedBg : Theme.button
-                                                border.width: 1; border.color: Theme.deviceBorder
-                                                Text { anchors.centerIn: parent; text: "PRE"; color: sr.pre ? Theme.pressedInk : Theme.ink
-                                                       font.family: Theme.font; font.pixelSize: 11; font.weight: 800 }
-                                                MouseArea { id: pma; anchors.fill: parent; hoverEnabled: true
-                                                            onClicked: root.setSend(st.t.id, sr.modelData.id, sr.snd ? sr.snd.db : -12, !sr.pre) }
-                                                ToolTipLite { show: pma.containsMouse
-                                                              text: sr.pre ? "Pre-fader (activo): el envío no depende del fader. Clic: post-fader"
-                                                                           : "Post-fader: el envío sigue al fader. Clic: pre-fader (para cascos o efectos que no deben bajar con la pista)" }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        // paneo
-                        Item {
-                            visible: !st.master
-                            x: 8; y: parent.height - 128 - 26; width: parent.width - 16; height: 24
-                            Rectangle { y: 10; width: parent.width; height: 4; color: Theme.dark ? Qt.tint(Theme.device, Qt.rgba(Qt.color(Theme.ink).r, Qt.color(Theme.ink).g, Qt.color(Theme.ink).b, 0.55)) : Theme.knobTrack }
-                            Rectangle { x: parent.width / 2 - 1; y: 6; width: 2; height: 12; color: Theme.deviceInk }
-                            Rectangle { width: 10; height: 18; y: 3; radius: 2; color: Theme.knobArc; border.width: Theme.buttonBorder; border.color: Theme.line
-                                        x: (parent.width - 10) * (st.t.pan === undefined ? 50 : st.t.pan) / 100 }
-                            MouseArea {
-                                anchors.fill: parent; preventStealing: true
-                                function at(mx) { root.studio.setTrackMixUid(st.t.uid, st.fv, Math.round(Math.max(0, Math.min(100, mx / width * 100)))) }
-                                onPressed: function (m) { at(m.x) }
-                                onPositionChanged: function (m) { if (pressed) at(m.x) }
-                                onDoubleClicked: root.studio.setTrackMixUid(st.t.uid, st.fv, 50)
-                                onReleased: root.studio.trackRelease(st.t.uid)
-                            }
-                        }
-                        Text { visible: !st.master; x: 8; y: parent.height - 128 - 40; color: Theme.deviceInk
-                               font.family: Theme.font; font.pixelSize: 11; font.weight: 600
-                               text: { var p = st.t.pan === undefined ? 50 : st.t.pan; return p === 50 ? "Paneo C" : "Paneo " + (p < 50 ? "I " + (50 - p) * 2 : "D " + (p - 50) * 2) } }
-                        // fader + medidores
-                        Row {
-                            x: 8; y: parent.height - 124; spacing: 4
-                            Fader { height: 100; value: st.fv
-                                    tip: "Volumen de " + st.t.name
-                                    onMoved: function (v) { if (st.master) root.studio.setMaster(v); else root.studio.setTrackMixUid(st.t.uid, v, st.t.pan === undefined ? 50 : st.t.pan) }
-                                    onReleased: if (!st.master) root.studio.trackRelease(st.t.uid) }
-                            Meter { height: 100; width: 10; level: MD.dbToPct(st.lr[0]) }
-                            Meter { height: 100; width: 10; level: MD.dbToPct(st.lr[1]) }
-                            Column {
-                                spacing: 2
-                                Text { text: MD.faderDbText(st.fv); color: Theme.deviceInk; font.family: Theme.font; font.pixelSize: 12; font.weight: 800 }
-                                Text { text: "pico"; color: Theme.deviceInk; font.family: Theme.font; font.pixelSize: 11 }
-                                Text { text: Math.max(st.lr[0], st.lr[1]) <= -99 ? "−∞" : Math.max(st.lr[0], st.lr[1]).toFixed(1)
-                                       color: Theme.deviceInk; font.family: Theme.font; font.pixelSize: 12; font.weight: 700 }
-                            }
-                        }
-                        Row {
-                            visible: !st.master
-                            x: 8; y: parent.height - 20; spacing: 4
-                            Text { text: st.t.mute ? "SILENCIADA" : st.t.solo ? "SOLO" : ""; color: Theme.deviceInk
-                                   font.family: Theme.font; font.pixelSize: 11; font.weight: 800 }
-                        }
-                    }
-                }
-            }
-        }
+    component Tb: NeoButton {
+        property bool on: false
+        property bool active: true
+        fontSize: 12; padX: 7; padY: 2; shadow: 0
+        color: on ? Theme.accent : Theme.button; textColor: on ? "#000" : Theme.ink
+        opacity: active ? 1 : 0.45
+        enabled: active
     }
+    component Sep: Rectangle { width: 2; height: 26; color: Theme.deviceBorder }
 }

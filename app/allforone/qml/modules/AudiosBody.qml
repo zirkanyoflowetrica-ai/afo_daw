@@ -22,7 +22,7 @@ Column {
             width: root.width - count.width - 10
             anchors.verticalCenter: parent.verticalCenter
             wrapMode: Text.Wrap; textFormat: Text.StyledText
-            text: "Cada audio crea su <b>pista</b> y, con ella, su <b>tira en la consola</b>. Tipo y rol se deducen del nombre (_L, _R, _B…) y se pueden corregir aquí, en Pistas o en la consola."
+            text: "Cada audio crea su <b>pista</b> y, con ella, su <b>tira en la consola</b>. Tipo y rol se deducen del nombre (_L, _R, _B…) y se pueden corregir aquí, en el Arreglo o en el Mezclador."
             color: Theme.ink; font.family: Theme.font; font.pixelSize: 13; font.weight: 500; lineHeight: 1.2
         }
     }

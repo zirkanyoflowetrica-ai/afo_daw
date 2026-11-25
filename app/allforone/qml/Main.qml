@@ -84,8 +84,7 @@ Window {
     property int fxRev: 0                      // sube cada vez que cambia una cadena de efectos
     function fxCountChanged() { fxRev++ }
     property var fxBody: null
-    property var fxMasterBody: null
-    function refreshRacks() { if (fxBody) fxBody.reload(); if (fxMasterBody) fxMasterBody.reload() }
+    function refreshRacks() { if (fxBody) fxBody.reload() }
     // Valor que muestra una tira según el modo elegido (dB de pico, LUFS a corto plazo o RMS)
     function stripValue(id) {
         var l = trackLoud[String(id)]
@@ -157,8 +156,9 @@ Window {
         if (!t || loading) return
         if (t.id > 0) rackTrack = t.id
         if (t.type === "inst") sq.oct = (t.cfg && t.cfg.oct) || 4      // la Octava es de cada pista
-        var ed = ({ inst: "piano", drum: "drums", audio: "pistas", ia: "pistas", voz: "pistas" })[t.type]
-        if (ed && ["piano", "drums", "pistas", "inst"].indexOf(detZ.current) >= 0) detZ.current = ed
+        // audio, IA y voz se editan en el Arreglo (sus clips): el detalle muestra su cadena de efectos
+        var ed = ({ inst: "piano", drum: "drums", audio: "fx", ia: "fx", voz: "fx" })[t.type]
+        if (ed && ["piano", "drums", "inst"].indexOf(detZ.current) >= 0) detZ.current = ed
     }
     readonly property real bar16: 16 * 4 * 60 / Math.max(40, bpm)
     property real stripScroll: 0               // desplazamiento horizontal de las tiras de la consola
@@ -180,7 +180,7 @@ Window {
                  lastTuned: mx.lastTuned, master: mx.masterStats, mastering: mx.mastering, rackTrack: rackTrack,
                  versions: mx.versions.map(function (v) { return { name: v.name, kind: v.kind, fx: v.chain.length, lufs: v.lufs } }),
                  versionSel: mx.versionSel,
-                 masterChain: fxMasterBody ? fxMasterBody.chain.map(function (e) { return e.label || e.key }) : [],
+                 masterChain: engineOk ? (call("fxList", 0).chain || []).map(function (e) { return e.label || e.key }) : [],
                  masterLoud: masterLoud,
                  tracks: tracks.map(function (t) { return { uid: t.uid, id: t.id, type: t.type, name: t.name, vol: t.vol, pan: t.pan,
                                                              len: t.len || 0, peaks: (t.peaks || []).length,
@@ -268,12 +268,18 @@ Window {
         if (what === "view") { if (a) view = a
                                return { view: view, lanes: arrange.laneCount, inserts: arrange.insertCount, rows: arrange.rows.length,
                                         visible: arrange.visible, modules: mixPage.visible,
-                                        auxes: arrange.auxes.length, sends: arrange.sendCount, sendsH: arrange.sendsH } }
-        // Bus Aux desde la consola (autoprueba): a = [nombre del bus, id de la pista que envía, dB]
-        if (what === "aux") { var at = arrange.addAux()
+                                        auxes: mixBody.auxes.length, sends: mixBody.sendCount, sendsH: mixBody.sendsH,
+                                        mixInserts: mixBody.insertCount } }
+        // Bus Aux desde el Mezclador (autoprueba): a = [nombre del bus, id de la pista que envía, dB]
+        if (what === "aux") { var at = mixBody.addAux()
                               if (!at || at.id < 0) return { ok: false }
-                              arrange.setSend(a[1], at.id, a[2], false)
-                              return { ok: true, id: at.id, sends: arrange.sendCount, uid: at.uid } }
+                              mixBody.setSend(a[1], at.id, a[2], false)
+                              return { ok: true, id: at.id, sends: mixBody.sendCount, uid: at.uid } }
+        // Edición de un clip desde el Arreglo (autoprueba): a = pista (uid), b = operación con «clip»
+        if (what === "arrClip") { arrange.pick(a, b.clip || 0)
+                                  var rc = b.op === "split" ? (arrange.splitAt(a, b.clip, b.at), { clips: sq.trackOf(a).aclips }) : arrange.edit(a, b)
+                                  return { ok: !!rc, clips: rc ? rc.clips : [], undo: arrange.undoStack.length } }
+        if (what === "arrUndo") { arrange.undo(); return { clips: sq.trackOf(a).aclips, redo: arrange.redoStack.length } }
         if (what === "auxRemove") { var ai = sq.indexOf(a); if (ai >= 0) removeTrackAt(ai); return ai >= 0 }
         if (what === "theme") { var ok = setTheme(a, true)
                                 var cols = { accent: String(Theme.accent) }
@@ -311,18 +317,20 @@ Window {
     // pestaña; la consola es la vista Mezclador.
     readonly property var pageZone: ({ ia: "nav", audios: "nav", add: "nav", fxlist: "nav", recent: "nav",
                                        pista: "insp", asist: "insp", master: "insp", cinta: "insp",
-                                       pistas: "detail", inst: "detail", piano: "detail", drums: "detail",
-                                       fx: "detail", fxm: "detail", afina: "detail" })
+                                       inst: "detail", piano: "detail", drums: "detail",
+                                       fx: "detail", afina: "detail" })
     function zoneOf(id) { return ({ nav: navZ, insp: inspZ, detail: detZ })[pageZone[id]] || null }
     function titleOf(id) {
         return ({ ia: "IA", audios: "Archivos", add: "Añadir", fxlist: "Efectos", recent: "Inicio", pista: "Pista", asist: "Asistente IA",
-                  master: "Versiones", cinta: "Grabar", pistas: "Clips", inst: "Instrumento", piano: "Piano roll",
-                  drums: "Batería", fx: "Efectos", fxm: "Efectos master", afina: "Afinador", mezcla: "Mezclador" })[id] || id
+                  master: "Versiones", cinta: "Grabar", pistas: "Arreglo", inst: "Instrumento", piano: "Piano roll",
+                  drums: "Batería", fx: "Efectos", afina: "Afinador", mezcla: "Mezclador" })[id] || id
     }
     function goTo(id) {
         if (id === "mastia" || id === "antes") id = "asist"     // Master IA y A/B están en el Asistente IA (X17)
+        if (id === "fxm") { rackTrack = 0; id = "fx" }          // el master es un canal más de Efectos
         currentId = id
         if (id === "mezcla") { if (!dualWindow) view = "mixer"; return }
+        if (id === "pistas") { view = dualWindow ? "mixer" : "arrange"; return }   // los clips se editan en el Arreglo
         var z = zoneOf(id)
         if (!z) return
         z.current = id; z.folded = false
@@ -820,13 +828,11 @@ Window {
         anchors { left: parent.left; right: parent.right; bottom: statusBar.top }
         height: folded ? headH : win.detailH
         foldTip: folded ? "Mostrar el panel de detalle (Ctrl+E)" : "Plegar el panel de detalle (Ctrl+E)"
-        tabs: [["pistas", "Clips", "Clips de las pistas de audio: dividir (S), mover, fundidos, normalizar, rehacer con IA"],
-               ["piano", "Piano roll", "Notas de la pista de instrumento elegida"],
+        tabs: [["piano", "Piano roll", "Notas de la pista de instrumento elegida"],
                ["inst", "Instrumento", "Sonido de la pista de instrumento: sintetizador del motor o VST3"],
                ["drums", "Batería", "Pads y patrón de 16 pasos de la pista de batería"],
                ["fx", "Efectos", "Cadena de efectos de la pista elegida y su editor"],
-               ["afina", "Afinador", "Afinador AF-60 y afinación de las voces"],
-               ["fxm", "Efectos master", "Cadena del master y masterizado automático"]]
+               ["afina", "Afinador", "Afinador AF-60 y afinación de las voces"]]
         current: "fx"
         extra: srcToggle
         onFoldedChanged: if (!win.loading) win.saveLayout()
@@ -852,46 +858,18 @@ Window {
             }
             ToolTipLite { text: "Arrastra para cambiar el alto del panel de detalle"; show: dh.hovered && !dm.pressed }
         }
-        ZonePage {
-            zid: "pistas"; tint: "pistas"; minWidth: 900
-            TracksBody {
-                tracks: win.tracks
-                mixer: mx
-                seq: sq
-                host: null
-                studio: win
-                posSec: win.posSec
-                bpm: win.bpm
-                onAddType: function (type) { sq.addTrack(type) }
-                selected: win.selected
-                bar16: win.bar16
-                headPos: win.step < 0 ? 0 : (win.step % 256) / 256
-                onAddAudio: { if (win.engineOk) win.importAudio(); else win.toast("Motor nativo no disponible") }
-                onAddTone: {
-                    var r = win.call("addTestTone")
-                    if (r.ok) { win.addTrack(r.track, false); win.toast("Tono de prueba 440 Hz (sintético) añadido") } else win.toast(r.error)
-                }
-                onNotYet: function (what) { win.toast("«" + what + "» todavía no está en la interfaz nativa") }
-                onSelectTrack: function (i) { sq.pick(i) }
-                onToggleMute: function (i) { var t = win.tracks.slice(); t[i] = Object.assign({}, t[i], { mute: !t[i].mute }); win.tracks = t; win.syncTrackStates() }
-                onToggleSolo: function (i) { var t = win.tracks.slice(); t[i] = Object.assign({}, t[i], { solo: !t[i].solo }); win.tracks = t; win.syncTrackStates() }
-                onRemoveTrack: function (i) { win.removeTrackAt(i) }
-                onSplitTrack: function (i) { sq.splitStems(win.tracks[i].id) }
-            }
-        }
         ZonePage { zid: "piano"; tint: "piano"; minWidth: 760; PianoBody { seq: sq } }
         ZonePage { zid: "inst"; tint: "inst"; minWidth: 420; InstBody { seq: sq } }
         ZonePage { zid: "drums"; tint: "drums"; minWidth: 760; DrumsBody { seq: sq; curStep: win.playing && win.step >= 0 ? win.step % 16 : -1 } }
-        ZonePage { id: fxPage; zid: "fx"; tint: "fx"; minWidth: 860; FxBody { studio: win; shown: fxPage.visible } }
-        ZonePage { zid: "afina"; tint: "afina"; minWidth: 620; TuneBody { mixer: mx } }
-        ZonePage {
-            id: fxmPage; zid: "fxm"; tint: "fxm"; minWidth: 860
+        ZonePage {                                  // un solo editor de efectos: cada pista y el master
+            id: fxPage; zid: "fx"; tint: "fx"; minWidth: 860
             Column {
                 width: parent ? parent.width : 860
-                FxBody { studio: win; shown: fxmPage.visible; master: true }
-                AutoMasterBox { mixer: mx }
+                FxBody { id: fxMain; studio: win; shown: fxPage.visible }
+                AutoMasterBox { mixer: mx; visible: fxMain.target === 0 }
             }
         }
+        ZonePage { zid: "afina"; tint: "afina"; minWidth: 620; TuneBody { mixer: mx } }
     }
 
     // ---------------- ventana aparte: Arreglo (doble flujo) ----------------

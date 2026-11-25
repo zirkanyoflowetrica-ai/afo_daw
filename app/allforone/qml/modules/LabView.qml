@@ -280,7 +280,7 @@ Item {
                                             color: pressedState ? Theme.pressedBg : Theme.button; textColor: pressedState ? Theme.pressedInk : Theme.ink
                                             tip: "Silenciar esta familia en la preescucha"; onClicked: root.lb.muteFamily(fam.modelData.name) }
                                 NeoButton { visible: !!fam.draft; text: "Editar"; fontSize: 11; padX: 6; padY: 2; shadow: 2
-                                            tip: "Elige su pista borrador: efectos nativos abajo, volumen y envíos en el Inspector, cortes y fundidos en Clips"
+                                            tip: "Elige su pista borrador: efectos nativos abajo, volumen y envíos en el Inspector, cortes y fundidos en el Arreglo"
                                             onClicked: root.edit(fam.modelData.name) }
                             }
                             Text { visible: !fam.modelData.variants.length; width: parent.width; wrapMode: Text.Wrap; color: Theme.ink

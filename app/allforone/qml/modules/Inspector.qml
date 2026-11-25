@@ -104,7 +104,7 @@ Column {
            font.family: Theme.font; font.pixelSize: 13; font.weight: 700 }
     Text {
         visible: root.live && !root.auxes.length; width: root.width; wrapMode: Text.Wrap
-        text: "No hay buses Aux. Crea uno en el Arreglo («+ Aux») para mandar reverb o delay compartidos."
+        text: "No hay buses Aux. Crea uno en el Mezclador («+ AUX») para mandar reverb o delay compartidos."
         color: Theme.ink; font.family: Theme.font; font.pixelSize: 12
     }
     Repeater {

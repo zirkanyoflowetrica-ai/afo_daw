@@ -5,7 +5,7 @@ import "../state/mixdata.js" as MD
 
 // Módulo Mastering (Master M-4): la mesa del master. VU, sonoridad en vivo (LUFS, RMS, pico), fader
 // master con medidores L/R del motor, saturación, tono y limitador, y A/B de la cadena automática.
-// Los efectos del master están en «Efectos master» (allí, abajo, Masterizar automáticamente); cada
+// Los efectos del master están en Efectos, canal Master (allí, abajo, Masterizar automáticamente); cada
 // master se guarda como versión en «Rebobinado», donde se elige y se exporta.
 Column {
     id: root
@@ -97,6 +97,6 @@ Column {
         text: root.st ? "Último master automático: entrada " + (root.st.input_lufs).toFixed(1) + " LUFS → " + root.st.lufs_i.toFixed(1) +
                         " LUFS, pico " + root.st.max_peak_db.toFixed(1) + " dB, techo " + root.st.ceiling_db.toFixed(1) + " dB" +
                         (root.st.compressed ? ", con compresión de master" : "") + ". " + root.st.note
-                      : "Los efectos del master están en «Efectos master»; abajo de ese rack, «Masterizar automáticamente». Cada master queda en «Rebobinado» para elegirlo y exportarlo."
+                      : "Los efectos del master están en Efectos, canal Master; abajo de ese rack, «Masterizar automáticamente». Cada master queda en «Rebobinado» para elegirlo y exportarlo."
     }
 }

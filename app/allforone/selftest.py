@@ -146,7 +146,7 @@ def check_mix_run(rep, bridge, st, since: float) -> None:
     rep.check("master en vivo (Plataformas): objetivo o tope de limitación, y pico bajo el techo",
               (reached or capped) and m.get("max_peak_db", 0) <= m.get("ceiling_db", -2) + 0.1,
               m)
-    rep.check("la cadena del master se ve en Efectos master", len(st.get("masterChain", [])) >= 4, st.get("masterChain"))
+    rep.check("la cadena del master se ve en Efectos (canal Master)", len(st.get("masterChain", [])) >= 4, st.get("masterChain"))
     from . import paths
     folder = paths.user_data_dir() / "mezclas"
     wavs = [w for w in folder.rglob("*.wav") if w.stat().st_mtime >= since] if folder.exists() else []

@@ -268,6 +268,21 @@ def _native_daw_checks(rep, app, host, window, bridge, track_id) -> None:
     rep.check("los cortes suenan en el render (silencio entre los clips)", out.exists(), str(out))
     edit({"op": "set", "clips": [{"start": 0, "length": 8, "offset": 0}]})
     call("refreshClips", "a" + str(track_id))
+    # Un solo panel de pistas: los clips se editan en el Arreglo (dividir, fundido y deshacer desde la vista)
+    lay("view", "arrange")
+    uid = "a" + str(track_id)
+    c0 = json.loads(bridge.clipList(track_id))["clips"][0]
+    sp = lay("arrClip", uid, {"op": "split", "clip": c0["id"], "at": 4.0})
+    fd = lay("arrClip", uid, {"op": "fades", "clip": sp["clips"][-1]["id"], "in": 0.5, "out": 0.0}) if len(sp["clips"]) == 2 else {}
+    un = lay("arrUndo", uid)
+    un = lay("arrUndo", uid)
+    eng_clips = json.loads(bridge.clipList(track_id))["clips"]
+    tools = [window.findChild(QObject, n) for n in ("arrSplit", "arrCut", "coverMode", "arrToMixer")]
+    rep.check("Arreglo: dividir, fundir y deshacer clips desde la vista (sin pestaña «Clips»)",
+              len(sp["clips"]) == 2 and fd.get("ok") and abs(fd["clips"][-1]["fade_in"] - 0.5) < 1e-6
+              and len(eng_clips) == 1 and un["redo"] == 2 and None not in tools,
+              {"dividido": [round(c["length"], 2) for c in sp["clips"]], "deshecho": len(eng_clips),
+               "herramientas": [t is not None for t in tools]})
     z1 = lay("zones")
     rep.check("tamaño fijo: ninguna zona cambia de tamaño por su contenido", z0 == z1,
               {k: (z0.get(k), z1.get(k)) for k in z1 if z0.get(k) != z1.get(k)})
@@ -279,7 +294,7 @@ def _native_daw_checks(rep, app, host, window, bridge, track_id) -> None:
     lay("goto", "piano")
     s_drum = lay("select", i_drum)
     rep.check("la selección manda: elegir una pista abre su editor en el detalle y su cadena en Efectos",
-              s_tone["detail"] == "pistas" and s_tone["rack"] == track_id and s_drum["detail"] == "drums",
+              s_tone["detail"] == "fx" and s_tone["rack"] == track_id and s_drum["detail"] == "drums",
               {"tono": s_tone, "batería": s_drum})
 
     # Temas: carpetas de templates/ (copiar la carpeta = compartir el tema)
@@ -543,8 +558,8 @@ def run_native_selftest(app, host, report_path: str | None, screenshot_path: str
                                   Q_ARG("QVariant", None), Q_ARG("QVariant", None))
     ids = sorted((pv.toVariant() if hasattr(pv, "toVariant") else pv) or [])
     rep.check("cada módulo tiene su sitio: páginas en las zonas y la consola como vista Mezclador",
-              ids == sorted(["add", "fxlist", "ia", "audios", "recent", "pista", "asist", "master", "cinta", "pistas", "piano",
-                             "inst", "drums", "fx", "afina", "fxm"]), ids)
+              ids == sorted(["add", "fxlist", "ia", "audios", "recent", "pista", "asist", "master", "cinta", "piano",
+                             "inst", "drums", "fx", "afina"]), ids)
     rep.check("motor conectado desde QML", bool(prop("engineOk")))
     _native_home_checks(rep, app, host, window, bridge, startup=True)   # lo demás de Inicio, al final: deja el proyecto vacío
 
@@ -666,11 +681,12 @@ def _native_mixer_checks(rep, app, host, window, bridge, prop) -> None:
     lanes = json.loads(bridge.dawLanes(json.dumps([i["trackId"] for i in st["items"]] + [0])))
     n_auto = sum(len(v["lanes"]) for v in lanes.get("tracks", {}).values())
     n_ins = sum(len(v["inserts"]) for v in lanes.get("tracks", {}).values())
-    rep.check("vista Arreglo: se ven los inserts y las curvas de automatización de la mezcla",
+    rep.check("vista Arreglo: se ven los inserts y las curvas de automatización de la mezcla; el Mezclador, los mismos inserts",
               lv["visible"] and not lv["modules"] and lv["inserts"] == n_ins > 0 and lv["lanes"] == n_auto > 0
+              and lv["mixInserts"] == n_ins
               and all(len(l["points"]) >= 2 and l["max"] > l["min"] for v in lanes["tracks"].values() for l in v["lanes"]),
-              {"inserts": lv["inserts"], "curvas": lv["lanes"], "filas": lv["rows"]})
-    # Bus Aux desde la consola: un envío de la voz principal llega al bus y la consola lo muestra
+              {"inserts": lv["inserts"], "mezclador": lv["mixInserts"], "curvas": lv["lanes"], "filas": lv["rows"]})
+    # Bus Aux desde el Mezclador: un envío de la voz principal llega al bus y su tira lo muestra
     voz = next(i["trackId"] for i in st["items"] if i["name"] == "Voz_Principal")
     ax = QMetaObject.invokeMethod(window, "layoutCommand", Q_RETURN_ARG("QVariant"), Q_ARG("QVariant", "aux"),
                                   Q_ARG("QVariant", ["Reverb", voz, -12.0]), Q_ARG("QVariant", None))
@@ -680,7 +696,7 @@ def _native_mixer_checks(rep, app, host, window, bridge, prop) -> None:
     lv2 = QMetaObject.invokeMethod(window, "layoutCommand", Q_RETURN_ARG("QVariant"), Q_ARG("QVariant", "view"),
                                    Q_ARG("QVariant", None), Q_ARG("QVariant", None))
     lv2 = lv2.toVariant() if hasattr(lv2, "toVariant") else lv2
-    rep.check("bus Aux: «+ Aux» crea el bus y el envío de la voz llega al motor y a la consola",
+    rep.check("bus Aux: «+ AUX» del Mezclador crea el bus y el envío de la voz llega al motor y a su tira",
               ax.get("ok") and len(sends) == 1 and sends[0]["aux"] == ax["id"] and abs(sends[0]["db"] + 12) < 0.1
               and lv2["auxes"] == 1 and lv2["sends"] == 1 and lv2["sendsH"] > 0, {"aux": ax, "envíos": sends})
     # Automatización del fader: modo Touch por pista y curva de volumen visible como carril del Arreglo

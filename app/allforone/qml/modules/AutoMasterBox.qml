@@ -2,7 +2,7 @@ import QtQuick
 import "../theme"
 import "../controls"
 
-// Pie de «Efectos master»: master automático del V4.2 en vivo. El motor mide la sesión en memoria y
+// Pie de Efectos con el canal Master elegido: master automático del V4.2 en vivo. El motor mide la sesión en memoria y
 // pone en este rack una cadena real (EQ, compresión si hace falta, color y nivel final) hasta el
 // objetivo del preset. Cada resultado queda como versión en «Rebobinado».
 Column {
