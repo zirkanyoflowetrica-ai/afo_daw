@@ -32,6 +32,9 @@ namespace
             if (l.size() > 2) p.dTone[i] = l[2];
             if (l.size() > 3) p.dLvl[i] = l[3];
         }
+        float* an[] = { &p.anDet, &p.anCut, &p.anRes, &p.anEnv, &p.anAtk, &p.anRel };
+        for (size_t i = 0; i < 6 && i < s.analog.size(); ++i)
+            *an[i] = s.analog[i];
         return p;
     }
 

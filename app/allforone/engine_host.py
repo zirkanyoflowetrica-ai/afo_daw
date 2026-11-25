@@ -71,6 +71,10 @@ def pattern_notes(track: dict) -> list[tuple[float, int]]:
     return out
 
 
+# Sinte analógico (preset 9): clave en cfg y valor de fábrica, en el orden que espera el motor
+ANALOG_KNOBS = (("anDet", 30), ("anCut", 55), ("anRes", 30), ("anEnv", 50), ("anAtk", 5), ("anRel", 30))
+
+
 def synth_settings(track: dict) -> dict:
     cfg = track.get("cfg", {})
     if track["type"] == "drum":
@@ -80,7 +84,8 @@ def synth_settings(track: dict) -> dict:
             "bri": float(cfg.get("bri", 50)), "sus": bool(track.get("sus")), "rev": float(cfg.get("rev", 0)),
             "glide": float(cfg.get("glide", 30)), "drive": float(cfg.get("drive", 30)), "punch": float(cfg.get("punch", 50)),
             "arp": int(cfg.get("arp", 0)), "arp_rate": int(cfg.get("arpRate", 2)), "arp_oct": int(cfg.get("arpOct", 1)),
-            "arp_gate": float(cfg.get("arpGate", 50))}
+            "arp_gate": float(cfg.get("arpGate", 50)),
+            "analog": [float(cfg.get(k, d)) for k, d in ANALOG_KNOBS]}
 
 
 def _loud(d: dict) -> list[float]:

@@ -10,7 +10,17 @@ namespace
 {
     constexpr double pi = 3.14159265358979323846;
     enum Wave { sine, triangle, sawtooth, square };
-    constexpr int presetWave[numPresets] = { triangle, sawtooth, square, sawtooth, sine, sawtooth, sine, triangle, sine };
+    constexpr int presetWave[numPresets] = { triangle, sawtooth, square, sawtooth, sine, sawtooth, sine, triangle, sine, sawtooth };
+
+    // Diente de sierra con PolyBLEP (sin el aliasing de la sierra ingenua en las notas agudas)
+    double blepSaw (double phase, double dt) noexcept
+    {
+        const double t = phase - std::floor (phase);
+        double y = 2 * t - 1;
+        if (t < dt)            { const double u = t / dt;       y -= u + u - u * u - 1; }
+        else if (t > 1 - dt)   { const double u = (t - 1) / dt; y -= u * u + u + u + 1; }
+        return y;
+    }
 
     float osc (int wave, double phase) noexcept
     {
@@ -39,6 +49,7 @@ void AtomicParams::store (const Params& p)
     glide = p.glide; drive = p.drive; punch = p.punch;
     arp = p.arp; arpRate = p.arpRate; arpOct = p.arpOct; arpGate = p.arpGate;
     for (size_t i = 0; i < 8; ++i) { dTun[i] = p.dTun[i]; dDec[i] = p.dDec[i]; dTone[i] = p.dTone[i]; dLvl[i] = p.dLvl[i]; }
+    anDet = p.anDet; anCut = p.anCut; anRes = p.anRes; anEnv = p.anEnv; anAtk = p.anAtk; anRel = p.anRel;
 }
 
 Params AtomicParams::load() const
@@ -48,6 +59,7 @@ Params AtomicParams::load() const
     p.glide = glide; p.drive = drive; p.punch = punch;
     p.arp = arp; p.arpRate = arpRate; p.arpOct = arpOct; p.arpGate = arpGate;
     for (size_t i = 0; i < 8; ++i) { p.dTun[i] = dTun[i]; p.dDec[i] = dDec[i]; p.dTone[i] = dTone[i]; p.dLvl[i] = dLvl[i]; }
+    p.anDet = anDet; p.anCut = anCut; p.anRes = anRes; p.anEnv = anEnv; p.anAtk = anAtk; p.anRel = anRel;
     return p;
 }
 
@@ -94,18 +106,34 @@ void Voice::startNote (const Params& p, int midiNote, double seconds, double sam
     g0 = std::max (0.05, p.vel / 100.0) * 0.25;
     filter.set (Biquad::Type::lowpass, 400 + p.bri * 60.0, sr);
     useFilter = true;
+    if (p.wave == analog)
+    {
+        isAnalog = true; useFilter = false;
+        const auto pc = [] (float v) { return std::clamp ((double) v, 0.0, 100.0) / 100.0; };
+        detune = std::pow (2.0, pc (p.anDet) * 25.0 / 1200.0);
+        cutBase = 40.0 * std::pow (2.0, pc (p.anCut) * 9.0) * std::sqrt (freq / 261.63);
+        envOct = pc (p.anEnv) * 5.0;
+        res = pc (p.anRes) * 0.97;
+        attack = 0.001 * std::pow (2.0, pc (p.anAtk) * 11.0);
+        releaseSec = 0.01 * std::pow (2.0, pc (p.anRel) * 8.2);
+        sustain = 0.7;
+        gated = true;                                   // nota de la rejilla: suena `seconds` y libera
+        offAt = std::max ((int64_t) 1, (int64_t) (seconds * sr));
+        length = offAt + (int64_t) ((releaseSec + 0.05) * sr);
+    }
 }
 
 void Voice::startHeldNote (const Params& p, int midiNote, float velocity, double sampleRate, int delaySamples)
 {
     startNote (p, midiNote, 60.0, sampleRate, delaySamples);       // tope de seguridad: un minuto
     // Sostén y release por preset: piano, bajo, batería (no se usa), guitarra, pad, cuerdas, coro, campanas, 808
-    static constexpr double sus[numPresets] = { 0.25, 0.6, 0.3, 0.35, 0.9, 0.85, 0.9, 0.08, 0.55 };
-    static constexpr double rel[numPresets] = { 0.15, 0.08, 0.1, 0.12, 0.45, 0.35, 0.4, 0.6, 0.09 };
-    static constexpr double att[numPresets] = { 0.004, 0.004, 0.004, 0.004, 0.06, 0.04, 0.05, 0.002, 0.002 };
+    static constexpr double sus[numPresets] = { 0.25, 0.6, 0.3, 0.35, 0.9, 0.85, 0.9, 0.08, 0.55, 0.7 };
+    static constexpr double rel[numPresets] = { 0.15, 0.08, 0.1, 0.12, 0.45, 0.35, 0.4, 0.6, 0.09, 0.3 };
+    static constexpr double att[numPresets] = { 0.004, 0.004, 0.004, 0.004, 0.06, 0.04, 0.05, 0.002, 0.002, 0.005 };
     const int k = std::clamp (p.wave, 0, numPresets - 1);
     gated = true; note = midiNote;
-    sustain = sus[k]; releaseSec = p.sus ? rel[k] * 3 : rel[k]; attack = att[k];
+    if (isAnalog) offAt = -1;                           // ataque y liberación ya vienen de sus perillas
+    else { sustain = sus[k]; releaseSec = p.sus ? rel[k] * 3 : rel[k]; attack = att[k]; }
     g0 *= std::clamp (velocity / 100.0, 0.05, 1.27);
 }
 
@@ -209,6 +237,22 @@ float Voice::next() noexcept
             const double k = 1.0 + drive * 9.0;
             x = (float) (std::tanh (k * x) / std::tanh (k));
         }
+    }
+    else if (mode == 0 && isAnalog)
+    {
+        const double d1 = freq * detune / sr, d2 = freq / detune / sr;
+        double y = 0.5 * (blepSaw (phase, d1) + blepSaw (phase2, d2));
+        phase += d1; phase2 += d2;
+        if (filtWait-- <= 0)                            // coeficientes cada 16 muestras
+        {
+            filtWait = 15;
+            const double fc = std::min (cutBase * std::pow (2.0, envOct * std::exp (-sec / 0.3)), 0.45 * sr);
+            const double g = std::tan (pi * fc / sr), k = 2.0 - 2.0 * res;
+            fa1 = 1.0 / (1.0 + g * (g + k)); fa2 = g * fa1; fa3 = g * fa2;
+        }
+        const double v3 = y - ic2, v1 = fa1 * ic1 + fa2 * v3, v2 = ic2 + fa2 * ic1 + fa3 * v3;
+        ic1 = 2 * v1 - ic1; ic2 = 2 * v2 - ic2;
+        x = (float) v2;
     }
     else if (mode == 0)
     {

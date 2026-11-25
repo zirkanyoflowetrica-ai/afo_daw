@@ -8,6 +8,7 @@ Column {
     property var seq
     readonly property var t: seq.active("inst")
     readonly property bool is808: !!t && !t.cfg.plugin && t.cfg.v === 8        // preset «Bajo 808»
+    readonly property bool isAnalog: !!t && !t.cfg.plugin && t.cfg.v === 9     // preset «Sinte analógico»
     width: parent ? parent.width : 380
     spacing: 0
 
@@ -114,6 +115,29 @@ Column {
                value: root.t && root.t.cfg.punch !== undefined ? root.t.cfg.punch : 50
                tip: "Caída rápida de afinación al empezar cada nota: el golpe del 808"
                onMoved: function (v) { root.seq.setCfg("inst", "punch", v) } }
+    }
+    // Sinte analógico: dos osciladores y filtro resonante con envolvente (solo con su preset)
+    Grid {
+        objectName: "instAnalog"
+        visible: root.isAnalog
+        height: visible ? implicitHeight : 0
+        columns: 3; columnSpacing: 16; rowSpacing: 4
+        anchors.horizontalCenter: parent.horizontalCenter; topPadding: 8
+        Repeater {
+            model: [["anDet", "Desafinar", 30, "Separación entre los dos osciladores (0 = al unísono, 100 = ±25 cents)"],
+                    ["anCut", "Corte", 55, "Frecuencia del filtro paso bajo: más = más brillante"],
+                    ["anRes", "Resonancia", 30, "Realce en la frecuencia de corte (100 = casi silba)"],
+                    ["anEnv", "Envolvente", 50, "Cuánto abre el filtro al empezar cada nota (cae en 0,3 s)"],
+                    ["anAtk", "Ataque", 5, "Lo que tarda la nota en llegar arriba: de 1 ms a 2 s"],
+                    ["anRel", "Liberación", 30, "Lo que tarda en apagarse al soltarla: de 10 ms a 3 s"]]
+            Knob {
+                required property var modelData
+                objectName: "knobAnalog_" + modelData[0]
+                label: modelData[1]; tip: modelData[3]
+                value: root.t && root.t.cfg[modelData[0]] !== undefined ? root.t.cfg[modelData[0]] : modelData[2]
+                onMoved: function (v) { root.seq.setCfg("inst", modelData[0], v) }
+            }
+        }
     }
     // Arpegiador del motor: las notas pulsadas suenan de una en una, al tempo de la sesión
     Column {

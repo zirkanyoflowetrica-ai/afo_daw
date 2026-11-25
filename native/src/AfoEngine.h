@@ -146,6 +146,8 @@ struct SynthSettings
     float arpGate = 50;
     // Drum Synth: por carril [afinación, caída, tono, nivel] 0..100 (50 = de fábrica); vacío = de fábrica
     std::vector<std::vector<float>> lanes;
+    // Sinte analógico: [desafinación, corte, resonancia, envolvente, ataque, liberación] 0..100; vacío = de fábrica
+    std::vector<float> analog;
 };
 
 // Sonoridad de una pista o del master (BS.1770): RMS 300 ms, LUFS momentánea/corto plazo/integrada,

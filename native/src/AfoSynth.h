@@ -18,7 +18,7 @@ namespace afo::synth
 struct Params
 {
     int mode = 0;           // 0 = instrumento, 1 = batería
-    int wave = 0;           // preset de Instrumentos: 0..7 → triangle, saw, square, saw, sine, saw, sine, triangle; 8 = 808
+    int wave = 0;           // preset de Instrumentos: 0..7 → triangle, saw, square, saw, sine, saw, sine, triangle; 8 = 808; 9 = analógico
     float vel = 70.0f;      // Velocidad 0..100
     float bri = 50.0f;      // Brillo 0..100 → lowpass 400 + bri·60 Hz
     bool sus = false;       // Sostenido: nota de 1,4 s en vez de 0,3 s
@@ -39,10 +39,18 @@ struct Params
     //   · nivel (v/50)², 0 = mudo, 100 = +12 dB
     std::array<float, 8> dTun { 50, 50, 50, 50, 50, 50, 50, 50 }, dDec { 50, 50, 50, 50, 50, 50, 50, 50 },
                          dTone { 50, 50, 50, 50, 50, 50, 50, 50 }, dLvl { 50, 50, 50, 50, 50, 50, 50, 50 };
+    // Sinte analógico (preset 9): dos dientes de sierra desafinados y filtro paso bajo resonante con envolvente
+    float anDet = 30.0f;    // 0..100 → ±0..25 cents entre los dos osciladores
+    float anCut = 55.0f;    // 0..100 → corte 40 Hz · 2^(v·9/100) (sigue a medias la nota)
+    float anRes = 30.0f;    // 0..100 → resonancia (100 = casi autooscila)
+    float anEnv = 50.0f;    // 0..100 → la envolvente abre el filtro hasta 5 octavas y cae en 0,3 s
+    float anAtk = 5.0f;     // 0..100 → ataque de 1 ms a 2 s
+    float anRel = 30.0f;    // 0..100 → liberación de 10 ms a 3 s
 };
 
 constexpr int bass808 = 8;              // índice del preset 808 en Instrumentos
-constexpr int numPresets = 9;
+constexpr int analog = 9;               // «Sinte analógico»
+constexpr int numPresets = 10;
 
 // Copia sin bloqueos entre el hilo de mensajes (escribe) y el de audio (lee)
 struct AtomicParams
@@ -53,6 +61,7 @@ struct AtomicParams
     std::atomic<int> arp { 0 }, arpRate { 2 }, arpOct { 1 };
     std::atomic<float> arpGate { 50 };
     std::array<std::atomic<float>, 8> dTun, dDec, dTone, dLvl;
+    std::atomic<float> anDet { 30 }, anCut { 55 }, anRes { 30 }, anEnv { 50 }, anAtk { 5 }, anRel { 30 };
     AtomicParams() { for (int i = 0; i < 8; ++i) dTun[(size_t) i] = dDec[(size_t) i] = dTone[(size_t) i] = dLvl[(size_t) i] = 50.0f; }
     void store (const Params& p);
     Params load() const;
@@ -102,6 +111,11 @@ struct Voice
     bool is808 = false;
     double drive = 0, punchSemis = 0, glideFrom = 0, glideSamples = 0, glideT = 0;
     int pendingNote = -1, pendingWait = 0;  // deslizamiento que empieza dentro del bloque
+    // Sinte analógico: dos sierras (PolyBLEP) y filtro de estado variable (TPT) con envolvente
+    bool isAnalog = false;
+    double detune = 1.0, cutBase = 1000, envOct = 0, res = 0;
+    double ic1 = 0, ic2 = 0, fa1 = 0, fa2 = 0, fa3 = 0;
+    int filtWait = 0;
 
     void startNote (const Params&, int midiNote, double seconds, double sampleRate, int delaySamples);
     // Nota que sigue al note-off: ataque, caída hasta el nivel de sostén del preset y release
