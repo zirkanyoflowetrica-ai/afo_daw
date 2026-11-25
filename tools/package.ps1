@@ -11,6 +11,7 @@
     EXE\modelos\acestep\ y midi\ modelos de IA que descargas desde el programa; se conservan al actualizar
     AllForOne.lnk                acceso directo en la raiz del proyecto
     release\AllForOne-<version>-win64.zip   para publicar (sin tus datos)
+    release\AllForOne-<version>-Setup.exe   instalador (por usuario; los modelos se descargan desde la app)
   Todo queda dentro de la carpeta del proyecto: caches y temporales en .cache\.
   Verificacion: ejecuta AllForOne.exe --selftest desde una copia en .cache\tmp con un entorno
   limpio (sin PYTHONPATH ni .venv en el PATH) antes de instalarlo en EXE.
@@ -191,6 +192,19 @@ $zip = Join-Path $Release "AllForOne-$Version-win64.zip"
 if (Test-Path $zip) { Remove-Item $zip }
 Compress-Archive -Path $Out -DestinationPath $zip
 Ok "$zip"
+
+Step "Instalador (Inno Setup): release\AllForOne-$Version-Setup.exe"
+# Por usuario y sin administrador; los modelos de IA se descargan despues desde la app (installer\AllForOne.iss)
+$Iscc = @("$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe", "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe",
+          "$env:ProgramFiles\Inno Setup 6\ISCC.exe") | Where-Object { Test-Path $_ } | Select-Object -First 1
+if ($Iscc) {
+    $code = Run-Native $Iscc @('/Q', "/DAppVersion=$Version", "/DSourceDir=$Out", "/DOutputDir=$Release",
+                               (Join-Path $Root 'installer\AllForOne.iss'))
+    if ($code -ne 0) { Fail "Inno Setup no pudo crear el instalador" }
+    Ok (Join-Path $Release "AllForOne-$Version-Setup.exe")
+} else {
+    Write-Host "    [!]  Sin Inno Setup 6 no se crea el instalador (winget install JRSoftware.InnoSetup)" -ForegroundColor Yellow
+}
 
 Step "Instalar en $Exe (se conservan tus datos de EXE\datos)"
 Stop-AllForOne
