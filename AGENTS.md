@@ -41,7 +41,7 @@ Especificación completa: `docs/MASTER_PROMPT.md`. Resumen de lo que no se negoc
 
 ```
 build_and_run.bat                      # Windows: entorno, CMake/MSVC, ctest, pytest, --selftest, arranca
-package_windows.bat                    # Windows: EXE\AllForOne.exe + release\*.zip + autoprueba en .cache\tmp
+package_windows.bat                    # Windows: EXE\AllForOne.exe + release\*.zip + release\*-Setup.exe (Inno Setup) + autoprueba
 tools\package_partes.ps1               # lo mismo por partes (mitad de núcleos, pausas) y se retoma tras un apagón
 python -m allforone --selftest         # desde app/: motor, render e interfaz QML (también AllForOne.exe --selftest)
 python tools/native_compare.py         # diferencia píxel a píxel entre la plantilla y la interfaz
