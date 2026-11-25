@@ -35,6 +35,10 @@ namespace
         float* an[] = { &p.anDet, &p.anCut, &p.anRes, &p.anEnv, &p.anAtk, &p.anRel };
         for (size_t i = 0; i < 6 && i < s.analog.size(); ++i)
             *an[i] = s.analog[i];
+        if (! s.wavetable.empty()) p.wtTab = (int) std::lround (s.wavetable[0]);
+        float* wt[] = { &p.wtPos, &p.wtEnv, &p.wtLfo, &p.wtAtk, &p.wtRel };
+        for (size_t i = 1; i < 6 && i < s.wavetable.size(); ++i)
+            *wt[i - 1] = s.wavetable[i];
         return p;
     }
 
@@ -363,7 +367,10 @@ struct Engine::Impl
 };
 
 //==============================================================================
-Engine::Engine (const std::string& appName, const std::string& dataDir) : impl (std::make_unique<Impl> (appName, dataDir)) {}
+Engine::Engine (const std::string& appName, const std::string& dataDir) : impl (std::make_unique<Impl> (appName, dataDir))
+{
+    synth::warmUp();                    // tablas de onda listas antes de que el audio las pida
+}
 
 bool Engine::previewPlay (const std::string& path, double startSeconds)
 {

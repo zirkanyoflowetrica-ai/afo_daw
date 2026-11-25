@@ -901,6 +901,24 @@ def _native_sequencer_checks(rep, app, host, window, prop) -> None:
                       not off and on and not bool(an.property("visible")) and bool(heard) and peak_an > -30,
                       f"otro preset {off} · analógico {on} · se escucha {heard} · render {peak_an:.1f} dBFS")
 
+        # Sinte de tablas: tabla y perillas solo con su preset, y el motor lo toca
+        wv = window.findChild(QObject, "instWave")
+        if wv is None:
+            rep.check("Sinte de tablas: tabla y perillas con su preset", False, "falta el bloque del sinte de tablas")
+        else:
+            off = bool(wv.property("visible"))
+            cmd("cfg", "v", 10)
+            _wait(app, lambda: False, 0.1, host)
+            on = bool(wv.property("visible"))
+            heard = host.audition({"type": "inst", "cfg": {"v": 10, "wtTab": 1, "wtPos": 60}, "note": 57, "seconds": 0.4})
+            peak_wt = render_peak()
+            host.engine.preview_stop()
+            cmd("cfg", "v", 0)
+            _wait(app, lambda: False, 0.1, host)
+            rep.check("Sinte de tablas: tabla y perillas con su preset",
+                      not off and on and not bool(wv.property("visible")) and bool(heard) and peak_wt > -30,
+                      f"otro preset {off} · tablas {on} · se escucha {heard} · render {peak_wt:.1f} dBFS")
+
         # Drum Synth: perillas del pad elegido; un ajuste llega al motor y suena al pulsar el pad
         lane_knobs = [window.findChild(QObject, n) for n in ("drumLaneKnobs", "drumLaneTun", "drumLaneDec", "drumLaneTone", "drumLaneLvl")]
         if None in lane_knobs:

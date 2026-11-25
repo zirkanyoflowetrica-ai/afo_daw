@@ -148,6 +148,8 @@ struct SynthSettings
     std::vector<std::vector<float>> lanes;
     // Sinte analógico: [desafinación, corte, resonancia, envolvente, ataque, liberación] 0..100; vacío = de fábrica
     std::vector<float> analog;
+    // Sinte de tablas: [tabla, posición, barrido, movimiento, ataque, liberación]; vacío = de fábrica
+    std::vector<float> wavetable;
 };
 
 // Sonoridad de una pista o del master (BS.1770): RMS 300 ms, LUFS momentánea/corto plazo/integrada,

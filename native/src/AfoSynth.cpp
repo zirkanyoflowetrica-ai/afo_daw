@@ -10,7 +10,7 @@ namespace
 {
     constexpr double pi = 3.14159265358979323846;
     enum Wave { sine, triangle, sawtooth, square };
-    constexpr int presetWave[numPresets] = { triangle, sawtooth, square, sawtooth, sine, sawtooth, sine, triangle, sine, sawtooth };
+    constexpr int presetWave[numPresets] = { triangle, sawtooth, square, sawtooth, sine, sawtooth, sine, triangle, sine, sawtooth, sine };
 
     // Diente de sierra con PolyBLEP (sin el aliasing de la sierra ingenua en las notas agudas)
     double blepSaw (double phase, double dt) noexcept
@@ -41,7 +41,105 @@ namespace
     }
 
     double noteHz (int midiNote) { return 440.0 * std::pow (2.0, (midiNote - 69) / 12.0); }
+
+    // ---- Tablas de onda: [tabla][nivel][onda][wtSize + 1]; el nivel L tiene 256 >> L armónicos ----
+    constexpr int wtSize = 2048, wtFrames = 8, wtLevels = 9, wtMaxHarm = 256, wtStride = wtSize + 1;
+
+    // Coeficientes (seno, coseno) del armónico h de la onda `frame` de la tabla `tab`
+    void wtSpectrum (int tab, int frame, int h, double& s, double& c)
+    {
+        s = c = 0;
+        const auto blend = [frame] (int keys, int& k0, double& fr)
+        {
+            const double x = frame * (keys - 1) / (double) (wtFrames - 1);
+            k0 = std::min ((int) x, keys - 2); fr = x - k0;
+        };
+        const bool odd = (h & 1) != 0;
+        if (tab == 0)                           // Básica: seno → triángulo → sierra → cuadrada
+        {
+            const double key[4] = { h == 1 ? 1.0 : 0.0,
+                                    odd ? 8 / (pi * pi * h * h) * (((h - 1) / 2) % 2 ? -1 : 1) : 0.0,
+                                    2 / (pi * h) * (odd ? 1 : -1),
+                                    odd ? 4 / (pi * h) : 0.0 };
+            int k; double fr; blend (4, k, fr);
+            s = key[k] + (key[k + 1] - key[k]) * fr;
+        }
+        else if (tab == 1)                      // Vocal: formantes de u, o, a, e, i sobre un do3
+        {
+            static constexpr double F[5][3] = { { 325, 700, 2530 }, { 450, 800, 2830 }, { 800, 1150, 2900 },
+                                                { 400, 2100, 2800 }, { 290, 2300, 3000 } };
+            static constexpr double g[3] = { 1.0, 0.7, 0.3 }, bw[3] = { 80, 110, 160 };
+            const double f = 130.81 * h;
+            const auto amp = [&] (int v)
+            {
+                double a = 0.02 / h;
+                for (int i = 0; i < 3; ++i) { const double d = (f - F[v][i]) / bw[i]; a += g[i] * std::exp (-0.5 * d * d); }
+                return a;
+            };
+            int k; double fr; blend (5, k, fr);
+            s = amp (k) + (amp (k + 1) - amp (k)) * fr;
+        }
+        else if (tab == 2)                      // Metálica: peines de armónicos que se abren hacia los agudos
+        {
+            const double a = std::pow (h, -0.7) * (0.5 + 0.5 * std::cos (2 * pi * h * (0.13 + 0.06 * frame)))
+                             * std::exp (-h / (3.0 + 2.0 * frame * frame)) * (odd ? 1.0 : 0.6);
+            s = ((h * 2654435761u) >> 31) ? -a : a;      // signo fijo por armónico: onda menos picuda
+        }
+        else                                    // Digital: pulso que se estrecha (50 % → 5 %)
+        {
+            const double d = 0.5 - 0.45 * frame / (wtFrames - 1.0);
+            c = 4 / (pi * h) * std::sin (pi * h * d);
+        }
+    }
+
+    struct WaveTables
+    {
+        std::vector<float> data;
+        WaveTables() : data ((size_t) wtTables * wtLevels * wtFrames * wtStride)
+        {
+            std::vector<double> sn (wtSize), x (wtSize);
+            for (int n = 0; n < wtSize; ++n) sn[(size_t) n] = std::sin (2 * pi * n / wtSize);
+            std::vector<double> s (wtMaxHarm + 1), c (wtMaxHarm + 1);
+            for (int tab = 0; tab < wtTables; ++tab)
+                for (int fr = 0; fr < wtFrames; ++fr)
+                {
+                    for (int h = 1; h <= wtMaxHarm; ++h) wtSpectrum (tab, fr, h, s[(size_t) h], c[(size_t) h]);
+                    double norm = 1;
+                    for (int L = 0; L < wtLevels; ++L)
+                    {
+                        std::fill (x.begin(), x.end(), 0.0);
+                        for (int h = 1; h <= (wtMaxHarm >> L); ++h)
+                        {
+                            const double a = s[(size_t) h], b = c[(size_t) h];
+                            if (a == 0 && b == 0) continue;
+                            for (int n = 0; n < wtSize; ++n)
+                            {
+                                const int i = (h * n) & (wtSize - 1);
+                                x[(size_t) n] += a * sn[(size_t) i] + b * sn[(size_t) ((i + wtSize / 4) & (wtSize - 1))];
+                            }
+                        }
+                        if (L == 0)
+                        {
+                            double pk = 0;
+                            for (double v : x) pk = std::max (pk, std::abs (v));
+                            norm = pk > 0 ? 1 / pk : 1;
+                        }
+                        float* out = data.data() + ((size_t) (tab * wtLevels + L) * wtFrames + (size_t) fr) * wtStride;
+                        for (int n = 0; n < wtSize; ++n) out[n] = (float) (x[(size_t) n] * norm);
+                        out[wtSize] = out[0];
+                    }
+                }
+        }
+    };
+
+    const WaveTables& waveTables()
+    {
+        static const WaveTables w;              // se construye una vez (inicio seguro entre hilos)
+        return w;
+    }
 }
+
+void warmUp() { (void) waveTables(); }
 
 void AtomicParams::store (const Params& p)
 {
@@ -50,6 +148,7 @@ void AtomicParams::store (const Params& p)
     arp = p.arp; arpRate = p.arpRate; arpOct = p.arpOct; arpGate = p.arpGate;
     for (size_t i = 0; i < 8; ++i) { dTun[i] = p.dTun[i]; dDec[i] = p.dDec[i]; dTone[i] = p.dTone[i]; dLvl[i] = p.dLvl[i]; }
     anDet = p.anDet; anCut = p.anCut; anRes = p.anRes; anEnv = p.anEnv; anAtk = p.anAtk; anRel = p.anRel;
+    wtTab = p.wtTab; wtPos = p.wtPos; wtEnv = p.wtEnv; wtLfo = p.wtLfo; wtAtk = p.wtAtk; wtRel = p.wtRel;
 }
 
 Params AtomicParams::load() const
@@ -60,6 +159,7 @@ Params AtomicParams::load() const
     p.arp = arp; p.arpRate = arpRate; p.arpOct = arpOct; p.arpGate = arpGate;
     for (size_t i = 0; i < 8; ++i) { p.dTun[i] = dTun[i]; p.dDec[i] = dDec[i]; p.dTone[i] = dTone[i]; p.dLvl[i] = dLvl[i]; }
     p.anDet = anDet; p.anCut = anCut; p.anRes = anRes; p.anEnv = anEnv; p.anAtk = anAtk; p.anRel = anRel;
+    p.wtTab = wtTab; p.wtPos = wtPos; p.wtEnv = wtEnv; p.wtLfo = wtLfo; p.wtAtk = wtAtk; p.wtRel = wtRel;
     return p;
 }
 
@@ -121,18 +221,33 @@ void Voice::startNote (const Params& p, int midiNote, double seconds, double sam
         offAt = std::max ((int64_t) 1, (int64_t) (seconds * sr));
         length = offAt + (int64_t) ((releaseSec + 0.05) * sr);
     }
+    if (p.wave == wavetable)
+    {
+        isWave = true; useFilter = false;
+        const auto pc = [] (float v) { return std::clamp ((double) v, 0.0, 100.0) / 100.0; };
+        int level = 0;                                  // el más rico cuyo armónico más alto queda bajo 0,45·sr
+        while (level < wtLevels - 1 && (wtMaxHarm >> level) * freq > 0.45 * sr) ++level;
+        wtData = waveTables().data.data() + (size_t) (std::clamp (p.wtTab, 0, wtTables - 1) * wtLevels + level) * wtFrames * wtStride;
+        wtPos = pc (p.wtPos); wtSweep = pc (p.wtEnv); wtLfo = pc (p.wtLfo) * 0.35;
+        attack = 0.001 * std::pow (2.0, pc (p.wtAtk) * 11.0);
+        releaseSec = 0.01 * std::pow (2.0, pc (p.wtRel) * 8.2);
+        sustain = 0.7;
+        gated = true;
+        offAt = std::max ((int64_t) 1, (int64_t) (seconds * sr));
+        length = offAt + (int64_t) ((releaseSec + 0.05) * sr);
+    }
 }
 
 void Voice::startHeldNote (const Params& p, int midiNote, float velocity, double sampleRate, int delaySamples)
 {
     startNote (p, midiNote, 60.0, sampleRate, delaySamples);       // tope de seguridad: un minuto
     // Sostén y release por preset: piano, bajo, batería (no se usa), guitarra, pad, cuerdas, coro, campanas, 808
-    static constexpr double sus[numPresets] = { 0.25, 0.6, 0.3, 0.35, 0.9, 0.85, 0.9, 0.08, 0.55, 0.7 };
-    static constexpr double rel[numPresets] = { 0.15, 0.08, 0.1, 0.12, 0.45, 0.35, 0.4, 0.6, 0.09, 0.3 };
-    static constexpr double att[numPresets] = { 0.004, 0.004, 0.004, 0.004, 0.06, 0.04, 0.05, 0.002, 0.002, 0.005 };
+    static constexpr double sus[numPresets] = { 0.25, 0.6, 0.3, 0.35, 0.9, 0.85, 0.9, 0.08, 0.55, 0.7, 0.7 };
+    static constexpr double rel[numPresets] = { 0.15, 0.08, 0.1, 0.12, 0.45, 0.35, 0.4, 0.6, 0.09, 0.3, 0.3 };
+    static constexpr double att[numPresets] = { 0.004, 0.004, 0.004, 0.004, 0.06, 0.04, 0.05, 0.002, 0.002, 0.005, 0.005 };
     const int k = std::clamp (p.wave, 0, numPresets - 1);
     gated = true; note = midiNote;
-    if (isAnalog) offAt = -1;                           // ataque y liberación ya vienen de sus perillas
+    if (isAnalog || isWave) offAt = -1;                           // ataque y liberación ya vienen de sus perillas
     else { sustain = sus[k]; releaseSec = p.sus ? rel[k] * 3 : rel[k]; attack = att[k]; }
     g0 *= std::clamp (velocity / 100.0, 0.05, 1.27);
 }
@@ -253,6 +368,24 @@ float Voice::next() noexcept
         const double v3 = y - ic2, v1 = fa1 * ic1 + fa2 * v3, v2 = ic2 + fa2 * ic1 + fa3 * v3;
         ic1 = 2 * v1 - ic1; ic2 = 2 * v2 - ic2;
         x = (float) v2;
+    }
+    else if (mode == 0 && isWave)
+    {
+        if (filtWait-- <= 0)                            // posición en la tabla cada 16 muestras
+        {
+            filtWait = 15;
+            double pos = wtPos + wtSweep * (1.0 - wtPos) * std::exp (-sec / 0.4);
+            if (wtLfo > 0) pos += wtLfo * std::sin (2 * pi * sec);
+            wtCur = std::clamp (pos, 0.0, 1.0) * (wtFrames - 1);
+        }
+        const int f = std::min ((int) wtCur, wtFrames - 2);
+        const double ff = wtCur - f, ph = (phase - std::floor (phase)) * wtSize, r = ph - std::floor (ph);
+        const auto i = (size_t) ph;
+        const float* a = wtData + (size_t) f * wtStride;
+        const float* b = a + wtStride;
+        const double xa = a[i] + (a[i + 1] - a[i]) * r, xb = b[i] + (b[i + 1] - b[i]) * r;
+        x = (float) (xa + (xb - xa) * ff);
+        phase += freq / sr;
     }
     else if (mode == 0)
     {

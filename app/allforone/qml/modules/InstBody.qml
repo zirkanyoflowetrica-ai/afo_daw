@@ -9,6 +9,7 @@ Column {
     readonly property var t: seq.active("inst")
     readonly property bool is808: !!t && !t.cfg.plugin && t.cfg.v === 8        // preset «Bajo 808»
     readonly property bool isAnalog: !!t && !t.cfg.plugin && t.cfg.v === 9     // preset «Sinte analógico»
+    readonly property bool isWave: !!t && !t.cfg.plugin && t.cfg.v === 10      // preset «Sinte de tablas»
     width: parent ? parent.width : 380
     spacing: 0
 
@@ -136,6 +137,43 @@ Column {
                 label: modelData[1]; tip: modelData[3]
                 value: root.t && root.t.cfg[modelData[0]] !== undefined ? root.t.cfg[modelData[0]] : modelData[2]
                 onMoved: function (v) { root.seq.setCfg("inst", modelData[0], v) }
+            }
+        }
+    }
+    // Sinte de tablas: 8 ondas por tabla; la posición elige (y mezcla) la onda que suena
+    Column {
+        objectName: "instWave"
+        visible: root.isWave
+        height: visible ? implicitHeight : 0
+        anchors.horizontalCenter: parent.horizontalCenter; spacing: 6; topPadding: 8
+        Row {
+            anchors.horizontalCenter: parent.horizontalCenter; spacing: 8
+            Text { text: "Tabla"; anchors.verticalCenter: parent.verticalCenter; color: Theme.ink
+                   font.family: Theme.font; font.pixelSize: 13; font.weight: 700 }
+            Select {
+                objectName: "wtTab"; width: 220; anchors.verticalCenter: parent.verticalCenter
+                options: [["0", "Básica · seno → cuadrada"], ["1", "Vocal · u o a e i"], ["2", "Metálica · peines"], ["3", "Digital · pulso estrecho"]]
+                current: String(root.t && root.t.cfg.wtTab !== undefined ? root.t.cfg.wtTab : 0)
+                tip: "Las 8 ondas que recorre la perilla Posición"
+                onPicked: function (v) { root.seq.setCfg("inst", "wtTab", parseInt(v)) }
+            }
+        }
+        Grid {
+            columns: 3; columnSpacing: 16; rowSpacing: 4
+            anchors.horizontalCenter: parent.horizontalCenter
+            Repeater {
+                model: [["wtPos", "Posición", 40, "Qué onda de la tabla suena (0 = la primera, 100 = la última)"],
+                        ["wtEnv", "Barrido", 30, "Al empezar cada nota la posición arranca más adelante y vuelve en 0,4 s"],
+                        ["wtLfo", "Movimiento", 0, "La posición oscila despacio (1 Hz) para que el sonido se mueva"],
+                        ["wtAtk", "Ataque", 5, "Lo que tarda la nota en llegar arriba: de 1 ms a 2 s"],
+                        ["wtRel", "Liberación", 30, "Lo que tarda en apagarse al soltarla: de 10 ms a 3 s"]]
+                Knob {
+                    required property var modelData
+                    objectName: "knobWave_" + modelData[0]
+                    label: modelData[1]; tip: modelData[3]
+                    value: root.t && root.t.cfg[modelData[0]] !== undefined ? root.t.cfg[modelData[0]] : modelData[2]
+                    onMoved: function (v) { root.seq.setCfg("inst", modelData[0], v) }
+                }
             }
         }
     }

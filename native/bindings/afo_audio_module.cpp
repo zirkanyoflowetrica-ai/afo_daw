@@ -74,13 +74,13 @@ py::dict toDict (const afo::EffectInfo& e)
 afo::SynthSettings settings (int mode, int wave, float vel, float bri, bool sus, float vol, float tun, float rev,
                              float glide, float drive, float punch, int arp = 0, int arpRate = 2, int arpOct = 1,
                              float arpGate = 50.0f, const std::vector<std::vector<float>>& lanes = {},
-                             const std::vector<float>& analog = {})
+                             const std::vector<float>& analog = {}, const std::vector<float>& wavetable = {})
 {
     afo::SynthSettings s;
     s.mode = mode; s.wave = wave; s.vel = vel; s.bri = bri; s.sus = sus; s.vol = vol; s.tun = tun; s.rev = rev;
     s.glide = glide; s.drive = drive; s.punch = punch;
     s.arp = arp; s.arpRate = arpRate; s.arpOct = arpOct; s.arpGate = arpGate;
-    s.lanes = lanes; s.analog = analog;
+    s.lanes = lanes; s.analog = analog; s.wavetable = wavetable;
     return s;
 }
 }
@@ -206,25 +206,29 @@ PYBIND11_MODULE (afo_audio, m)
               { return toDict (e.addSynthTrack (name, mode)); }, py::arg ("name"), py::arg ("mode") = 0)
         .def ("set_synth_settings", [] (afo::Engine& e, int id, int mode, int wave, float vel, float bri, bool sus, float vol, float tun, float rev,
                                         float glide, float drive, float punch, int arp, int arpRate, int arpOct, float arpGate,
-                                        const std::vector<std::vector<float>>& lanes, const std::vector<float>& analog)
-              { e.setSynthSettings (id, settings (mode, wave, vel, bri, sus, vol, tun, rev, glide, drive, punch, arp, arpRate, arpOct, arpGate, lanes, analog)); },
+                                        const std::vector<std::vector<float>>& lanes, const std::vector<float>& analog,
+                                        const std::vector<float>& wavetable)
+              { e.setSynthSettings (id, settings (mode, wave, vel, bri, sus, vol, tun, rev, glide, drive, punch, arp, arpRate, arpOct, arpGate, lanes, analog, wavetable)); },
               py::arg ("track_id"), py::arg ("mode") = 0, py::arg ("wave") = 0, py::arg ("vel") = 70.0f, py::arg ("bri") = 50.0f,
               py::arg ("sus") = false, py::arg ("vol") = 80.0f, py::arg ("tun") = 50.0f, py::arg ("rev") = 0.0f,
               py::arg ("glide") = 30.0f, py::arg ("drive") = 30.0f, py::arg ("punch") = 50.0f,
               py::arg ("arp") = 0, py::arg ("arp_rate") = 2, py::arg ("arp_oct") = 1, py::arg ("arp_gate") = 50.0f,
-              py::arg ("lanes") = std::vector<std::vector<float>> {}, py::arg ("analog") = std::vector<float> {})
+              py::arg ("lanes") = std::vector<std::vector<float>> {}, py::arg ("analog") = std::vector<float> {},
+              py::arg ("wavetable") = std::vector<float> {})
         .def ("set_synth_notes", &afo::Engine::setSynthNotes, py::arg ("track_id"), py::arg ("notes"), py::arg ("length_beats") = 64.0)
         .def ("set_synth_midi", &afo::Engine::setSynthMidi, py::arg ("track_id"), py::arg ("notes"), py::arg ("length_beats") = 0.0,
               "Notas (inicio, duración en negras, nota, velocidad) de un MIDI importado o compuesto por la IA")
         .def ("audition_synth", [] (afo::Engine& e, int note, double seconds, int mode, int wave, float vel, float bri, bool sus, float vol, float tun, float rev,
                                     float glide, float drive, float punch, int /*arp*/, int /*arpRate*/, int /*arpOct*/,
-                                    float /*arpGate*/, const std::vector<std::vector<float>>& lanes, const std::vector<float>& analog, int trackId)
-              { return e.auditionSynth (settings (mode, wave, vel, bri, sus, vol, tun, rev, glide, drive, punch, 0, 2, 1, 50.0f, lanes, analog), note, seconds, trackId); },
+                                    float /*arpGate*/, const std::vector<std::vector<float>>& lanes, const std::vector<float>& analog,
+                                    const std::vector<float>& wavetable, int trackId)
+              { return e.auditionSynth (settings (mode, wave, vel, bri, sus, vol, tun, rev, glide, drive, punch, 0, 2, 1, 50.0f, lanes, analog, wavetable), note, seconds, trackId); },
               py::arg ("note"), py::arg ("seconds") = 0.4, py::arg ("mode") = 0, py::arg ("wave") = 0, py::arg ("vel") = 70.0f,
               py::arg ("bri") = 50.0f, py::arg ("sus") = false, py::arg ("vol") = 80.0f, py::arg ("tun") = 50.0f, py::arg ("rev") = 0.0f,
               py::arg ("glide") = 30.0f, py::arg ("drive") = 30.0f, py::arg ("punch") = 50.0f,
               py::arg ("arp") = 0, py::arg ("arp_rate") = 2, py::arg ("arp_oct") = 1, py::arg ("arp_gate") = 50.0f,
-              py::arg ("lanes") = std::vector<std::vector<float>> {}, py::arg ("analog") = std::vector<float> {}, py::arg ("track_id") = -1)
+              py::arg ("lanes") = std::vector<std::vector<float>> {}, py::arg ("analog") = std::vector<float> {},
+              py::arg ("wavetable") = std::vector<float> {}, py::arg ("track_id") = -1)
         .def ("set_drum_samples", &afo::Engine::setDrumSamples, py::arg ("track_id"), py::arg ("paths"),
               "Sampler de la batería: un archivo de audio por carril (\"\" = sonido sintetizado)")
         .def ("set_master_processing", &afo::Engine::setMasterProcessing, py::arg ("drive"), py::arg ("tone"), py::arg ("limiter"))

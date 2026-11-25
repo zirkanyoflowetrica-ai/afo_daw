@@ -46,11 +46,23 @@ struct Params
     float anEnv = 50.0f;    // 0..100 → la envolvente abre el filtro hasta 5 octavas y cae en 0,3 s
     float anAtk = 5.0f;     // 0..100 → ataque de 1 ms a 2 s
     float anRel = 30.0f;    // 0..100 → liberación de 10 ms a 3 s
+    // Sinte de tablas (preset 10): 8 ondas por tabla, sin aliasing (una tabla por octava), leídas entre dos
+    int wtTab = 0;          // 0 Básica (seno → triángulo → sierra → cuadrada), 1 Vocal (u o a e i), 2 Metálica, 3 Digital (pulso)
+    float wtPos = 40.0f;    // 0..100 → posición en la tabla
+    float wtEnv = 30.0f;    // 0..100 → barrido: la posición empieza más adelante y vuelve en 0,4 s
+    float wtLfo = 0.0f;     // 0..100 → movimiento: la posición oscila ±35 % a 1 Hz
+    float wtAtk = 5.0f;     // 0..100 → ataque de 1 ms a 2 s
+    float wtRel = 30.0f;    // 0..100 → liberación de 10 ms a 3 s
 };
 
 constexpr int bass808 = 8;              // índice del preset 808 en Instrumentos
 constexpr int analog = 9;               // «Sinte analógico»
-constexpr int numPresets = 10;
+constexpr int wavetable = 10;           // «Sinte de tablas»
+constexpr int numPresets = 11;
+constexpr int wtTables = 4;
+
+// Construye las tablas de onda (unos 50 ms): se llama al crear el motor, no en el hilo de audio
+void warmUp();
 
 // Copia sin bloqueos entre el hilo de mensajes (escribe) y el de audio (lee)
 struct AtomicParams
@@ -62,6 +74,8 @@ struct AtomicParams
     std::atomic<float> arpGate { 50 };
     std::array<std::atomic<float>, 8> dTun, dDec, dTone, dLvl;
     std::atomic<float> anDet { 30 }, anCut { 55 }, anRes { 30 }, anEnv { 50 }, anAtk { 5 }, anRel { 30 };
+    std::atomic<int> wtTab { 0 };
+    std::atomic<float> wtPos { 40 }, wtEnv { 30 }, wtLfo { 0 }, wtAtk { 5 }, wtRel { 30 };
     AtomicParams() { for (int i = 0; i < 8; ++i) dTun[(size_t) i] = dDec[(size_t) i] = dTone[(size_t) i] = dLvl[(size_t) i] = 50.0f; }
     void store (const Params& p);
     Params load() const;
@@ -116,6 +130,10 @@ struct Voice
     double detune = 1.0, cutBase = 1000, envOct = 0, res = 0;
     double ic1 = 0, ic2 = 0, fa1 = 0, fa2 = 0, fa3 = 0;
     int filtWait = 0;
+    // Sinte de tablas: las 8 ondas de su tabla al nivel de armónicos que cabe bajo Nyquist para esta nota
+    bool isWave = false;
+    const float* wtData = nullptr;
+    double wtPos = 0, wtSweep = 0, wtLfo = 0, wtCur = 0;
 
     void startNote (const Params&, int midiNote, double seconds, double sampleRate, int delaySamples);
     // Nota que sigue al note-off: ataque, caída hasta el nivel de sostén del preset y release
