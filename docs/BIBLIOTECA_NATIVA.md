@@ -50,6 +50,8 @@ fader** de la pista (o del master) y Tracktion compensa la latencia que informan
 | AF-02 | Channel Strip | HPF, puerta, EQ de 3 bandas, compresor y saturación en una tira | Compresión de la tira: pico −30 + 18/4 dB y reducción > 10 dB en su medidor |
 | AF-07 | Parametric EQ | 6 bandas (paso alto 12/24 dB/oct, grave, 2 medios, agudo, paso bajo) | Campana +12 dB medida en el tono; curva real; HPF 24 dB/oct |
 | AF-13 | Compressor | Rodilla suave, detector Peak/RMS, compensación, mezcla paralela | Reducción ≈ −9 dB en el caso de prueba; mezcla 0 = señal intacta |
+| AF-15 | Glue Compressor | Compresor de bus: ratios 2/4/10:1, ataques 0,1–30 ms y liberaciones 0,1–1,2 s fijos (como los de consola), rodilla de 6 dB, paso alto en la cadena lateral, mezcla paralela | Pico −12 dBFS, umbral −24, 4:1 → −21 dBFS y reducción ≈ −9 dB; con el filtro lateral a 300 Hz un tono de 60 Hz casi no comprime; mezcla 0 = intacto |
+| AF-22 | Transient Designer | Ataque y sostenido de −100 a +100 % comparando envolventes rápidas y lentas (sin umbral: igual a cualquier nivel) | Golpes de batería: +100 % de ataque sube el golpe frente a la cola, +100 % de sostenido sube la cola; a 0/0 la señal sale intacta |
 | AF-14 | Limiter | Entrada, techo (dBFS), liberación; anticipación de 1,5 ms compensada; recorte final en el techo. Es el último efecto de la cadena del master automático | Tono empujado contra −3 dBFS no pasa del techo y marca su reducción; bajo el techo, señal idéntica |
 | AF-18 | Gate | Umbral, rango, ataque, mantenimiento, liberación, histéresis | Cierra 60 dB por debajo del umbral; por encima deja la señal intacta (±0,1 dB) |
 | AF-20 | De-Esser | Detector de banda (frecuencia, Q), umbral, rango, modo Banda/Ancha, escucha de la sibilancia | Baja la sibilancia y deja la voz grave intacta |
@@ -113,7 +115,7 @@ cada efecto. `--selftest` repite el ciclo desde la interfaz con todas las pistas
 
 | Hito | Módulos |
 |---|---|
-| 2 · Instrumentales y MIDI | Sampler Pro, Drum Rack, Drum Synth, 808 Lab, Wavetable/Analog Synth, Step Sequencer, Arpeggiator, Transient Designer, Glue |
+| 2 · Instrumentales y MIDI | Sampler Pro, Drum Rack, Drum Synth, 808 Lab, Wavetable/Analog Synth, Step Sequencer, Arpeggiator (**Transient Designer AF-22 y Glue AF-15 ya están**) |
 | 3 · Diseño sonoro | Texture Verb, Shimmer, Infinity, MultiTap, Trance Gate, Granular FX, Spectral FX, FX Lab |
 | 4 · Voz profesional | Pitch Editor, Vocal Align, Harmonizer, Doubler, Dynamic EQ, Noise Reducer (De-Esser ya está, AF-20; **Tune ya está, AF-60**) |
 | 5 · Mastering | True Peak Limiter validado, Loudness, Master Dynamics, Match EQ, Linear EQ, Master Imager, Dither y el resto |

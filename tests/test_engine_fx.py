@@ -79,8 +79,10 @@ def with_fx(eng, path, key, **params):
 def test_catalogo():
     cat = afo_audio.effect_catalog()
     keys = [c["key"] for c in cat]
-    assert keys == ["gain", "strip", "eq", "compressor", "limiter", "gate", "deesser", "saturator", "delay", "space", "analyzer", "tune"]
-    assert {c["af"] for c in cat} == {"AF-01", "AF-02", "AF-07", "AF-13", "AF-14", "AF-18", "AF-20", "AF-26", "AF-41", "AF-35", "AF-76", "AF-60"}
+    assert keys == ["gain", "strip", "eq", "compressor", "glue", "limiter", "gate", "deesser", "transient", "saturator", "delay",
+                    "space", "analyzer", "tune"]
+    assert {c["af"] for c in cat} == {"AF-01", "AF-02", "AF-07", "AF-13", "AF-15", "AF-14", "AF-18", "AF-20", "AF-22", "AF-26",
+                                      "AF-41", "AF-35", "AF-76", "AF-60"}
     for c in cat:
         assert c["params"], c["key"]
         for p in c["params"]:
@@ -137,6 +139,67 @@ def test_compresor_ratio_y_reduccion(host, tmp_path):
     eng.set_effect_param(fx, "mix", 0)                   # paralelo al 0 %: sin cambio
     y = render(eng, tmp_path)
     assert db(np.abs(mid(y[:, 0])).max()) == pytest.approx(-12, abs=0.05)
+
+
+def test_glue_ratio_filtro_lateral_y_mezcla(host, tmp_path):
+    eng = host.engine
+    # ratio 4:1 (índice 1), ataque 0,1 ms (índice 0): pico −12, umbral −24 → −21 dBFS (rodilla de 6 dB lejos del umbral)
+    tid, fx = with_fx(eng, tone(tmp_path), "glue", threshold=-24, ratio=1, attack=0, release=0)
+    y = render(eng, tmp_path)
+    assert db(np.abs(mid(y[:, 0])).max()) == pytest.approx(-21, abs=0.5)
+    assert eng.effect_meters(fx)[2] == pytest.approx(-9, abs=1.0)
+    eng.set_effect_param(fx, "mix", 0)                   # paralelo al 0 %: sin cambio
+    y = render(eng, tmp_path)
+    assert db(np.abs(mid(y[:, 0])).max()) == pytest.approx(-12, abs=0.05)
+    # el bajo no hace bombear: un tono de 60 Hz con el filtro lateral a 300 Hz apenas comprime
+    eng.remove_track(tid)
+    tid, fx = with_fx(eng, tone(tmp_path, hz=60, name="grave.wav"), "glue", threshold=-24, ratio=1, attack=0, release=0)
+    plain = db(np.abs(mid(render(eng, tmp_path)[:, 0])).max())
+    eng.set_effect_param(fx, "sidechain", 300)
+    filt = db(np.abs(mid(render(eng, tmp_path)[:, 0])).max())
+    assert plain == pytest.approx(-21, abs=0.8) and filt > plain + 6, (plain, filt)
+
+
+def _hits(tmp_path, name="golpes.wav"):
+    """Cuatro golpes de batería sintéticos (ataque instantáneo, cola exponencial de 150 ms) a 120 BPM."""
+    n = int(2.5 * SR)
+    y = np.zeros(n)
+    t = np.arange(int(0.45 * SR)) / SR
+    hit = 0.25 * np.exp(-t / 0.15) * np.sin(2 * np.pi * 180 * t)
+    for k in range(4):
+        a = int((0.25 + 0.5 * k) * SR)
+        y[a:a + len(hit)] += hit
+    p = tmp_path / name
+    sf.write(str(p), np.stack([y, y], 1), SR, subtype="FLOAT")
+    return str(p), [0.25 + 0.5 * k for k in range(4)]
+
+
+def _golpe_y_cola(y, starts):
+    """Nivel del golpe (primeros 10 ms) y de la cola (200–400 ms) de cada golpe, en dB, promediados."""
+    g = [db(rms(y[int(s * SR): int((s + 0.01) * SR)])) for s in starts[1:]]
+    c = [db(rms(y[int((s + 0.2) * SR): int((s + 0.4) * SR)])) for s in starts[1:]]
+    return float(np.mean(g)), float(np.mean(c))
+
+
+def test_transient_designer_golpe_y_cola(host, tmp_path):
+    eng = host.engine
+    path, starts = _hits(tmp_path)
+    tid, fx = with_fx(eng, path, "transient")
+    ref = render(eng, tmp_path, "ref.wav")[:, 0]
+    g0, c0 = _golpe_y_cola(ref, starts)
+    gs, cs = _golpe_y_cola(sf.read(path)[0][:, 0], starts)
+    assert abs(g0 - gs) < 0.1 and abs(c0 - cs) < 0.1, "0 / 0: golpe y cola intactos"
+    eng.set_effect_param(fx, "attack", 100)
+    g1, c1 = _golpe_y_cola(render(eng, tmp_path)[:, 0], starts)
+    eng.set_effect_param(fx, "attack", 0)
+    eng.set_effect_param(fx, "sustain", 100)
+    g2, c2 = _golpe_y_cola(render(eng, tmp_path)[:, 0], starts)
+    eng.set_effect_param(fx, "sustain", -100)
+    g3, c3 = _golpe_y_cola(render(eng, tmp_path)[:, 0], starts)
+    print(f"golpe/cola dB: ref {g0:.1f}/{c0:.1f} · ataque+ {g1:.1f}/{c1:.1f} · sost+ {g2:.1f}/{c2:.1f} · sost− {g3:.1f}/{c3:.1f}")
+    assert (g1 - c1) > (g0 - c0) + 3, "más ataque: el golpe sube frente a la cola"
+    assert c2 > c0 + 3 and abs(g2 - g0) < 1.5, "más sostenido: sube la cola, el golpe casi igual"
+    assert c3 < c0 - 3, "menos sostenido: la cola baja"
 
 
 def test_limitador_techo_y_transparencia(host, tmp_path):

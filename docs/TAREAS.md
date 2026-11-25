@@ -49,6 +49,7 @@ Estados: `·` libre · `>` en curso · `✓` hecho (+ hash) · `!` bloqueado (mo
 | C13 | C | ✓ | `ai_music.py`, `bridge.py` (aiCover), `state/Sequencer.qml`, `modules/TracksBody.qml`, `tests/test_cover.py` | «Versión con IA» de un clip (ACE-Step cover: Parecida / Libre) a una pista nueva; pytest test_cover pasa |
 | C14 | C | ✓ | `midi_ai.py`, `state/Sequencer.qml`, `modules/LabView.qml`, `tests/test_lab_pattern.py` | «Patrón MIDI» en cada familia del Lab: MIDI-LLM local con estilo, tonalidad y tempo de la sesión, solo notas de esa familia, a tempo; pytest test_lab_pattern pasa |
 | C15 | C | ✓ | `procs.py`, `ai_music.py`, `lab.py`, `midi_ai.py`, `stems.py`, `main.py`, `tests/test_procs.py` | Los motores de IA local (ACE-Step, llama-server, Demucs) se cierran con la sesión aunque se caiga, y al arrancar se cierran los que dejó una sesión anterior; pytest test_procs pasa |
+| C16 | C | ✓ | `native/src/fx/FxPlugins.h`, `fx_presets.py`, `modules/Browser.qml`, `docs/BIBLIOTECA_NATIVA.md`, `tests/test_engine_fx.py`, `native_ui.py` | Hito 2: Glue Compressor (AF-15) y Transient Designer (AF-22) en el motor C++ con preajustes y en el navegador; pytest test_engine_fx y --selftest pasan |
 
 ## Notas
 C (24-11): el usuario avisa de que Codex no hizo nada; todas las X abiertas pasan a C, en el orden de la prioridad nueva (X14 primero).

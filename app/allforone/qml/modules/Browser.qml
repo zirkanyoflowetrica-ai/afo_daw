@@ -15,7 +15,7 @@ Column {
 
     // Tabla de §3 (las claves del catálogo del motor); lo que el motor tenga y no esté aquí va a «Otros»
     readonly property var groups: [
-        ["Dinámica", ["compressor", "gate", "limiter", "deesser"]],
+        ["Dinámica", ["compressor", "glue", "transient", "gate", "limiter", "deesser"]],
         ["EQ y filtro", ["eq", "strip"]],
         ["Tono y voz", ["tune", "saturator"]],
         ["Espacio", ["space", "delay"]],

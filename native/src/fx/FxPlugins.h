@@ -307,6 +307,32 @@ inline const FxDesc& limiterDesc()
     return d;
 }
 
+inline const FxDesc& glueDesc()
+{
+    static const FxDesc d { "glue", "AF-15", "AFO Glue Compressor", "Dinámica y transitorios",
+        "Compresor de bus: une la mezcla o un grupo con ratios y tiempos fijos y filtro en la cadena lateral.",
+        { { "threshold", "Umbral", -40, 0, -15, "dB", 0, nullptr, "Nivel a partir del que actúa" },
+          { "ratio", "Ratio", 0, 2, 0, "", 0, "2:1|4:1|10:1", "2:1 une sin notarse; 10:1 aplasta" },
+          { "attack", "Ataque", 0, 5, 3, "", 0, "0,1 ms|0,3 ms|1 ms|3 ms|10 ms|30 ms", "Lento deja pasar el golpe de la batería" },
+          { "release", "Liberación", 0, 4, 2, "", 0, "0,1 s|0,2 s|0,4 s|0,8 s|1,2 s", "Que respire al tempo de la canción" },
+          { "sidechain", "Filtro lateral", 20, 500, 20, "Hz", 120, nullptr, "El bombo y el bajo no hacen bombear la mezcla (20 Hz = apagado)" },
+          { "makeup", "Compensación", 0, 20, 0, "dB", 0, nullptr, "Recupera el nivel perdido" },
+          { "mix", "Mezcla", 0, 100, 100, "%", 0, nullptr, "Compresión paralela (0 = seco)" } },
+        "reducción dB" };
+    return d;
+}
+
+inline const FxDesc& transientDesc()
+{
+    static const FxDesc d { "transient", "AF-22", "AFO Transient Designer", "Dinámica y transitorios",
+        "Da o quita golpe y cola a un sonido sin depender de su nivel (no tiene umbral).",
+        { { "attack", "Ataque", -100, 100, 0, "%", 0, nullptr, "Más = golpe más marcado; menos = más suave" },
+          { "sustain", "Sostenido", -100, 100, 0, "%", 0, nullptr, "Más = cola y sala más largas; menos = más seco" },
+          { "output", "Salida", -18, 18, 0, "dB", 0, nullptr, "Nivel final" } },
+        "ataque dB|sostenido dB" };
+    return d;
+}
+
 inline const FxDesc& gateDesc()
 {
     static const FxDesc d { "gate", "AF-18", "AFO Gate", "Dinámica y transitorios",
@@ -553,6 +579,94 @@ protected:
 private:
     Compressor comp;
     std::atomic<float> grMin { 0.0f };
+};
+
+//==============================================================================
+// AF-15: compresor de bus con detector de pico, rodilla fija de 6 dB y paso alto en la cadena lateral
+class GlueFx : public FxBase
+{
+public:
+    GlueFx (te::PluginCreationInfo i) : FxBase (i, glueDesc()) {}
+    AFO_FX_TYPE ("afoFxGlue", glueDesc)
+    std::vector<float> extraMeters() override { return { grMin.exchange (0.0f) }; }
+protected:
+    void prepareFx (double sr) override { comp.prepare (sr); lastHz = -1.0f; resetFx(); }
+    void resetFx() override { comp.reset(); hp.reset(); }
+    void processFx (float* l, float* r, int n) override
+    {
+        static constexpr float ratios[] { 2.0f, 4.0f, 10.0f };
+        static constexpr float attacks[] { 0.1f, 0.3f, 1.0f, 3.0f, 10.0f, 30.0f };
+        static constexpr float releases[] { 100.0f, 200.0f, 400.0f, 800.0f, 1200.0f };
+        const float thr = p (0), ratio = ratios[juce::jlimit (0, 2, choice (1))];
+        const float att = attacks[juce::jlimit (0, 5, choice (2))], rel = releases[juce::jlimit (0, 4, choice (3))];
+        const float hz = p (4), makeup = dbToGain (p (5)), mix = p (6) / 100.0f;
+        const bool filt = hz > 21.0f;
+        if (filt && std::abs (hz - lastHz) > 0.5f) { hp.set (Biquad::Type::highpass, hz, 0.7071, 0.0, sampleRate); lastHz = hz; }
+        for (int i = 0; i < n; ++i)
+        {
+            const float sl = filt ? hp.process (l[i], 0) : l[i], sr = filt ? hp.process (r[i], 1) : r[i];
+            const float g = comp.next (sl, sr, thr, ratio, 6.0f, att, rel, false) * makeup;
+            l[i] *= (1.0f - mix) + mix * g;
+            r[i] *= (1.0f - mix) + mix * g;
+        }
+        grMin.store (juce::jmin (grMin.load(), comp.grDb));
+    }
+private:
+    Compressor comp;
+    Biquad hp;
+    float lastHz = -1.0f;
+    std::atomic<float> grMin { 0.0f };
+};
+
+//==============================================================================
+// AF-22: diseñador de transitorios. Dos pares de envolventes enlazadas en estéreo:
+//   ataque     = rápida (0,5 ms / 30 ms) frente a lenta (20 ms / 30 ms): solo difieren en el golpe;
+//   sostenido  = la misma subida rápida con caída corta (40 ms) frente a larga (500 ms): solo difieren
+//                en la cola. La diferencia en dB, escalada por la perilla (±100 % = ±1×, tope ±18 dB),
+//                es la ganancia. Al no comparar con un umbral, actúa igual a cualquier nivel.
+//   Un golpe nuevo (ataque > 10 dB; la ondulación de una cola no pasa de 5 dB) reinicia el detector de
+//   sostenido, y la ganancia baja en 0,1 ms: el realce de la cola anterior no se come el golpe siguiente.
+class TransientFx : public FxBase
+{
+public:
+    TransientFx (te::PluginCreationInfo i) : FxBase (i, transientDesc()) {}
+    AFO_FX_TYPE ("afoFxTransient", transientDesc)
+    std::vector<float> extraMeters() override { return { atkMax.exchange (0.0f), susMax.exchange (0.0f) }; }
+protected:
+    void prepareFx (double sr) override
+    {
+        aUpFast = onePole (0.5f, sr); aUpSlow = onePole (20.0f, sr); aDown = onePole (30.0f, sr);
+        sUp = onePole (0.5f, sr); sDownFast = onePole (40.0f, sr); sDownSlow = onePole (500.0f, sr);
+        gUp = onePole (1.0f, sr); gDown = onePole (0.1f, sr);
+        resetFx();
+    }
+    void resetFx() override { ef = es = sf = ss = 0.0f; gDb = 0.0f; }
+    void processFx (float* l, float* r, int n) override
+    {
+        const float ka = p (0) / 100.0f, ks = p (1) / 100.0f, out = dbToGain (p (2));
+        float am = 0.0f, sm = 0.0f;
+        for (int i = 0; i < n; ++i)
+        {
+            const float x = std::max (std::abs (l[i]), std::abs (r[i]));
+            ef += (x > ef ? aUpFast : aDown) * (x - ef);
+            es += (x > es ? aUpSlow : aDown) * (x - es);
+            sf += (x > sf ? sUp : sDownFast) * (x - sf);
+            ss += (x > ss ? sUp : sDownSlow) * (x - ss);
+            const float atk = std::max (0.0f, gainToDb (ef + 1.0e-6f) - gainToDb (es + 1.0e-6f));
+            if (atk > 10.0f) ss = sf;
+            const float sus = std::max (0.0f, gainToDb (ss + 1.0e-6f) - gainToDb (sf + 1.0e-6f));
+            const float want = juce::jlimit (-18.0f, 18.0f, ka * atk) + juce::jlimit (-18.0f, 18.0f, ks * sus);
+            gDb += (want < gDb ? gDown : gUp) * (want - gDb);
+            const float g = dbToGain (gDb) * out;
+            l[i] *= g; r[i] *= g;
+            am = std::max (am, ka * atk); sm = std::max (sm, ks * sus);
+        }
+        atkMax.store (std::max (atkMax.load(), am)); susMax.store (std::max (susMax.load(), sm));
+    }
+private:
+    float aUpFast = 1, aUpSlow = 1, aDown = 1, sUp = 1, sDownFast = 1, sDownSlow = 1, gUp = 1, gDown = 1;
+    float ef = 0, es = 0, sf = 0, ss = 0, gDb = 0;
+    std::atomic<float> atkMax { 0.0f }, susMax { 0.0f };
 };
 
 //==============================================================================
@@ -1090,8 +1204,8 @@ inline const std::vector<FxType>& fxTypes()
 {
     static const std::vector<FxType> t {
         { gainDesc, GainFx::xmlTypeName }, { stripDesc, StripFx::xmlTypeName }, { eqDesc, EqFx::xmlTypeName },
-        { compDesc, CompressorFx::xmlTypeName }, { limiterDesc, LimiterFx::xmlTypeName }, { gateDesc, GateFx::xmlTypeName }, { deesserDesc, DeEsserFx::xmlTypeName },
-        { satDesc, SaturatorFx::xmlTypeName },
+        { compDesc, CompressorFx::xmlTypeName }, { glueDesc, GlueFx::xmlTypeName }, { limiterDesc, LimiterFx::xmlTypeName }, { gateDesc, GateFx::xmlTypeName }, { deesserDesc, DeEsserFx::xmlTypeName },
+        { transientDesc, TransientFx::xmlTypeName }, { satDesc, SaturatorFx::xmlTypeName },
         { delayDesc, DelayFx::xmlTypeName }, { spaceDesc, SpaceFx::xmlTypeName }, { analyzerDesc, AnalyzerFx::xmlTypeName },
         { tuneDesc, TuneFx::xmlTypeName } };
     return t;
@@ -1103,6 +1217,7 @@ inline void registerFx (te::PluginManager& pm)
     pm.createBuiltInType<CompressorFx>(); pm.createBuiltInType<GateFx>();   pm.createBuiltInType<SaturatorFx>();
     pm.createBuiltInType<DelayFx>();     pm.createBuiltInType<SpaceFx>();   pm.createBuiltInType<AnalyzerFx>();
     pm.createBuiltInType<DeEsserFx>();  pm.createBuiltInType<LimiterFx>();  pm.createBuiltInType<TuneFx>();
+    pm.createBuiltInType<GlueFx>();     pm.createBuiltInType<TransientFx>();
 }
 
 inline const char* xmlTypeFor (const std::string& key)

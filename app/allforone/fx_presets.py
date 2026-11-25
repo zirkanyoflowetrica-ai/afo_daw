@@ -46,6 +46,18 @@ FACTORY: dict[str, dict[str, dict[str, float]]] = {
                                     "detector": 1, "makeup": 1},
         "Bajo firme": {"threshold": -22, "ratio": 5, "attack": 15, "release": 120, "makeup": 4},
     },
+    "glue": {
+        "Bus de batería": {"threshold": -18, "ratio": 1, "attack": 4, "release": 1, "sidechain": 20, "makeup": 3},
+        "Master: pegar suave": {"threshold": -10, "ratio": 0, "attack": 5, "release": 4, "sidechain": 120, "makeup": 1},
+        "Mezcla al tempo": {"threshold": -14, "ratio": 0, "attack": 3, "release": 2, "sidechain": 90, "makeup": 2},
+        "Aplastar en paralelo": {"threshold": -30, "ratio": 2, "attack": 0, "release": 0, "makeup": 12, "mix": 35},
+    },
+    "transient": {
+        "Batería con más golpe": {"attack": 60, "sustain": -10},
+        "Batería seca": {"attack": 10, "sustain": -70},
+        "Suavizar golpes": {"attack": -60},
+        "Más sala": {"sustain": 60},
+    },
     "limiter": {
         "Seguro (−1 dBFS)": {"ceiling": -1, "release": 150},
         "Streaming (−1 dBTP aprox.)": {"input": 3, "ceiling": -1.5, "release": 120},
