@@ -45,7 +45,7 @@ QtObject {
     readonly property var insts: [["Piano de cola", "Teclas"], ["Bajo sintético", "Graves"], ["Batería acústica", "Percusión"],
         ["Guitarra eléctrica", "Cuerdas"], ["Pad ambiental", "Sintetizador"], ["Cuerdas de orquesta", "Cuerdas"],
         ["Voz coral", "Voces"], ["Campanas", "Percusión"], ["Bajo 808", "Graves"], ["Sinte analógico", "Sintetizador"],
-        ["Sinte de tablas", "Sintetizador"]]
+        ["Sinte de tablas", "Sintetizador"], ["Sampler", "Tu sonido"]]
     // Filas del Piano roll: C5..C4 en la octava 4; «Octava» las transpone (y lo que suena, X2)
     readonly property var notes: ["C5", "B4", "A#4", "A4", "G#4", "G4", "F#4", "F4", "E4", "D#4", "D4", "C#4", "C4"]
         .map(function (n) { return n.slice(0, -1) + (Number(n.slice(-1)) + oct - 4) })
@@ -253,9 +253,9 @@ QtObject {
     function noteDur(d) { return sus ? 1.4 : (d || 0.4) }
     function previewNote(cfg, freq, d) {
         var note = Math.round(69 + 12 * Math.log(freq / 440) / Math.LN2)
-        audition({ type: "inst", cfg: cfg, note: note, seconds: noteDur(d) })
+        previewMidi(cfg, note, d)
     }
-    function previewMidi(cfg, note, d) { audition({ type: "inst", cfg: cfg, note: note, seconds: noteDur(d) }) }
+    function previewMidi(cfg, note, d) { var t = active("inst"); audition({ type: "inst", cfg: cfg, note: note, seconds: noteDur(d), id: t ? t.id : -1 }) }
     function previewDrum(cfg, i) { var t = active("drum"); audition({ type: "drum", cfg: cfg, lane: i, id: t ? t.id : -1 }) }
     // Sampler de los pads: una ruta por carril ("" = sonido sintetizado); `paths` sin un carril lo deja como está
     function setDrumSamples(paths, replaceAll) {

@@ -919,6 +919,34 @@ def _native_sequencer_checks(rep, app, host, window, prop) -> None:
                       not off and on and not bool(wv.property("visible")) and bool(heard) and peak_wt > -30,
                       f"otro preset {off} · tablas {on} · se escucha {heard} · render {peak_wt:.1f} dBFS")
 
+        # Sampler: sin sonido lo dice y no suena; con un sonido cargado, la pista lo toca afinado
+        sm = window.findChild(QObject, "instSampler")
+        if sm is None:
+            rep.check("Sampler: carga un sonido y lo toca en cada nota", False, "falta el bloque del sampler")
+        else:
+            wav = Path(tempfile.mkdtemp(prefix="afo_smp_")) / "nota.wav"
+            tt = np.arange(int(0.5 * 48000)) / 48000
+            sf.write(str(wav), (0.5 * np.sin(2 * np.pi * 440 * tt) * np.exp(-tt * 3)).astype(np.float32), 48000)
+            cmd("cfg", "v", 11)
+            _wait(app, lambda: False, 0.1, host)
+            on = bool(sm.property("visible"))
+            name = window.findChild(QObject, "smpName")
+            empty_text = str(name.property("text")) if name is not None else ""
+            cmd("cfg", "smpFile", str(wav))
+            _wait(app, lambda: False, 0.1, host)
+            loaded_text = str(name.property("text")) if name is not None else ""
+            inst_id = next((tid for tid, f in (getattr(host, "_inst_samples", None) or {}).items() if f == str(wav)), -1)
+            heard = host.audition({"type": "inst", "id": inst_id, "cfg": {"v": 11, "smpFile": str(wav), "smRoot": 69},
+                                   "note": 57, "seconds": 0.4})
+            host.engine.preview_stop()
+            cmd("cfg", "smpFile", "")
+            cmd("cfg", "v", 0)
+            _wait(app, lambda: False, 0.1, host)
+            rep.check("Sampler: carga un sonido y lo toca en cada nota",
+                      on and "Sin sonido" in empty_text and loaded_text == "nota.wav" and inst_id >= 0 and bool(heard)
+                      and not bool(sm.property("visible")),
+                      f"visible {on} · vacío «{empty_text[:30]}» · cargado «{loaded_text}» · pista {inst_id} · se escucha {heard}")
+
         # Drum Synth: perillas del pad elegido; un ajuste llega al motor y suena al pulsar el pad
         lane_knobs = [window.findChild(QObject, n) for n in ("drumLaneKnobs", "drumLaneTun", "drumLaneDec", "drumLaneTone", "drumLaneLvl")]
         if None in lane_knobs:

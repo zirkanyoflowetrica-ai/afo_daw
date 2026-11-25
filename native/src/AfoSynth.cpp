@@ -10,7 +10,7 @@ namespace
 {
     constexpr double pi = 3.14159265358979323846;
     enum Wave { sine, triangle, sawtooth, square };
-    constexpr int presetWave[numPresets] = { triangle, sawtooth, square, sawtooth, sine, sawtooth, sine, triangle, sine, sawtooth, sine };
+    constexpr int presetWave[numPresets] = { triangle, sawtooth, square, sawtooth, sine, sawtooth, sine, triangle, sine, sawtooth, sine, sine };
 
     // Diente de sierra con PolyBLEP (sin el aliasing de la sierra ingenua en las notas agudas)
     double blepSaw (double phase, double dt) noexcept
@@ -149,6 +149,7 @@ void AtomicParams::store (const Params& p)
     for (size_t i = 0; i < 8; ++i) { dTun[i] = p.dTun[i]; dDec[i] = p.dDec[i]; dTone[i] = p.dTone[i]; dLvl[i] = p.dLvl[i]; }
     anDet = p.anDet; anCut = p.anCut; anRes = p.anRes; anEnv = p.anEnv; anAtk = p.anAtk; anRel = p.anRel;
     wtTab = p.wtTab; wtPos = p.wtPos; wtEnv = p.wtEnv; wtLfo = p.wtLfo; wtAtk = p.wtAtk; wtRel = p.wtRel;
+    smRoot = p.smRoot; smStart = p.smStart; smLoop = p.smLoop; smLoopAt = p.smLoopAt; smAtk = p.smAtk; smRel = p.smRel;
 }
 
 Params AtomicParams::load() const
@@ -160,6 +161,7 @@ Params AtomicParams::load() const
     for (size_t i = 0; i < 8; ++i) { p.dTun[i] = dTun[i]; p.dDec[i] = dDec[i]; p.dTone[i] = dTone[i]; p.dLvl[i] = dLvl[i]; }
     p.anDet = anDet; p.anCut = anCut; p.anRes = anRes; p.anEnv = anEnv; p.anAtk = anAtk; p.anRel = anRel;
     p.wtTab = wtTab; p.wtPos = wtPos; p.wtEnv = wtEnv; p.wtLfo = wtLfo; p.wtAtk = wtAtk; p.wtRel = wtRel;
+    p.smRoot = smRoot; p.smStart = smStart; p.smLoop = smLoop; p.smLoopAt = smLoopAt; p.smAtk = smAtk; p.smRel = smRel;
     return p;
 }
 
@@ -188,7 +190,7 @@ float Biquad::process (float x) noexcept
 
 double noteSeconds (const Params& p) { return p.sus ? 1.4 : 0.3; }
 
-void Voice::startNote (const Params& p, int midiNote, double seconds, double sampleRate, int delaySamples)
+void Voice::startNote (const Params& p, int midiNote, double seconds, double sampleRate, int delaySamples, const Sample* s)
 {
     *this = Voice();
     active = true; delay = std::max (0, delaySamples); sr = sampleRate; mode = 0;
@@ -236,18 +238,41 @@ void Voice::startNote (const Params& p, int midiNote, double seconds, double sam
         offAt = std::max ((int64_t) 1, (int64_t) (seconds * sr));
         length = offAt + (int64_t) ((releaseSec + 0.05) * sr);
     }
+    if (p.wave == sampler)
+    {
+        isSampler = true; useFilter = false;
+        if (s == nullptr || s->data.size() < 2 || s->sampleRate <= 0) { active = false; length = 0; return; }   // sin sonido cargado: no suena
+        const auto pc = [] (float v) { return std::clamp ((double) v, 0.0, 100.0) / 100.0; };
+        const double last = (double) (s->data.size() - 1);
+        sample = s;
+        sstep = s->sampleRate / sr * std::pow (2.0, (midiNote - std::clamp (p.smRoot, 0, 127)) / 12.0);
+        spos = std::floor (pc (p.smStart) * last * 0.99);
+        smLoop = p.smLoop;
+        loopEnd = last;
+        loopStart = std::max (spos, std::floor (pc (p.smLoopAt) * last * 0.99));
+        xfade = std::min (0.01 * s->sampleRate, (loopEnd - loopStart) / 2);
+        if (loopEnd - loopStart < 64) smLoop = false;       // bucle demasiado corto: sin bucle
+        g0 = std::max (0.05, p.vel / 100.0) * 0.5;
+        attack = 0.001 * std::pow (2.0, pc (p.smAtk) * 11.0);
+        releaseSec = 0.01 * std::pow (2.0, pc (p.smRel) * 8.2);
+        sustain = 1.0;                                      // el sonido conserva su propia forma
+        gated = true;
+        offAt = std::max ((int64_t) 1, (int64_t) (seconds * sr));
+        length = offAt + (int64_t) ((releaseSec + 0.05) * sr);
+    }
 }
 
-void Voice::startHeldNote (const Params& p, int midiNote, float velocity, double sampleRate, int delaySamples)
+void Voice::startHeldNote (const Params& p, int midiNote, float velocity, double sampleRate, int delaySamples, const Sample* s)
 {
-    startNote (p, midiNote, 60.0, sampleRate, delaySamples);       // tope de seguridad: un minuto
+    startNote (p, midiNote, 60.0, sampleRate, delaySamples, s);
+    if (! active) return;       // tope de seguridad: un minuto
     // Sostén y release por preset: piano, bajo, batería (no se usa), guitarra, pad, cuerdas, coro, campanas, 808
-    static constexpr double sus[numPresets] = { 0.25, 0.6, 0.3, 0.35, 0.9, 0.85, 0.9, 0.08, 0.55, 0.7, 0.7 };
-    static constexpr double rel[numPresets] = { 0.15, 0.08, 0.1, 0.12, 0.45, 0.35, 0.4, 0.6, 0.09, 0.3, 0.3 };
-    static constexpr double att[numPresets] = { 0.004, 0.004, 0.004, 0.004, 0.06, 0.04, 0.05, 0.002, 0.002, 0.005, 0.005 };
+    static constexpr double sus[numPresets] = { 0.25, 0.6, 0.3, 0.35, 0.9, 0.85, 0.9, 0.08, 0.55, 0.7, 0.7, 1.0 };
+    static constexpr double rel[numPresets] = { 0.15, 0.08, 0.1, 0.12, 0.45, 0.35, 0.4, 0.6, 0.09, 0.3, 0.3, 0.3 };
+    static constexpr double att[numPresets] = { 0.004, 0.004, 0.004, 0.004, 0.06, 0.04, 0.05, 0.002, 0.002, 0.005, 0.005, 0.002 };
     const int k = std::clamp (p.wave, 0, numPresets - 1);
     gated = true; note = midiNote;
-    if (isAnalog || isWave) offAt = -1;                           // ataque y liberación ya vienen de sus perillas
+    if (isAnalog || isWave || isSampler) offAt = -1;                           // ataque y liberación ya vienen de sus perillas
     else { sustain = sus[k]; releaseSec = p.sus ? rel[k] * 3 : rel[k]; attack = att[k]; }
     g0 *= std::clamp (velocity / 100.0, 0.05, 1.27);
 }
@@ -325,7 +350,7 @@ float Voice::next() noexcept
     if (! active) return 0.0f;
     if (delay > 0) { --delay; return 0.0f; }
     if (t >= length) { active = false; return 0.0f; }
-    if (sample != nullptr)
+    if (sample != nullptr && ! isSampler)
     {
         const auto i = (size_t) spos;
         const float fr = (float) (spos - (double) i), a = sample->data[i], b = sample->data[i + 1];
@@ -387,6 +412,32 @@ float Voice::next() noexcept
         x = (float) (xa + (xb - xa) * ff);
         phase += freq / sr;
     }
+    else if (mode == 0 && isSampler)
+    {
+        const auto& d = sample->data;
+        const auto read = [&d] (double pos) noexcept
+        {
+            const auto i = (size_t) pos;
+            const float fr = (float) (pos - (double) i);
+            return i + 1 < d.size() ? d[i] + (d[i + 1] - d[i]) * fr : d.back();
+        };
+        if (smLoop && ! released)
+        {
+            while (spos >= loopEnd) spos -= loopEnd - loopStart;
+            x = read (spos);
+            if (spos > loopEnd - xfade)                    // fundido con el principio del bucle
+            {
+                const double w = (spos - (loopEnd - xfade)) / xfade;
+                x = (float) (x * (1.0 - w) + read (spos - (loopEnd - loopStart)) * w);
+            }
+        }
+        else
+        {
+            if (spos >= loopEnd) { active = false; return 0.0f; }   // fin del sonido
+            x = read (spos);
+        }
+        spos += sstep;
+    }
     else if (mode == 0)
     {
         x = osc (wave, phase);
@@ -430,7 +481,7 @@ float Voice::next() noexcept
 int hitLengthSamples (const Params& p, int midiNote, double seconds, double sampleRate, const Sample* s)
 {
     Voice v;
-    if (p.mode == 0) v.startNote (p, midiNote, seconds, sampleRate, 0);
+    if (p.mode == 0) v.startNote (p, midiNote, seconds, sampleRate, 0, s);
     else v.startDrum (p, midiNote - firstDrumNote, sampleRate, 0, s);
     return (int) v.length;
 }
@@ -439,7 +490,7 @@ void renderHit (const Params& p, int midiNote, double seconds, double sampleRate
                 const Sample* s)
 {
     Voice v;
-    if (p.mode == 0) v.startNote (p, midiNote, seconds, sampleRate, 0);
+    if (p.mode == 0) v.startNote (p, midiNote, seconds, sampleRate, 0, s);
     else v.startDrum (p, midiNote - firstDrumNote, sampleRate, 0, s);
     for (int i = 0; i < numSamples; ++i)
         out[i] = v.next();

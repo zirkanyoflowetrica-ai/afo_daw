@@ -150,6 +150,8 @@ struct SynthSettings
     std::vector<float> analog;
     // Sinte de tablas: [tabla, posición, barrido, movimiento, ataque, liberación]; vacío = de fábrica
     std::vector<float> wavetable;
+    // Sampler: [nota raíz, inicio, bucle (0/1), inicio del bucle, ataque, liberación]; vacío = de fábrica
+    std::vector<float> sampler;
 };
 
 // Sonoridad de una pista o del master (BS.1770): RMS 300 ms, LUFS momentánea/corto plazo/integrada,
@@ -271,6 +273,8 @@ public:
     // Sampler de la batería: un WAV/AIFF/FLAC por carril ("" = el sonido sintetizado). Se pasa a mono
     // y se corta a 10 s. Devuelve cuántos carriles quedan con golpe grabado; lanza si un archivo no se lee.
     int setDrumSamples (int id, const std::vector<std::string>& paths);
+    // Sampler del Instrumento: el sonido que toca la pista con el preset «Sampler» ("" = ninguno)
+    bool setInstrumentSample (int id, const std::string& path);
     // (tiempo en negras, nota MIDI); batería: nota 36 + carril. Devuelve la duración del clip en segundos.
     double setSynthNotes (int id, const std::vector<std::pair<double, int>>& notes, double lengthBeats);
     // Notas con duración y velocidad propias (MIDI importado o compuesto por la IA):

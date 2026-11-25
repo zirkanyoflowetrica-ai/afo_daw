@@ -10,6 +10,8 @@ Column {
     readonly property bool is808: !!t && !t.cfg.plugin && t.cfg.v === 8        // preset «Bajo 808»
     readonly property bool isAnalog: !!t && !t.cfg.plugin && t.cfg.v === 9     // preset «Sinte analógico»
     readonly property bool isWave: !!t && !t.cfg.plugin && t.cfg.v === 10      // preset «Sinte de tablas»
+    readonly property bool isSampler: !!t && !t.cfg.plugin && t.cfg.v === 11   // preset «Sampler»
+    readonly property var noteNames: ["do", "do#", "re", "re#", "mi", "fa", "fa#", "sol", "sol#", "la", "la#", "si"]
     width: parent ? parent.width : 380
     spacing: 0
 
@@ -171,6 +173,68 @@ Column {
                     required property var modelData
                     objectName: "knobWave_" + modelData[0]
                     label: modelData[1]; tip: modelData[3]
+                    value: root.t && root.t.cfg[modelData[0]] !== undefined ? root.t.cfg[modelData[0]] : modelData[2]
+                    onMoved: function (v) { root.seq.setCfg("inst", modelData[0], v) }
+                }
+            }
+        }
+    }
+    // Sampler: el sonido de la pista, afinado nota a nota desde su nota raíz
+    Column {
+        objectName: "instSampler"
+        visible: root.isSampler
+        height: visible ? implicitHeight : 0
+        width: root.width; spacing: 6; topPadding: 8
+        readonly property string file: root.t && root.t.cfg.smpFile ? root.t.cfg.smpFile : ""
+        readonly property bool looped: !!(root.t && root.t.cfg.smLoop)
+        Row {
+            anchors.horizontalCenter: parent.horizontalCenter; spacing: 8
+            NeoButton {
+                objectName: "smpLoad"; text: parent.parent.file ? "Cambiar sonido…" : "Cargar sonido…"; fontSize: 12; padX: 8; padY: 3
+                tip: "WAV, AIFF, FLAC, OGG o MP3 (hasta 30 s): la pista lo toca en cada nota del piano roll"
+                onClicked: {
+                    var r = root.seq.studio.call("pickSamplerFile")
+                    if (r.ok) { root.seq.setCfg("inst", "smpFile", r.path); root.seq.studio.toast("Sampler: " + r.name) }
+                    else if (!r.cancelled && r.error) root.seq.studio.toast(r.error)
+                }
+            }
+            Text {
+                objectName: "smpName"; width: Math.min(260, root.width - 160); anchors.verticalCenter: parent.verticalCenter
+                elide: Text.ElideMiddle; font.family: Theme.font; font.pixelSize: 13; font.weight: 600; color: Theme.ink
+                text: parent.parent.file ? parent.parent.file.split(/[\\/]/).pop() : "Sin sonido: la pista no suena hasta que cargues uno"
+            }
+        }
+        Row {
+            anchors.horizontalCenter: parent.horizontalCenter; spacing: 8
+            Text { text: "Raíz"; anchors.verticalCenter: parent.verticalCenter; color: Theme.ink
+                   font.family: Theme.font; font.pixelSize: 13; font.weight: 700 }
+            Select {
+                objectName: "smRoot"; width: 96; anchors.verticalCenter: parent.verticalCenter
+                options: { var o = []; for (var n = 24; n <= 96; n++) o.push([String(n), root.noteNames[n % 12] + (Math.floor(n / 12) - 1)]); return o }
+                current: String(root.t && root.t.cfg.smRoot !== undefined ? root.t.cfg.smRoot : 60)
+                tip: "La nota en la que el sonido suena tal cual se grabó; las demás lo suben o bajan"
+                onPicked: function (v) { root.seq.setCfg("inst", "smRoot", parseInt(v)) }
+            }
+            Select {
+                objectName: "smLoop"; width: 130; anchors.verticalCenter: parent.verticalCenter
+                options: [["0", "Sin bucle"], ["1", "Con bucle"]]
+                current: parent.parent.looped ? "1" : "0"
+                tip: "Con bucle, mientras la nota sigue pulsada el sonido se repite desde «Inicio bucle» hasta el final"
+                onPicked: function (v) { root.seq.setCfg("inst", "smLoop", parseInt(v)) }
+            }
+        }
+        Row {
+            anchors.horizontalCenter: parent.horizontalCenter; spacing: 16
+            Repeater {
+                model: [["smStart", "Inicio", 0, "Desde qué punto del sonido empieza cada nota (0 = el principio)"],
+                        ["smLoopAt", "Inicio bucle", 50, "Dónde empieza la parte que se repite (solo con bucle)"],
+                        ["smAtk", "Ataque", 2, "Lo que tarda la nota en llegar arriba: de 1 ms a 2 s"],
+                        ["smRel", "Liberación", 25, "Lo que tarda en apagarse al soltarla: de 10 ms a 3 s"]]
+                Knob {
+                    required property var modelData
+                    objectName: "knobSampler_" + modelData[0]
+                    label: modelData[1]; tip: modelData[3]
+                    enabled: modelData[0] !== "smLoopAt" || !!(root.t && root.t.cfg.smLoop)
                     value: root.t && root.t.cfg[modelData[0]] !== undefined ? root.t.cfg[modelData[0]] : modelData[2]
                     onMoved: function (v) { root.seq.setCfg("inst", modelData[0], v) }
                 }

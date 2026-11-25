@@ -39,6 +39,13 @@ namespace
         float* wt[] = { &p.wtPos, &p.wtEnv, &p.wtLfo, &p.wtAtk, &p.wtRel };
         for (size_t i = 1; i < 6 && i < s.wavetable.size(); ++i)
             *wt[i - 1] = s.wavetable[i];
+        const auto& sm = s.sampler;
+        if (sm.size() > 0) p.smRoot = juce::jlimit (0, 127, (int) std::lround (sm[0]));
+        if (sm.size() > 1) p.smStart = sm[1];
+        if (sm.size() > 2) p.smLoop = sm[2] > 0.5f;
+        if (sm.size() > 3) p.smLoopAt = sm[3];
+        if (sm.size() > 4) p.smAtk = sm[4];
+        if (sm.size() > 5) p.smRel = sm[5];
         return p;
     }
 
@@ -407,6 +414,8 @@ bool Engine::auditionSynth (const SynthSettings& s, int midiNote, double seconds
     const int lane = midiNote - synth::firstDrumNote;
     if (p.mode == 1 && trackId >= 0 && lane >= 0 && lane < synth::drumLanes)
         sample = impl->slot (trackId).drumKit[(size_t) lane].get();
+    else if (p.mode == 0 && p.wave == synth::sampler && trackId >= 0)
+        sample = impl->slot (trackId).drumKit[0].get();
     const int len = synth::hitLengthSamples (p, midiNote, seconds, sr, sample);
     if (len <= 0)
         return false;
@@ -528,6 +537,34 @@ TrackInfo Engine::addSynthTrack (const std::string& name, int mode)
     return info;
 }
 
+// Lee un archivo de audio a mono (media de los canales), como mucho `maxSeconds`; guardado en caché por ruta y fecha
+static std::shared_ptr<const synth::Sample> loadSample (PreviewPlayer& pv, const std::string& path, double maxSeconds, const char* what)
+{
+    const juce::File f (juce::String::fromUTF8 (path.c_str()));
+    const auto key = path + "|" + std::to_string (f.getLastModificationTime().toMilliseconds()) + "|" + std::to_string (maxSeconds);
+    auto& cached = pv.drumSamples[key];
+    if (cached == nullptr)
+    {
+        std::unique_ptr<juce::AudioFormatReader> reader (pv.formats.createReaderFor (f));
+        if (reader == nullptr || reader->lengthInSamples <= 1)
+        {
+            pv.drumSamples.erase (key);
+            throw std::runtime_error (std::string ("afo_audio: no se pudo leer ") + what + " " + path);
+        }
+        const int n = (int) juce::jmin<juce::int64> (reader->lengthInSamples, (juce::int64) (maxSeconds * reader->sampleRate));
+        juce::AudioBuffer<float> buf ((int) juce::jmax (1u, reader->numChannels), n);
+        reader->read (&buf, 0, n, 0, true, true);
+        auto s = std::make_shared<synth::Sample>();
+        s->sampleRate = reader->sampleRate;
+        s->data.assign ((size_t) n, 0.0f);
+        for (int c = 0; c < buf.getNumChannels(); ++c)
+            juce::FloatVectorOperations::addWithMultiply (s->data.data(), buf.getReadPointer (c),
+                                                          1.0f / (float) buf.getNumChannels(), n);
+        cached = std::move (s);
+    }
+    return cached;
+}
+
 int Engine::setDrumSamples (int id, const std::vector<std::string>& paths)
 {
     requireMessageThread();
@@ -540,35 +577,26 @@ int Engine::setDrumSamples (int id, const std::vector<std::string>& paths)
     {
         if (paths[lane].empty())
             continue;
-        const juce::File f (juce::String::fromUTF8 (paths[lane].c_str()));
-        const auto key = paths[lane] + "|" + std::to_string (f.getLastModificationTime().toMilliseconds());
-        auto& cached = impl->preview.drumSamples[key];
-        if (cached == nullptr)
-        {
-            std::unique_ptr<juce::AudioFormatReader> reader (impl->preview.formats.createReaderFor (f));
-            if (reader == nullptr || reader->lengthInSamples <= 1)
-            {
-                impl->preview.drumSamples.erase (key);
-                throw std::runtime_error ("afo_audio: no se pudo leer el golpe " + paths[lane]);
-            }
-            const int n = (int) juce::jmin<juce::int64> (reader->lengthInSamples,
-                                                          (juce::int64) (synth::maxSampleSeconds * reader->sampleRate));
-            juce::AudioBuffer<float> buf ((int) juce::jmax (1u, reader->numChannels), n);
-            reader->read (&buf, 0, n, 0, true, true);
-            auto s = std::make_shared<synth::Sample>();
-            s->sampleRate = reader->sampleRate;
-            s->data.assign ((size_t) n, 0.0f);
-            for (int c = 0; c < buf.getNumChannels(); ++c)
-                juce::FloatVectorOperations::addWithMultiply (s->data.data(), buf.getReadPointer (c),
-                                                              1.0f / (float) buf.getNumChannels(), n);
-            cached = std::move (s);
-        }
-        kit[lane] = cached;
+        kit[lane] = loadSample (impl->preview, paths[lane], synth::maxSampleSeconds, "el golpe");
         ++loaded;
     }
     slot.synth->setKit (kit);
     slot.drumKit = kit;
     return loaded;
+}
+
+bool Engine::setInstrumentSample (int id, const std::string& path)
+{
+    requireMessageThread();
+    auto& slot = impl->slot (id);
+    if (slot.synth == nullptr)
+        throw std::invalid_argument ("afo_audio: la pista no es de síntesis");
+    AfoSynthPlugin::Kit kit;
+    if (! path.empty())
+        kit[0] = loadSample (impl->preview, path, synth::maxInstSampleSeconds, "el sonido");
+    slot.synth->setKit (kit);
+    slot.drumKit = kit;
+    return kit[0] != nullptr;
 }
 
 void Engine::setSynthSettings (int id, const SynthSettings& s)

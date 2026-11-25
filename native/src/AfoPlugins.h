@@ -141,6 +141,11 @@ public:
         const auto* k = kit.load();
         return (k != nullptr && lane >= 0 && lane < synth::drumLanes) ? (*k)[(size_t) lane].get() : nullptr;
     }
+    // Sampler del Instrumento: su sonido va en el primer hueco del juego (las pistas de instrumento no tienen pads)
+    const synth::Sample* instSample (const synth::Params& p) const noexcept
+    {
+        return p.mode == 0 && p.wave == synth::sampler ? laneSample (0) : nullptr;
+    }
 
     std::atomic<float> bpm { 120.0f };      // tempo de la sesión (lo pone setTempo): rejilla del arpegiador
 
@@ -160,8 +165,8 @@ private:
             auto& v = freeVoice();
             if (p.mode == 1)  v.startDrum (p, m.getNoteNumber() - synth::firstDrumNote, sampleRate, at,
                                            laneSample (m.getNoteNumber() - synth::firstDrumNote));
-            else if (held)    v.startHeldNote (p, m.getNoteNumber(), (float) m.getVelocity(), sampleRate, at);
-            else              v.startNote (p, m.getNoteNumber(), synth::noteSeconds (p), sampleRate, at);
+            else if (held)    v.startHeldNote (p, m.getNoteNumber(), (float) m.getVelocity(), sampleRate, at, instSample (p));
+            else              v.startNote (p, m.getNoteNumber(), synth::noteSeconds (p), sampleRate, at, instSample (p));
             if (p.mode == 1 && held)
                 v.g0 *= juce::jlimit (0.05, 1.27, m.getVelocity() / 100.0);
         }
@@ -257,7 +262,7 @@ private:
             for (auto& o : voices)
                 if (o.active && o.is808) o.choke();                                            // 808: una a la vez
         auto& voice = freeVoice();
-        voice.startHeldNote (p, note, v, sampleRate, at);
+        voice.startHeldNote (p, note, v, sampleRate, at, instSample (p));
         voice.offAt = juce::jmax ((int64_t) 1, (int64_t) (stepLen * juce::jlimit (5.0f, 100.0f, p.arpGate) / 100.0));
     }
 

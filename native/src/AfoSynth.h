@@ -53,12 +53,20 @@ struct Params
     float wtLfo = 0.0f;     // 0..100 → movimiento: la posición oscila ±35 % a 1 Hz
     float wtAtk = 5.0f;     // 0..100 → ataque de 1 ms a 2 s
     float wtRel = 30.0f;    // 0..100 → liberación de 10 ms a 3 s
+    // Sampler (preset 11): el sonido cargado en la pista, afinado nota a nota desde su nota raíz
+    int smRoot = 60;        // nota MIDI en la que el sonido suena tal cual
+    float smStart = 0.0f;   // 0..100 % → punto de inicio dentro del sonido
+    bool smLoop = false;    // mientras la nota sigue pulsada, repite desde el inicio del bucle hasta el final
+    float smLoopAt = 50.0f; // 0..100 % → inicio del bucle (fundido de 10 ms en la unión)
+    float smAtk = 2.0f;     // 0..100 → ataque de 1 ms a 2 s
+    float smRel = 25.0f;    // 0..100 → liberación de 10 ms a 3 s
 };
 
 constexpr int bass808 = 8;              // índice del preset 808 en Instrumentos
 constexpr int analog = 9;               // «Sinte analógico»
 constexpr int wavetable = 10;           // «Sinte de tablas»
-constexpr int numPresets = 11;
+constexpr int sampler = 11;             // «Sampler»: el sonido cargado en la pista
+constexpr int numPresets = 12;
 constexpr int wtTables = 4;
 
 // Construye las tablas de onda (unos 50 ms): se llama al crear el motor, no en el hilo de audio
@@ -76,6 +84,9 @@ struct AtomicParams
     std::atomic<float> anDet { 30 }, anCut { 55 }, anRes { 30 }, anEnv { 50 }, anAtk { 5 }, anRel { 30 };
     std::atomic<int> wtTab { 0 };
     std::atomic<float> wtPos { 40 }, wtEnv { 30 }, wtLfo { 0 }, wtAtk { 5 }, wtRel { 30 };
+    std::atomic<int> smRoot { 60 };
+    std::atomic<bool> smLoop { false };
+    std::atomic<float> smStart { 0 }, smLoopAt { 50 }, smAtk { 2 }, smRel { 25 };
     AtomicParams() { for (int i = 0; i < 8; ++i) dTun[(size_t) i] = dDec[(size_t) i] = dTone[(size_t) i] = dLvl[(size_t) i] = 50.0f; }
     void store (const Params& p);
     Params load() const;
@@ -99,6 +110,7 @@ struct Sample
 };
 constexpr int drumLanes = 8;
 constexpr double maxSampleSeconds = 10.0;
+constexpr double maxInstSampleSeconds = 30.0;   // sonido del Sampler del Instrumento
 
 // Una nota o un golpe en curso
 struct Voice
@@ -134,10 +146,15 @@ struct Voice
     bool isWave = false;
     const float* wtData = nullptr;
     double wtPos = 0, wtSweep = 0, wtLfo = 0, wtCur = 0;
+    // Sampler: lectura afinada del sonido de la pista, con bucle opcional (fundido en la unión)
+    bool isSampler = false, smLoop = false;
+    double loopStart = 0, loopEnd = 0, xfade = 0;
 
-    void startNote (const Params&, int midiNote, double seconds, double sampleRate, int delaySamples);
+    void startNote (const Params&, int midiNote, double seconds, double sampleRate, int delaySamples,
+                    const Sample* s = nullptr);
     // Nota que sigue al note-off: ataque, caída hasta el nivel de sostén del preset y release
-    void startHeldNote (const Params&, int midiNote, float velocity, double sampleRate, int delaySamples);
+    void startHeldNote (const Params&, int midiNote, float velocity, double sampleRate, int delaySamples,
+                        const Sample* s = nullptr);
     void startDrum (const Params&, int lane, double sampleRate, int delaySamples, const Sample* s = nullptr);
     void noteOff (int atSample) noexcept;   // posición dentro del bloque
     // 808: la nota nueva pisa a esta (que sigue pulsada): se desliza hasta ella sin volver a empezar

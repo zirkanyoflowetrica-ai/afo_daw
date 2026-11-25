@@ -1591,6 +1591,15 @@ class Bridge(QObject):
 
     @Slot(result=str)
     @_safe
+    def pickSamplerFile(self) -> str:
+        """Sampler del Instrumento: elegir el sonido que tocará la pista (hasta 30 s; se lee en mono)."""
+        f, _ = QFileDialog.getOpenFileName(self.parent_widget, "Sonido para el Sampler", str(Path.home()), AUDIO_FILTER)
+        if not f:
+            return json.dumps({"ok": False, "cancelled": True})
+        return _ok(path=f, name=Path(f).name)
+
+    @Slot(result=str)
+    @_safe
     def addTestTone(self) -> str:
         if (g := self._guard()):
             return g

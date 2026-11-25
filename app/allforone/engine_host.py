@@ -75,6 +75,9 @@ def pattern_notes(track: dict) -> list[tuple[float, int]]:
 ANALOG_KNOBS = (("anDet", 30), ("anCut", 55), ("anRes", 30), ("anEnv", 50), ("anAtk", 5), ("anRel", 30))
 # Sinte de tablas (preset 10): tabla (0 Básica, 1 Vocal, 2 Metálica, 3 Digital), posición, barrido, movimiento, ataque, liberación
 WAVE_KNOBS = (("wtTab", 0), ("wtPos", 40), ("wtEnv", 30), ("wtLfo", 0), ("wtAtk", 5), ("wtRel", 30))
+# Sampler (preset 11): nota raíz, inicio %, bucle (0/1), inicio del bucle %, ataque, liberación; el sonido va en cfg.smpFile
+SAMPLER = 11
+SAMPLER_KNOBS = (("smRoot", 60), ("smStart", 0), ("smLoop", 0), ("smLoopAt", 50), ("smAtk", 2), ("smRel", 25))
 
 
 def synth_settings(track: dict) -> dict:
@@ -88,7 +91,8 @@ def synth_settings(track: dict) -> dict:
             "arp": int(cfg.get("arp", 0)), "arp_rate": int(cfg.get("arpRate", 2)), "arp_oct": int(cfg.get("arpOct", 1)),
             "arp_gate": float(cfg.get("arpGate", 50)),
             "analog": [float(cfg.get(k, d)) for k, d in ANALOG_KNOBS],
-            "wavetable": [float(cfg.get(k, d)) for k, d in WAVE_KNOBS]}
+            "wavetable": [float(cfg.get(k, d)) for k, d in WAVE_KNOBS],
+            "sampler": [float(cfg.get(k, d)) for k, d in SAMPLER_KNOBS]}
 
 
 def _loud(d: dict) -> list[float]:
@@ -218,11 +222,25 @@ class EngineHost:
             self._drum_samples[track_id] = ok
         return [p for p, k in zip(want, ok) if p and not k]
 
+    def inst_sample(self, track_id: int, track: dict) -> str:
+        """Sampler del Instrumento: `cfg.smpFile` = el sonido de la pista. Solo se recarga si cambió.
+        Devuelve la ruta si ya no existe (la pista se queda sin sonido y se dice), si no ""."""
+        want = str((track.get("cfg") or {}).get("smpFile") or "")
+        ok = want if want and Path(want).is_file() else ""
+        if getattr(self, "_inst_samples", None) is None:
+            self._inst_samples = {}
+        if self._inst_samples.get(track_id) != ok:
+            self.engine.set_instrument_sample(track_id, ok)
+            self._inst_samples[track_id] = ok
+        return want if want and not ok else ""
+
     def update_synth(self, track_id: int, track: dict) -> float:
         """Parámetros y patrón; el clip MIDI se rehace entero. Devuelve su duración en segundos."""
         self.engine.set_synth_settings(track_id, **synth_settings(track))
         if track["type"] == "drum":
             self.drum_samples(track_id, track)
+        else:
+            self.inst_sample(track_id, track)
         if track.get("settingsOnly"):            # perillas: no hace falta rehacer el clip
             return -1.0
         if track.get("midi"):                    # MIDI importado o compuesto por la IA: notas con duración
@@ -238,7 +256,12 @@ class EngineHost:
                 self.drum_samples(tid, data)
             return self.engine.audition_synth(FIRST_DRUM_NOTE + int(data["lane"]), 0.0, **s,
                                               track_id=tid if tid in self.tracks else -1)
-        return self.engine.audition_synth(int(data["note"]), float(data.get("seconds", 0.4)), **s)
+        tid = int(data.get("id", -1))
+        if tid in self.tracks and int((data.get("cfg") or {}).get("v", 0)) == SAMPLER:
+            self.inst_sample(tid, data)
+        else:
+            tid = -1
+        return self.engine.audition_synth(int(data["note"]), float(data.get("seconds", 0.4)), **s, track_id=tid)
 
     # --- dispositivo de audio --------------------------------------------------
     def audio_options(self, type_name: str = "") -> dict:
