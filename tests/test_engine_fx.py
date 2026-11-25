@@ -80,9 +80,9 @@ def test_catalogo():
     cat = afo_audio.effect_catalog()
     keys = [c["key"] for c in cat]
     assert keys == ["gain", "strip", "eq", "compressor", "glue", "limiter", "gate", "deesser", "transient", "saturator", "delay",
-                    "space", "analyzer", "tune", "multitap", "trancegate"]
+                    "space", "analyzer", "tune", "multitap", "trancegate", "shimmer", "textureverb", "infinity"]
     assert {c["af"] for c in cat} == {"AF-01", "AF-02", "AF-07", "AF-13", "AF-15", "AF-14", "AF-18", "AF-20", "AF-22", "AF-26",
-                                      "AF-41", "AF-35", "AF-76", "AF-60", "AF-43", "AF-55"}
+                                      "AF-41", "AF-35", "AF-76", "AF-60", "AF-43", "AF-55", "AF-37", "AF-38", "AF-40"}
     for c in cat:
         assert c["params"], c["key"]
         for p in c["params"]:

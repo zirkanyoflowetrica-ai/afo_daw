@@ -419,6 +419,55 @@ inline const FxDesc& tranceDesc()
     return d;
 }
 
+inline const FxDesc& shimmerDesc()
+{
+    static const FxDesc d { "shimmer", "AF-37", "AFO Shimmer", "Reverberación y espacios",
+        "Reverb que se eleva: la cola vuelve a entrar transportada (octava, quinta…) y sube como un coro de cristal.",
+        { { "shift", "Intervalo", 0, 4, 0, "", 0, "+12 octava|+7 quinta|+19 octava y quinta|+24 dos octavas|−12 octava abajo", "A qué altura vuelve la cola" },
+          { "amount", "Brillo", 0, 90, 50, "%", 0, nullptr, "Cuánta cola transportada vuelve a entrar (0 = reverb normal)" },
+          { "decay", "Caída", 0.5f, 20, 4, "s", 4, nullptr, "RT60 de la reverb" },
+          { "size", "Tamaño", 0, 100, 70, "%", 0, nullptr, "Tamaño aparente del espacio" },
+          { "damping", "Amortiguar", 1000, 20000, 9000, "Hz", 5000, nullptr, "Absorción de agudos en la cola" },
+          { "lowcut", "Corte grave", 20, 1000, 200, "Hz", 200, nullptr, "Quita graves a la reverb" },
+          { "predelay", "Pre-delay", 0, 250, 30, "ms", 50, nullptr, "Separa el sonido seco del comienzo de la cola" },
+          { "mix", "Mezcla", 0, 100, 35, "%", 0, nullptr, "Seco/húmedo" } },
+        "" };
+    return d;
+}
+
+inline const FxDesc& textureDesc()
+{
+    static const FxDesc d { "textureverb", "AF-38", "AFO Texture Verb", "Reverberación y espacios",
+        "Reverb con movimiento: la cola ondula (Seda), se rompe en granos (Grano) o pasa por una cinta gastada (Cinta).",
+        { { "texture", "Textura", 0, 2, 0, "", 0, "Seda|Grano|Cinta", "Carácter de la cola" },
+          { "decay", "Caída", 0.3f, 20, 3, "s", 3, nullptr, "RT60 de la reverb" },
+          { "size", "Tamaño", 0, 100, 60, "%", 0, nullptr, "Tamaño aparente del espacio" },
+          { "depth", "Movimiento", 0, 100, 40, "%", 0, nullptr, "Cuánto ondulan las líneas de la reverb (coro dentro de la cola)" },
+          { "rate", "Velocidad", 0.05f, 5, 0.6f, "Hz", 1, nullptr, "Velocidad de la ondulación (y del vaivén de la cinta)" },
+          { "density", "Densidad", 1, 40, 12, "/s", 10, nullptr, "Granos por segundo (Grano)" },
+          { "damping", "Amortiguar", 1000, 20000, 8000, "Hz", 5000, nullptr, "Absorción de agudos en la cola" },
+          { "lowcut", "Corte grave", 20, 1000, 150, "Hz", 200, nullptr, "Quita graves a la reverb" },
+          { "width", "Anchura", 0, 100, 100, "%", 0, nullptr, "Apertura estéreo de la cola" },
+          { "mix", "Mezcla", 0, 100, 30, "%", 0, nullptr, "Seco/húmedo" } },
+        "" };
+    return d;
+}
+
+inline const FxDesc& infinityDesc()
+{
+    static const FxDesc d { "infinity", "AF-40", "AFO Infinity", "Reverberación y espacios",
+        "Reverb de cola larguísima que se congela: «Congelar» atrapa lo que suena y lo sostiene sin fin, sin dejar entrar más.",
+        { { "freeze", "Congelar", 0, 1, 0, "", 0, "No|Sí", "Sostiene la cola para siempre (automatízalo para congelar un acorde)" },
+          { "decay", "Caída", 1, 60, 20, "s", 15, nullptr, "RT60 cuando no está congelada" },
+          { "size", "Tamaño", 0, 100, 80, "%", 0, nullptr, "Tamaño aparente del espacio" },
+          { "damping", "Amortiguar", 1000, 20000, 6000, "Hz", 5000, nullptr, "Absorción de agudos (congelada no hay pérdidas)" },
+          { "lowcut", "Corte grave", 20, 1000, 100, "Hz", 200, nullptr, "Quita graves a la reverb" },
+          { "width", "Anchura", 0, 100, 100, "%", 0, nullptr, "Apertura estéreo de la cola" },
+          { "mix", "Mezcla", 0, 100, 40, "%", 0, nullptr, "Seco/húmedo" } },
+        "congelada" };
+    return d;
+}
+
 inline const FxDesc& spaceDesc()
 {
     static const FxDesc d { "space", "AF-35", "AFO Space", "Reverberación y espacios",
@@ -973,6 +1022,176 @@ private:
 };
 
 //==============================================================================
+// Base de las reverbs del Hito 3: FDN de Space, corte de graves, anchura y mezcla seco/húmedo
+class TankFx : public FxBase
+{
+public:
+    using FxBase::FxBase;
+    double getTailLength() const override { return 30.0; }
+protected:
+    void prepareTank (double sr) { fdn.prepare (sr); }
+    void resetTank() { fdn.reset(); for (auto& f : low) f.reset(); }
+    void setLowCut (float hz) { for (auto& f : low) f.set (Biquad::Type::highpass, hz, 0.7071, 0, sampleRate); }
+    // tl, tr: salida de la FDN → l, r con anchura y mezcla
+    void out (float& l, float& r, float tl, float tr, float width, float mix) noexcept
+    {
+        float wl = low[0].process (tl, 0), wr = low[1].process (tr, 0);
+        const float m = 0.5f * (wl + wr), s = 0.5f * (wl - wr) * width;
+        wl = m + s; wr = m - s;
+        l += mix * (wl - l);
+        r += mix * (wr - r);
+    }
+    Fdn fdn;
+    std::array<Biquad, 2> low;
+};
+
+//==============================================================================
+// AF-37: la salida de la FDN se transporta (GrainShifter) y vuelve a entrar; un paso alto en el lazo
+// evita que se acumulen graves y tanh lo mantiene acotado con Brillo alto
+class ShimmerFx : public TankFx
+{
+public:
+    ShimmerFx (te::PluginCreationInfo i) : TankFx (i, shimmerDesc()) {}
+    AFO_FX_TYPE ("afoFxShimmer", shimmerDesc)
+protected:
+    void prepareFx (double sr) override { prepareTank (sr); pre.prepare ((int) (0.3 * sr)); shifter.prepare (sr); resetFx(); }
+    void resetFx() override { resetTank(); pre.clear(); shifter.reset(); loopHp.reset(); fb = 0.0f; }
+    void processFx (float* l, float* r, int n) override
+    {
+        static constexpr float semis[] = { 12, 7, 19, 24, -12 };
+        const float ratio = std::pow (2.0f, semis[juce::jlimit (0, 4, choice (0))] / 12.0f);
+        const float amount = p (1) / 100.0f, preS = p (6) * 0.001f * (float) sampleRate, mix = p (7) / 100.0f;
+        fdn.set (p (3) / 100.0f, p (2), p (4), 0.8f);
+        setLowCut (p (5));
+        loopHp.set (Biquad::Type::highpass, 180.0, 0.7071, 0, sampleRate);
+        for (int i = 0; i < n; ++i)
+        {
+            pre.push (0.5f * (l[i] + r[i]));
+            float tl, tr;
+            fdn.process (pre.read (juce::jmax (1.0f, preS)) + amount * fb, tl, tr);
+            fb = std::tanh (loopHp.process (shifter.process (0.5f * (tl + tr), ratio), 0));
+            out (l[i], r[i], tl, tr, 1.0f, mix);
+        }
+    }
+private:
+    DelayLine pre;
+    GrainShifter shifter;
+    Biquad loopHp;
+    float fb = 0.0f;
+};
+
+//==============================================================================
+// AF-38: la FDN con sus 8 líneas moduladas (fases distintas); Grano trocea la cola con granos de
+// ventana de Hann al azar (semilla fija: el mismo render siempre); Cinta la pasa por un retardo con
+// vaivén y temblor, saturación suave y un paso bajo
+class TextureVerbFx : public TankFx
+{
+public:
+    TextureVerbFx (te::PluginCreationInfo i) : TankFx (i, textureDesc()) {}
+    AFO_FX_TYPE ("afoFxTextureVerb", textureDesc)
+protected:
+    void prepareFx (double sr) override
+    {
+        prepareTank (sr);
+        for (auto& t : tape) t.prepare ((int) (0.03 * sr));
+        resetFx();
+    }
+    void resetFx() override
+    {
+        resetTank();
+        for (auto& t : tape) t.clear();
+        for (auto& f : tapeLp) f.reset();
+        lfo = 0.0; flutter = 0.0; grainPos = 0; grainLen = 0; gap = 0; rng.setSeed (38);
+    }
+    void processFx (float* l, float* r, int n) override
+    {
+        const int tex = juce::jlimit (0, 2, choice (0));
+        fdn.set (p (2) / 100.0f, p (1), p (6), 0.8f);
+        setLowCut (p (7));
+        for (auto& f : tapeLp) f.set (Biquad::Type::lowpass, 7000.0, 0.7071, 0, sampleRate);
+        const float depth = p (3) / 100.0f * 0.002f * (float) sampleRate;     // hasta ±2 ms por línea
+        const double step = p (4) / sampleRate, fstep = 7.0 / sampleRate;
+        const float density = p (5), width = p (8) / 100.0f, mix = p (9) / 100.0f;
+        for (int i = 0; i < n; ++i)
+        {
+            lfo += step; lfo -= std::floor (lfo);
+            for (int k = 0; k < Fdn::N; ++k)
+                fdn.mod[(size_t) k] = depth * (1.0f + (float) std::sin (2.0 * pi * (lfo + 0.137 * k)));
+            float tl, tr;
+            fdn.process (0.5f * (l[i] + r[i]), tl, tr);
+            if (tex == 1)
+            {
+                const float e = grain (density);
+                tl *= e; tr *= e;
+            }
+            else if (tex == 2)
+            {
+                flutter += fstep; flutter -= std::floor (flutter);
+                const float d = (float) ((0.008 + 0.0015 * (p (3) / 100.0f) * std::sin (2.0 * pi * lfo)
+                                          + 0.0002 * std::sin (2.0 * pi * flutter)) * sampleRate);
+                tape[0].push (tl); tape[1].push (tr);
+                tl = tapeLp[0].process (std::tanh (1.5f * tape[0].read (d)) / 1.5f, 0);
+                tr = tapeLp[1].process (std::tanh (1.5f * tape[1].read (d)) / 1.5f, 0);
+            }
+            out (l[i], r[i], tl, tr, width, mix);
+        }
+    }
+private:
+    // Envolvente de granos: Hann de 0,6/densidad s (10–200 ms) y un hueco al azar; entre granos queda un 15 %
+    float grain (float density)
+    {
+        if (grainPos >= grainLen + gap)
+        {
+            grainLen = juce::jlimit ((int) (0.01 * sampleRate), (int) (0.2 * sampleRate), (int) (0.6 * sampleRate / juce::jmax (1.0f, density)));
+            gap = (int) (rng.nextFloat() * 0.8f * (float) grainLen);
+            grainPos = 0;
+        }
+        const int pos = grainPos++;
+        if (pos >= grainLen) return 0.15f;
+        const float w = std::sin ((float) pi * (float) pos / (float) grainLen);
+        return 0.15f + 0.85f * w * w;
+    }
+    std::array<DelayLine, 2> tape;
+    std::array<Biquad, 2> tapeLp;
+    double lfo = 0.0, flutter = 0.0;
+    int grainPos = 0, grainLen = 0, gap = 0;
+    juce::Random rng { 38 };
+};
+
+//==============================================================================
+// AF-40: FDN de cola larga; congelada, el lazo no pierde nada y la entrada se cierra (20 ms)
+class InfinityFx : public TankFx
+{
+public:
+    InfinityFx (te::PluginCreationInfo i) : TankFx (i, infinityDesc()) {}
+    AFO_FX_TYPE ("afoFxInfinity", infinityDesc)
+    double getTailLength() const override { return 60.0; }
+    std::vector<float> extraMeters() override { return { frozen.load() ? 1.0f : 0.0f }; }
+protected:
+    void prepareFx (double sr) override { prepareTank (sr); resetFx(); }
+    void resetFx() override { resetTank(); inGain = 1.0f; }
+    void processFx (float* l, float* r, int n) override
+    {
+        const bool fr = choice (0) == 1;
+        fdn.set (p (2) / 100.0f, p (1), p (3), 0.8f);
+        if (fr) fdn.freeze();
+        setLowCut (p (4));
+        const float width = p (5) / 100.0f, mix = p (6) / 100.0f, close = onePole (20.0f, sampleRate);
+        for (int i = 0; i < n; ++i)
+        {
+            inGain += close * ((fr ? 0.0f : 1.0f) - inGain);
+            float tl, tr;
+            fdn.process (inGain * 0.5f * (l[i] + r[i]), tl, tr);
+            out (l[i], r[i], tl, tr, width, mix);
+        }
+        frozen.store (fr);
+    }
+private:
+    float inGain = 1.0f;
+    std::atomic<bool> frozen { false };
+};
+
+//==============================================================================
 // AF-43: una línea mono con hasta 8 lecturas a distancias iguales; el último eco realimenta la línea
 class MultiTapFx : public FxBase
 {
@@ -1375,7 +1594,8 @@ inline const std::vector<FxType>& fxTypes()
         { compDesc, CompressorFx::xmlTypeName }, { glueDesc, GlueFx::xmlTypeName }, { limiterDesc, LimiterFx::xmlTypeName }, { gateDesc, GateFx::xmlTypeName }, { deesserDesc, DeEsserFx::xmlTypeName },
         { transientDesc, TransientFx::xmlTypeName }, { satDesc, SaturatorFx::xmlTypeName },
         { delayDesc, DelayFx::xmlTypeName }, { spaceDesc, SpaceFx::xmlTypeName }, { analyzerDesc, AnalyzerFx::xmlTypeName },
-        { tuneDesc, TuneFx::xmlTypeName }, { multitapDesc, MultiTapFx::xmlTypeName }, { tranceDesc, TranceGateFx::xmlTypeName } };
+        { tuneDesc, TuneFx::xmlTypeName }, { multitapDesc, MultiTapFx::xmlTypeName }, { tranceDesc, TranceGateFx::xmlTypeName },
+        { shimmerDesc, ShimmerFx::xmlTypeName }, { textureDesc, TextureVerbFx::xmlTypeName }, { infinityDesc, InfinityFx::xmlTypeName } };
     return t;
 }
 
@@ -1387,6 +1607,7 @@ inline void registerFx (te::PluginManager& pm)
     pm.createBuiltInType<DeEsserFx>();  pm.createBuiltInType<LimiterFx>();  pm.createBuiltInType<TuneFx>();
     pm.createBuiltInType<GlueFx>();     pm.createBuiltInType<TransientFx>();
     pm.createBuiltInType<MultiTapFx>(); pm.createBuiltInType<TranceGateFx>();
+    pm.createBuiltInType<ShimmerFx>();  pm.createBuiltInType<TextureVerbFx>(); pm.createBuiltInType<InfinityFx>();
 }
 
 inline const char* xmlTypeFor (const std::string& key)

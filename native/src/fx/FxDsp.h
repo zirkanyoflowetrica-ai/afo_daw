@@ -253,6 +253,7 @@ struct Fdn
     std::array<float, N> len {}, g {}, lp {};
     std::array<DelayLine, 4> diff;
     std::array<float, 4> diffLen {};
+    std::array<float, N> mod {};                // desplazamiento extra de cada línea en muestras (Texture Verb)
     float damp = 0.5f, diffGain = 0.6f;
 
     void prepare (double sampleRate)
@@ -278,6 +279,9 @@ struct Fdn
         damp = 1.0f - (float) std::exp (-2 * pi * std::clamp (dampHz, 200.0f, 20000.0f) / sr);
         diffGain = 0.45f + 0.3f * std::clamp (diffusion, 0.0f, 1.0f);
     }
+    // Congelado (Infinity): sin pérdidas ni amortiguamiento en el lazo; la matriz es ortogonal, así que
+    // la cola guarda su energía para siempre. Se llama después de set()
+    void freeze() { g.fill (1.0f); damp = 1.0f; }
 
     // Entrada mono → salida estéreo decorrelada
     void process (float in, float& outL, float& outR) noexcept
@@ -294,7 +298,7 @@ struct Fdn
         float sum = 0.0f;
         for (int i = 0; i < N; ++i)
         {
-            float v = lines[(size_t) i].read (len[(size_t) i]) * g[(size_t) i];
+            float v = lines[(size_t) i].read (len[(size_t) i] + mod[(size_t) i]) * g[(size_t) i];
             lp[(size_t) i] += damp * (v - lp[(size_t) i]);               // pérdida de agudos dentro del lazo
             y[(size_t) i] = lp[(size_t) i];
             sum += y[(size_t) i];
@@ -313,6 +317,27 @@ struct Fdn
 
 //==============================================================================
 // Copia sin bloqueo de la señal de salida para el analizador (un escritor: audio; un lector: mensajes)
+// Desplazador de tono de dos lecturas (granos de 50 ms con ventana sen², que suman 1): la lectura se
+// acerca o se aleja de la escritura a ritmo (1 − ratio), así que el tono sale multiplicado por ratio
+struct GrainShifter
+{
+    DelayLine d;
+    float phase = 0.0f, win = 2400.0f;
+
+    void prepare (double sr) { win = (float) (0.05 * sr); d.prepare ((int) (win + 8)); reset(); }
+    void reset() { d.clear(); phase = 0.0f; }
+    float process (float x, float ratio) noexcept
+    {
+        d.push (x);
+        phase += (1.0f - ratio) / win;
+        phase -= std::floor (phase);
+        float p2 = phase + 0.5f;
+        if (p2 >= 1.0f) p2 -= 1.0f;
+        const float w1 = std::sin (pi * phase), w2 = std::sin (pi * p2);
+        return w1 * w1 * d.read (1.0f + win * phase) + w2 * w2 * d.read (1.0f + win * p2);
+    }
+};
+
 struct ScopeFifo
 {
     static constexpr int size = 8192;   // potencia de 2

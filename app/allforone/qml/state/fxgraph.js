@@ -181,8 +181,9 @@ function draw(ctx, w, h, fx, d, live) {
         }
         return
     }
-    if (key === "space") {
-        var pre = v(fx, d, "predelay"), dec = Math.max(0.1, v(fx, d, "decay")), wetS = v(fx, d, "mix") / 100, span = Math.max(1, dec * 1.3)
+    if (key === "space" || key === "shimmer" || key === "textureverb" || key === "infinity") {
+        // Curva de caída (RT60). Infinity congelada no cae: línea plana
+        var pre = v(fx, d, "predelay"), dec = key === "infinity" && v(fx, d, "freeze") > 0.5 ? 1e6 : Math.max(0.1, v(fx, d, "decay")), wetS = v(fx, d, "mix") / 100, span = Math.max(1, dec * 1.3)
         frame(ctx, w, h, [w * 0.25, w * 0.5, w * 0.75], [])
         ctx.beginPath(); ctx.moveTo(0, h)
         for (var x2 = 0; x2 <= w; x2 += 2) {

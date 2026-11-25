@@ -123,6 +123,26 @@ FACTORY: dict[str, dict[str, dict[str, float]]] = {
         "Ping-pong": {"pattern": 0, "rate": 1, "length": 70, "stereo": 1},
         "Bombeo a negras": {"pattern": 2, "rate": 1, "length": 95, "attack": 30, "release": 120, "depth": 70},
     },
+    "shimmer": {
+        "Octava celestial": {"shift": 0, "amount": 50, "decay": 5, "size": 80, "mix": 35},
+        "Quinta brillante": {"shift": 1, "amount": 40, "decay": 4, "mix": 30},
+        "Catedral de cristal": {"shift": 3, "amount": 60, "decay": 9, "size": 100, "predelay": 60, "mix": 40},
+        "Octava abajo (oscura)": {"shift": 4, "amount": 35, "decay": 5, "damping": 5000, "lowcut": 80, "mix": 30},
+        "Pad vocal": {"shift": 0, "amount": 30, "decay": 3, "size": 60, "predelay": 40, "mix": 25},
+    },
+    "textureverb": {
+        "Seda": {"texture": 0, "depth": 50, "rate": 0.5, "decay": 3, "mix": 30},
+        "Coro en la cola": {"texture": 0, "depth": 90, "rate": 1.2, "decay": 4, "mix": 35},
+        "Granos lentos": {"texture": 1, "density": 6, "decay": 5, "mix": 35},
+        "Lluvia de granos": {"texture": 1, "density": 30, "decay": 3, "mix": 30},
+        "Cinta gastada": {"texture": 2, "depth": 60, "rate": 0.4, "decay": 3, "damping": 6000, "mix": 30},
+    },
+    "infinity": {
+        "Cola eterna": {"freeze": 0, "decay": 40, "size": 100, "mix": 40},
+        "Congelado": {"freeze": 1, "mix": 50},
+        "Colchón de ambiente": {"freeze": 0, "decay": 25, "size": 80, "damping": 4000, "lowcut": 200, "mix": 30},
+        "Pad oscuro": {"freeze": 0, "decay": 30, "damping": 2500, "mix": 45},
+    },
 }
 
 

@@ -18,7 +18,7 @@ Column {
         ["Dinámica", ["compressor", "glue", "transient", "gate", "limiter", "deesser"]],
         ["EQ y filtro", ["eq", "strip"]],
         ["Tono y voz", ["tune", "saturator"]],
-        ["Espacio", ["space", "delay", "multitap"]],
+        ["Espacio", ["space", "shimmer", "textureverb", "infinity", "delay", "multitap"]],
         ["Utilidad", ["gain", "analyzer"]],
         ["Ritmo", ["trancegate"]]]
     readonly property var catalog: studio && studio.fxBody ? studio.fxBody.catalog : []
