@@ -71,6 +71,29 @@ def pattern_notes(track: dict) -> list[tuple[float, int]]:
     return out
 
 
+# Step Sequencer: un paso encendido es 1 (de fábrica) o [fuerza 1..127, probabilidad %, repeticiones 1..4]
+STEP_DEFAULT = (100, 100, 1)
+
+
+def step_pattern(track: dict) -> dict:
+    """Patrón de la Batería para el Step Sequencer del motor (Engine.set_step_pattern / expand_steps):
+    pasos con fuerza, probabilidad y repeticiones, largo de cada pad (cfg.len), compases dentro de un
+    clip, swing (cfg.sw) y semilla de la probabilidad (cfg.seed)."""
+    cfg = track.get("cfg") or {}
+    steps = []
+    for k, v in (track.get("pat") or {}).items():
+        if not v:
+            continue
+        lane, s = map(int, k.split("-"))
+        vals = (list(v) if isinstance(v, (list, tuple)) else []) + [None] * 3
+        steps.append((lane, s, *(d if x is None else int(round(float(x))) for x, d in zip(vals[:3], STEP_DEFAULT))))
+    lens = [16 if not x else max(1, min(16, int(x))) for x in (list(cfg.get("len") or []) + [16] * 8)[:8]]
+    return {"steps": sorted(steps), "lengths": lens,
+            "bars": [in_clip(track.get("clips", []), b) for b in range(STEPS // 16)],
+            "swing": max(0.0, min(100.0, float(cfg.get("sw", 0)))) / 100,
+            "seed": max(0, int(cfg.get("seed", 0))), "total_steps": STEPS}
+
+
 # Sinte analógico (preset 9): clave en cfg y valor de fábrica, en el orden que espera el motor
 ANALOG_KNOBS = (("anDet", 30), ("anCut", 55), ("anRes", 30), ("anEnv", 50), ("anAtk", 5), ("anRel", 30))
 # Sinte de tablas (preset 10): tabla (0 Básica, 1 Vocal, 2 Metálica, 3 Digital), posición, barrido, movimiento, ataque, liberación
@@ -251,6 +274,8 @@ class EngineHost:
         if track.get("midi"):                    # MIDI importado o compuesto por la IA: notas con duración
             notes = [(float(n[0]), float(n[1]), int(n[2]), int(n[3])) for n in track["midi"]]
             return self.engine.set_synth_midi(track_id, notes, 0.0)
+        if track["type"] == "drum":              # Step Sequencer del motor
+            return self.engine.set_step_pattern(track_id, **step_pattern(track))
         return self.engine.set_synth_notes(track_id, pattern_notes(track), float(STEPS) / 4)
 
     def audition(self, data: dict) -> bool:

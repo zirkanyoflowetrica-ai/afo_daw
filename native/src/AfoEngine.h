@@ -14,6 +14,8 @@
 #include <tuple>
 #include <vector>
 
+#include "AfoSynth.h"
+
 namespace afo
 {
 
@@ -281,6 +283,9 @@ public:
     // Notas con duración y velocidad propias (MIDI importado o compuesto por la IA):
     // (inicio en negras, duración en negras, nota 0..127, velocidad 1..127)
     double setSynthMidi (int id, const std::vector<std::tuple<double, double, int, int>>& notes, double lengthBeats);
+    // Step Sequencer de la Batería: el patrón (fuerza, probabilidad y repeticiones por paso, largo por
+    // pad) se convierte aquí en el clip MIDI de la pista. Devuelve la duración del clip en segundos.
+    double setStepPattern (int id, const synth::StepPattern&);
     // Escucha de una nota o golpe suelto por el reproductor de escucha (no toca el transporte)
     // trackId ≥ 0 en la batería: el pad suena con el golpe grabado de esa pista si lo tiene
     bool auditionSynth (const SynthSettings&, int midiNote, double seconds, int trackId = -1);

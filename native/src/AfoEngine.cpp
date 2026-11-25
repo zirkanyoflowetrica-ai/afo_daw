@@ -672,6 +672,14 @@ double Engine::setSynthMidi (int id, const std::vector<std::tuple<double, double
     return slot.info.lengthSeconds;
 }
 
+double Engine::setStepPattern (int id, const synth::StepPattern& pattern)
+{
+    std::vector<std::tuple<double, double, int, int>> notes;
+    for (const auto& n : synth::expandSteps (pattern))
+        notes.emplace_back (n.beat, n.length, n.note, n.vel);
+    return setSynthMidi (id, notes, std::max (1, pattern.totalSteps) / 4.0);
+}
+
 TrackInfo Engine::addAuxTrack (const std::string& name)
 {
     requireMessageThread();

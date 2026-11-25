@@ -71,6 +71,19 @@ py::dict toDict (const afo::EffectInfo& e)
     return d;
 }
 
+using StepTuple = std::tuple<int, int, int, int, int>;     // carril, paso, fuerza, probabilidad, repeticiones
+afo::synth::StepPattern stepPattern (const std::vector<StepTuple>& steps, const std::vector<int>& lengths,
+                                     const std::vector<bool>& bars, double swing, uint32_t seed, int totalSteps)
+{
+    afo::synth::StepPattern p;
+    for (auto& [lane, step, vel, prob, rat] : steps)
+        p.steps.push_back ({ lane, step, vel, prob, rat });
+    for (size_t i = 0; i < lengths.size() && i < p.length.size(); ++i)
+        p.length[i] = lengths[i];
+    p.bars = bars; p.swing = swing; p.seed = seed; p.totalSteps = totalSteps;
+    return p;
+}
+
 afo::SynthSettings settings (int mode, int wave, float vel, float bri, bool sus, float vol, float tun, float rev,
                              float glide, float drive, float punch, int arp = 0, int arpRate = 2, int arpOct = 1,
                              float arpGate = 50.0f, const std::vector<std::vector<float>>& lanes = {},
@@ -102,6 +115,16 @@ PYBIND11_MODULE (afo_audio, m)
            }, py::arg ("list_file"), py::arg ("extra_folders") = std::vector<std::string>(), py::arg ("progress") = nullptr,
            "Busca VST3 sin motor (para un proceso aparte); guarda la lista tras cada archivo.");
     m.def ("juce_version", &afo::juceVersion);
+    m.def ("expand_steps", [] (const std::vector<StepTuple>& steps, const std::vector<int>& lengths, const std::vector<bool>& bars,
+                               double swing, uint32_t seed, int totalSteps)
+           {
+               py::list l;
+               for (auto& n : afo::synth::expandSteps (stepPattern (steps, lengths, bars, swing, seed, totalSteps)))
+                   l.append (py::make_tuple (n.beat, n.length, n.note, n.vel));
+               return l;
+           }, py::arg ("steps"), py::arg ("lengths") = std::vector<int> {}, py::arg ("bars") = std::vector<bool> {},
+           py::arg ("swing") = 0.0, py::arg ("seed") = 0u, py::arg ("total_steps") = 256,
+           "Step Sequencer: las notas (negra, duración, nota, velocidad) de un patrón de batería");
     m.def ("write_test_tone", &afo::writeTestTone,
            py::arg ("path"), py::arg ("frequency") = 440.0, py::arg ("seconds") = 4.0,
            py::arg ("sample_rate") = 48000.0, py::arg ("amplitude_db") = -12.0f,
@@ -217,6 +240,12 @@ PYBIND11_MODULE (afo_audio, m)
               py::arg ("lanes") = std::vector<std::vector<float>> {}, py::arg ("analog") = std::vector<float> {},
               py::arg ("wavetable") = std::vector<float> {}, py::arg ("sampler") = std::vector<float> {})
         .def ("set_synth_notes", &afo::Engine::setSynthNotes, py::arg ("track_id"), py::arg ("notes"), py::arg ("length_beats") = 64.0)
+        .def ("set_step_pattern", [] (afo::Engine& e, int id, const std::vector<StepTuple>& steps, const std::vector<int>& lengths,
+                                      const std::vector<bool>& bars, double swing, uint32_t seed, int totalSteps)
+              { return e.setStepPattern (id, stepPattern (steps, lengths, bars, swing, seed, totalSteps)); },
+              py::arg ("track_id"), py::arg ("steps"), py::arg ("lengths") = std::vector<int> {}, py::arg ("bars") = std::vector<bool> {},
+              py::arg ("swing") = 0.0, py::arg ("seed") = 0u, py::arg ("total_steps") = 256,
+              "Step Sequencer de la batería: (carril, paso, fuerza, probabilidad %, repeticiones) por paso encendido")
         .def ("set_synth_midi", &afo::Engine::setSynthMidi, py::arg ("track_id"), py::arg ("notes"), py::arg ("length_beats") = 0.0,
               "Notas (inicio, duración en negras, nota, velocidad) de un MIDI importado o compuesto por la IA")
         .def ("audition_synth", [] (afo::Engine& e, int note, double seconds, int mode, int wave, float vel, float bri, bool sus, float vol, float tun, float rev,

@@ -64,6 +64,20 @@ Column {
         pairs.forEach(function (p) { all[selLane][p[0]] = p[1] })
         root.seq.setCfg("drum", "lanes", all)
     }
+    // Step Sequencer: qué cambia un clic en un paso («on» enciende/apaga; 0 fuerza, 1 probabilidad, 2 repeticiones)
+    property string stepEdit: "on"
+    function laneLen(i) { var l = root.t && root.t.cfg.len ? root.t.cfg.len[i] : 0; return l ? l : 16 }
+    function setLaneLen(n) {
+        var all = []
+        for (var i = 0; i < 8; ++i) all.push(i === selLane ? n : laneLen(i))
+        root.seq.setCfg("drum", "len", all)
+    }
+    readonly property bool hasChance: {
+        if (!root.t || !root.t.pat) return false
+        var ks = Object.keys(root.t.pat)
+        for (var i = 0; i < ks.length; ++i) { var v = root.t.pat[ks[i]]; if (v && v.length === 3 && v[1] < 100) return true }
+        return false
+    }
     function padSample(i) { return root.t && root.t.cfg.smp && root.t.cfg.smp[i] ? root.t.cfg.smp[i] : "" }
     function setPadSample(path) {
         var paths = []
@@ -227,10 +241,12 @@ Column {
                     required property string modelData
                     required property int index
                     spacing: 8
-                    NeoButton {                 // .dl: escuchar el golpe
-                        width: 108; text: lane.modelData; fontSize: 12; padX: 6; padY: 3; leftAlign: true
+                    NeoButton {                 // .dl: escuchar el golpe y elegir el pad
+                        width: 108; text: lane.modelData + (root.laneLen(lane.index) < 16 ? " · " + root.laneLen(lane.index) : "")
+                        fontSize: 12; padX: 6; padY: 3; leftAlign: true
                         color: Theme.screenCard; textColor: Theme.screenInk; hoverColor: Theme.screenHover
-                        onClicked: if (root.t) root.seq.previewDrum(root.t.cfg, lane.index)
+                        tip: "Escucha el golpe y elige este pad"
+                        onClicked: if (root.t) { root.selLane = lane.index; root.seq.previewDrum(root.t.cfg, lane.index) }
                     }
                     Grid {                      // .sc: 16 pasos
                         columns: 16; columnSpacing: 3
@@ -242,16 +258,34 @@ Column {
                                 id: st
                                 required property int index
                                 readonly property bool on: !!root.t && !!root.t.pat[lane.index + "-" + index]
+                                readonly property var val: on ? root.seq.stepVal(root.t, lane.index, index) : null
+                                readonly property string badge: !val ? "" : (val[0] > 100 ? "▲" : "") + (val[1] < 100 ? val[1] + "%" : "")
+                                                                         + (val[2] > 1 ? "×" + val[2] : "")
                                 width: parent.cw; height: 26
+                                opacity: index < root.laneLen(lane.index) ? 1 : 0.35      // fuera del largo del pad: no suena
                                 color: on ? root.groupColor[index >> 2] : (sm.containsMouse ? Theme.screenHover : Theme.screenHover)
                                 border.width: Theme.buttonBorder; border.color: Theme.line
+                                Rectangle {     // fuerza: un golpe suave enciende solo parte del paso
+                                    visible: !!st.val && st.val[0] < 100
+                                    x: Theme.buttonBorder; y: Theme.buttonBorder; width: parent.width - 2 * Theme.buttonBorder
+                                    height: (parent.height - 2 * Theme.buttonBorder) * (1 - (st.val ? st.val[0] : 100) / 100)
+                                    color: Theme.screenHover
+                                }
+                                Rectangle {     // probabilidad, acento y repeticiones del paso
+                                    visible: st.badge !== ""
+                                    anchors.centerIn: parent; width: bt.implicitWidth + 4; height: bt.implicitHeight
+                                    color: Theme.screen
+                                    Text { id: bt; anchors.centerIn: parent; text: st.badge; color: Theme.screenInk
+                                           font.family: Theme.font; font.pixelSize: 10; font.weight: 700 }
+                                }
                                 Rectangle {     // .st.cur
                                     visible: root.curStep === st.index
                                     anchors.fill: parent; anchors.margins: 4
                                     color: "transparent"; border.width: Theme.border; border.color: "#fff"
                                 }
                                 MouseArea { id: sm; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
-                                            onClicked: root.seq.toggleStep(lane.index, st.index) }
+                                            onClicked: root.stepEdit === "on" ? root.seq.toggleStep(lane.index, st.index)
+                                                                              : root.seq.cycleStep(lane.index, st.index, parseInt(root.stepEdit)) }
                             }
                         }
                     }
@@ -264,5 +298,24 @@ Column {
         spacing: 6; topPadding: 10
         NeoButton { text: "Borrar patrón"; onClicked: root.seq.clearPat() }
         NeoButton { text: "Patrón básico"; onClicked: root.seq.basicPat() }
+        Select {                                // Step Sequencer: qué cambia el clic en un paso
+            objectName: "stepMode"; width: 150; anchors.verticalCenter: parent.verticalCenter
+            options: [["on", "Clic: encender"], ["0", "Clic: fuerza"], ["1", "Clic: probabilidad"], ["2", "Clic: repetir"]]
+            current: root.stepEdit
+            tip: "Encender apaga y enciende pasos; fuerza: normal → fuerte (▲) → suave; probabilidad: 100 → 75 → 50 → 25 %; repetir: 1 a 4 golpes en el paso"
+            onPicked: function (v) { root.stepEdit = v }
+        }
+        Select {
+            objectName: "padLen"; width: 150; anchors.verticalCenter: parent.verticalCenter
+            options: { var o = []; for (var n = 16; n >= 1; n--) o.push([String(n), "Pad " + (root.selLane + 1) + ": " + n + " pasos"]); return o }
+            current: String(root.laneLen(root.selLane))
+            tip: "Largo del patrón de este pad: con largos distintos los pads se desfasan y el ritmo cambia de un compás a otro"
+            onPicked: function (v) { root.setLaneLen(parseInt(v)) }
+        }
+        NeoButton {
+            objectName: "stepSeed"; visible: root.hasChance; text: "Otra variación"
+            tip: "Los pasos con probabilidad eligen de nuevo cuándo suenan (la misma variación suena igual al exportar)"
+            onClicked: root.seq.setCfg("drum", "seed", ((root.t.cfg.seed || 0) + 1) % 100000)
+        }
     }
 }

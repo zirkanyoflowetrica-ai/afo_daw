@@ -185,4 +185,23 @@ void renderHit (const Params&, int midiNote, double seconds, double sampleRate, 
                 const Sample* s = nullptr);
 int hitLengthSamples (const Params&, int midiNote, double seconds, double sampleRate, const Sample* s = nullptr);
 
+// ---- Step Sequencer de la Batería ------------------------------------------------------------
+// Cada paso encendido de un pad: fuerza (velocidad MIDI 1..127), probabilidad de sonar (1..100 %)
+// y repeticiones dentro del paso (1..4, «ratchet»). Cada pad tiene su largo (1..16 pasos): con
+// largos distintos los pads se desfasan (polimetría). La probabilidad se decide con una semilla:
+// la misma semilla da siempre las mismas notas (al reproducir y al exportar).
+struct Step { int lane = 0, step = 0, vel = 100, prob = 100, ratchet = 1; };
+struct StepPattern
+{
+    std::vector<Step> steps;
+    std::array<int, drumLanes> length { 16, 16, 16, 16, 16, 16, 16, 16 };
+    std::vector<bool> bars;             // compases que suenan (vacío = todos)
+    double swing = 0.0;                 // 0..1: las semicorcheas pares se retrasan hasta media semicorchea
+    uint32_t seed = 0;
+    int totalSteps = 256;               // semicorcheas del patrón (16 compases)
+};
+struct StepNote { double beat = 0, length = 0.25; int note = firstDrumNote, vel = 100; };
+// Las notas del patrón, en negras, ordenadas por tiempo
+std::vector<StepNote> expandSteps (const StepPattern&);
+
 } // namespace afo::synth

@@ -188,11 +188,18 @@ Window {
                                                              midi: (t.midi || []).length, sub: sq.sub(t) } }),
                  act: sq.act, voice: sq.active("inst") ? sq.active("inst").cfg.v : -1 }
     }
+    // Para la autoprueba: la pista de batería activa (patrón del Step Sequencer y ajustes)
+    function drumSnapshot() {
+        var t = sq.active("drum")
+        return t ? { type: t.type, clips: t.clips, pat: t.pat, cfg: t.cfg } : null
+    }
     // Para la autoprueba: acciones del secuenciador
     function seqCommand(what, a, b) {
         if (what === "add") sq.addTrack(a)
         else if (what === "roll") sq.toggleRoll(a, b)
         else if (what === "step") sq.toggleStep(a, b)
+        else if (what === "stepcycle") sq.cycleStep(a, b[0], b[1])
+        else if (what === "drumcfg") sq.setCfg("drum", a, b)
         else if (what === "voice") sq.setVoice(a)
         else if (what === "aigen") { sq.setCfg("ia", "prompt", a); sq.setCfg("ia", "dur", b || 30); sq.generate() }
         else if (what === "hide") setHidden(a, b)

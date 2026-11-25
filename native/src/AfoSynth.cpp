@@ -518,4 +518,38 @@ void renderHit (const Params& p, int midiNote, double seconds, double sampleRate
         out[i] = v.next();
 }
 
+// ---- Step Sequencer ----------------------------------------------------------------------------
+static uint32_t stepHash (uint32_t seed, int lane, int st) noexcept
+{
+    uint32_t x = seed * 0x9E3779B1u ^ (uint32_t) (lane + 1) * 0x85EBCA77u ^ (uint32_t) (st + 1) * 0xC2B2AE3Du;
+    x ^= x >> 16; x *= 0x7FEB352Du; x ^= x >> 15; x *= 0x846CA68Bu; x ^= x >> 16;
+    return x;
+}
+
+std::vector<StepNote> expandSteps (const StepPattern& p)
+{
+    std::vector<StepNote> out;
+    const double swing = std::clamp (p.swing, 0.0, 1.0);
+    for (int st = 0; st < std::max (0, p.totalSteps); ++st)
+    {
+        const size_t bar = (size_t) (st / 16);
+        if (! p.bars.empty() && (bar >= p.bars.size() || ! p.bars[bar]))
+            continue;
+        const double beat = st / 4.0 + ((st % 16) % 2 ? swing * 0.125 : 0.0);
+        for (const auto& s : p.steps)
+        {
+            if (s.lane < 0 || s.lane >= drumLanes) continue;
+            const int len = std::clamp (p.length[(size_t) s.lane], 1, 16);
+            if (s.step < 0 || s.step >= len || st % len != s.step) continue;      // pasos fuera del largo: callados
+            const int prob = std::clamp (s.prob, 0, 100);
+            if (prob < 100 && (int) (stepHash (p.seed, s.lane, st) % 100u) >= prob) continue;
+            const int r = std::clamp (s.ratchet, 1, 4);
+            for (int k = 0; k < r; ++k)
+                out.push_back ({ beat + k * 0.25 / r, 0.25 / r, firstDrumNote + s.lane, std::clamp (s.vel, 1, 127) });
+        }
+    }
+    std::stable_sort (out.begin(), out.end(), [] (const StepNote& a, const StepNote& b) { return a.beat < b.beat; });
+    return out;
+}
+
 } // namespace afo::synth

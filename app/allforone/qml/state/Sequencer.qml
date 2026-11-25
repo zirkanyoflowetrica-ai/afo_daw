@@ -273,7 +273,8 @@ QtObject {
         if (!t) { if (type === "ia") { var d = Object.assign({}, draftIa); d[key] = value; draftIa = d } return }
         var c = Object.assign({}, t.cfg); c[key] = value
         replace(t.uid, { cfg: c })
-        if (isSynth(t)) update(t.uid, key !== "sw" && key !== "oct")   // swing y octava mueven las notas; el resto son parámetros
+        // swing, octava, largo de los pads y variación mueven las notas; el resto son parámetros
+        if (isSynth(t)) update(t.uid, ["sw", "oct", "len", "seed"].indexOf(key) < 0)
     }
     function setVoice(v) {
         var t = active("inst"); if (!t) return
@@ -309,6 +310,23 @@ QtObject {
         var t = active("drum"); if (!t || midiLocked(t)) return
         var p = Object.assign({}, t.pat), k = lane + "-" + s
         if (p[k]) delete p[k]; else { p[k] = 1; previewDrum(t.cfg, lane) }
+        replace(t.uid, { pat: p }); update(t.uid)
+    }
+    // Step Sequencer: un paso encendido es 1 (fuerza 100, siempre, una vez) o [fuerza, probabilidad, repeticiones]
+    readonly property var stepCycles: [[100, 127, 60], [100, 75, 50, 25], [1, 2, 3, 4]]
+    function stepVal(t, lane, s) {
+        var v = t && t.pat ? t.pat[lane + "-" + s] : 0
+        if (!v) return null
+        return v.length === 3 ? [v[0], v[1], v[2]] : [100, 100, 1]
+    }
+    function cycleStep(lane, s, field) {
+        var t = active("drum"); if (!t || midiLocked(t)) return
+        var v = stepVal(t, lane, s)
+        if (!v) { toggleStep(lane, s); return }
+        var cyc = stepCycles[field], i = cyc.indexOf(v[field])
+        v[field] = cyc[(i + 1) % cyc.length]
+        var p = Object.assign({}, t.pat)
+        p[lane + "-" + s] = v[0] === 100 && v[1] === 100 && v[2] === 1 ? 1 : v
         replace(t.uid, { pat: p }); update(t.uid)
     }
     function clearPat() { var t = active("drum"); if (t) { replace(t.uid, { pat: {} }); update(t.uid) } }

@@ -803,7 +803,7 @@ def _native_sequencer_checks(rep, app, host, window, prop) -> None:
     import soundfile as sf
     from PySide6.QtCore import QMetaObject, Q_ARG, Q_RETURN_ARG
 
-    from .engine_host import synth_settings
+    from .engine_host import FIRST_DRUM_NOTE, afo_audio, step_pattern, synth_settings
     from .selftest import _wait
 
     def snap():
@@ -947,6 +947,33 @@ def _native_sequencer_checks(rep, app, host, window, prop) -> None:
                       on and "Sin sonido" in empty_text and loaded_text == "nota.wav" and inst_id >= 0 and bool(heard)
                       and not bool(sm.property("visible")),
                       f"visible {on} · vacío «{empty_text[:30]}» · cargado «{loaded_text}» · pista {inst_id} · se escucha {heard}")
+
+        # Step Sequencer: un clic en un paso con «probabilidad» lo pasa a 75 % y llega así al motor
+        steps_ui = [window.findChild(QObject, n) for n in ("stepMode", "padLen")]
+        def drum_now():
+            v = QMetaObject.invokeMethod(window, "drumSnapshot", Q_RETURN_ARG("QVariant"))
+            return v.toVariant() if hasattr(v, "toVariant") else v
+        drum0 = drum_now()
+        if None in steps_ui or drum0 is None or not drum0["pat"].get("0-0"):
+            rep.check("Step Sequencer: fuerza, probabilidad, repeticiones y largo por pad", False,
+                      f"controles {[c is not None for c in steps_ui]} · pista de batería con bombo en el paso 1: {drum0 is not None}")
+        else:
+            cmd("stepcycle", 0, [0, 1])
+            _wait(app, lambda: False, 0.1, host)
+            d1 = drum_now()
+            got = list(d1["pat"].get("0-0") or [])
+            sp = step_pattern(d1)
+            expanded = afo_audio.expand_steps(**{k: v for k, v in sp.items()}) if afo_audio else []
+            kicks = sum(1 for n in expanded if n[2] == FIRST_DRUM_NOTE and n[0] % 4 == 0)
+            for _ in range(3):                                   # 75 → 50 → 25 → 100: como estaba
+                cmd("stepcycle", 0, [0, 1])
+            _wait(app, lambda: False, 0.1, host)
+            back = drum_now()["pat"].get("0-0")
+            rep.check("Step Sequencer: fuerza, probabilidad, repeticiones y largo por pad",
+                      got == [100, 75, 1] and (0, 0, 100, 75, 1) in sp["steps"] and 0 < kicks < 16 and back == 1
+                      and str(steps_ui[0].property("current")) == "on" and str(steps_ui[1].property("current")) == "16",
+                      f"paso 1 del bombo {got} → al motor {[s for s in sp['steps'] if s[:2] == (0, 0)]} · "
+                      f"suena en {kicks} de 16 compases · vuelve a {back}")
 
         # Drum Rack: paneo, grupo de corte y golpe propio del pad elegido; el motor recibe los 6 ajustes
         rack = [window.findChild(QObject, n) for n in ("drumLanePan", "padChoke", "padLoad")]
