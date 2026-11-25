@@ -144,6 +144,8 @@ struct SynthSettings
     float glide = 30, drive = 30, punch = 50;   // 808 Lab (preset 8)
     int arp = 0, arpRate = 2, arpOct = 1;        // arpegiador (ver synth::Params)
     float arpGate = 50;
+    // Drum Synth: por carril [afinación, caída, tono, nivel] 0..100 (50 = de fábrica); vacío = de fábrica
+    std::vector<std::vector<float>> lanes;
 };
 
 // Sonoridad de una pista o del master (BS.1770): RMS 300 ms, LUFS momentánea/corto plazo/integrada,

@@ -44,8 +44,23 @@ Column {
     // ---------------- drum pad: 8 pads tocables (teclas 1–8) ----------------
     property bool padRec: false                 // grabar los golpes en el patrón mientras suena
     property int flash: -1
+    // Drum Synth: el último pad tocado se edita con sus propias perillas
+    property int selLane: 0
+    function laneVal(i, k) {
+        var l = root.t && root.t.cfg.lanes ? root.t.cfg.lanes[i] : null
+        return l && l[k] !== undefined && l[k] !== null ? l[k] : 50
+    }
+    function setLane(k, v) {
+        if (!root.t) return
+        var all = []
+        for (var i = 0; i < 8; ++i)
+            all.push([laneVal(i, 0), laneVal(i, 1), laneVal(i, 2), laneVal(i, 3)])
+        all[selLane][k] = v
+        root.seq.setCfg("drum", "lanes", all)
+    }
     function hit(i) {
         if (!root.t) return
+        selLane = i
         root.seq.previewDrum(root.t.cfg, i)
         flash = i; flashTimer.restart()
         if (padRec && curStep >= 0 && !root.t.pat[i + "-" + curStep]) root.seq.toggleStep(i, curStep)
@@ -121,6 +136,39 @@ Column {
                 }
             }
         }
+    }
+
+    Row {                                       // Drum Synth: el pad elegido
+        objectName: "drumLaneKnobs"
+        visible: !!root.t
+        height: visible ? implicitHeight : 0
+        anchors.horizontalCenter: parent.horizontalCenter; spacing: 16; bottomPadding: 10
+        Column {
+            anchors.verticalCenter: parent.verticalCenter; spacing: 2
+            Text { text: "PAD " + (root.selLane + 1); color: Theme.ink
+                   font.family: Theme.font; font.pixelSize: 11; font.weight: 700; font.letterSpacing: 0.6 }
+            Text { objectName: "drumLaneName"; text: root.seq.dn[root.selLane] || ""; color: Theme.ink
+                   font.family: Theme.font; font.pixelSize: 14; font.weight: 700 }
+            NeoButton {
+                text: "De fábrica"; fontSize: 11; padX: 6; padY: 2; shadow: 2
+                tip: "Vuelve a poner este pad como sale de fábrica (todas sus perillas a 50)"
+                onClicked: { for (var k = 0; k < 4; ++k) root.setLane(k, 50); root.seq.previewDrum(root.t.cfg, root.selLane) }
+            }
+        }
+        Knob { objectName: "drumLaneTun"; label: "Afinación"; value: root.laneVal(root.selLane, 0)
+               tip: "Afinación de este pad (±1 octava), además de la general"
+               onMoved: function (v) { root.setLane(0, v) } }
+        Knob { objectName: "drumLaneDec"; label: "Caída"; value: root.laneVal(root.selLane, 1)
+               tip: "Lo que dura el golpe: de ¼ a 4 veces el de fábrica"
+               onMoved: function (v) { root.setLane(1, v) } }
+        Knob { objectName: "drumLaneTone"; label: "Tono"
+               value: root.laneVal(root.selLane, 2)
+               tip: root.selLane === 0 || root.selLane === 5 ? "Golpe de afinación al empezar (más = más clic)"
+                    : root.selLane === 7 ? "Intervalo entre los dos tonos del cencerro" : "Filtro del ruido: más agudo o más grave"
+               onMoved: function (v) { root.setLane(2, v) } }
+        Knob { objectName: "drumLaneLvl"; label: "Nivel"; value: root.laneVal(root.selLane, 3)
+               tip: "Volumen de este pad (0 = mudo, 50 = normal, 100 = +12 dB)"
+               onMoved: function (v) { root.setLane(3, v) } }
     }
 
     Rectangle {                                 // .seq

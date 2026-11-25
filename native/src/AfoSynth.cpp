@@ -38,6 +38,7 @@ void AtomicParams::store (const Params& p)
     mode = p.mode; wave = p.wave; vel = p.vel; bri = p.bri; sus = p.sus; vol = p.vol; tun = p.tun; rev = p.rev;
     glide = p.glide; drive = p.drive; punch = p.punch;
     arp = p.arp; arpRate = p.arpRate; arpOct = p.arpOct; arpGate = p.arpGate;
+    for (size_t i = 0; i < 8; ++i) { dTun[i] = p.dTun[i]; dDec[i] = p.dDec[i]; dTone[i] = p.dTone[i]; dLvl[i] = p.dLvl[i]; }
 }
 
 Params AtomicParams::load() const
@@ -46,6 +47,7 @@ Params AtomicParams::load() const
     p.mode = mode; p.wave = wave; p.vel = vel; p.bri = bri; p.sus = sus; p.vol = vol; p.tun = tun; p.rev = rev;
     p.glide = glide; p.drive = drive; p.punch = punch;
     p.arp = arp; p.arpRate = arpRate; p.arpOct = arpOct; p.arpGate = arpGate;
+    for (size_t i = 0; i < 8; ++i) { p.dTun[i] = dTun[i]; p.dDec[i] = dDec[i]; p.dTone[i] = dTone[i]; p.dLvl[i] = dLvl[i]; }
     return p;
 }
 
@@ -142,23 +144,28 @@ void Voice::startDrum (const Params& p, int drumLane, double sampleRate, int del
     active = true; delay = std::max (0, delaySamples); sr = sampleRate; mode = 1;
     lane = std::clamp (drumLane, 0, 7);
     noise = 0x9E3779B9u * (uint32_t) (lane + 1) + (uint32_t) delaySamples;
-    const double v = p.vol / 100.0, k = std::pow (2.0, (p.tun - 50.0) / 50.0);
-    if (lane == 0 || lane == 5)                      // bombo / tom: seno con barrido
+    const auto L = (size_t) lane;
+    const double lvl = std::clamp (p.dLvl[L], 0.0f, 100.0f) / 50.0;
+    const double v = p.vol / 100.0 * lvl * lvl;
+    const double k = std::pow (2.0, (p.tun - 50.0) / 50.0) * std::pow (2.0, (std::clamp (p.dTun[L], 0.0f, 100.0f) - 50.0) / 50.0);
+    const double dk = std::pow (2.0, (std::clamp (p.dDec[L], 0.0f, 100.0f) - 50.0) / 25.0);     // caída ×¼ … ×4
+    const double tone = (std::clamp (p.dTone[L], 0.0f, 100.0f) - 50.0) / 50.0;                  // −1 … +1
+    if (lane == 0 || lane == 5)                      // bombo / tom: seno con barrido (tono = golpe de afinación)
     {
-        f0 = (lane ? 170 : 150) * k; f1 = (lane ? 90 : 45) * k;
-        g0 = v; decay = lane ? 0.3 : 0.45; length = (int64_t) (0.5 * sr);
+        f0 = (lane ? 170 : 150) * k * std::pow (2.0, 1.5 * tone); f1 = (lane ? 90 : 45) * k;
+        g0 = v; decay = (lane ? 0.3 : 0.45) * dk; length = (int64_t) (std::max (0.5, decay + 0.05) * sr);
     }
-    else if (lane == 7)                              // cencerro: dos cuadradas
+    else if (lane == 7)                              // cencerro: dos cuadradas (tono = intervalo entre ellas)
     {
-        f0 = 560 * k; f1 = 845 * k;
-        g0 = v * 0.3; decay = 0.2; length = (int64_t) (0.25 * sr);
+        f0 = 560 * k; f1 = 845 * k * std::pow (2.0, 0.5 * tone);
+        g0 = v * 0.3; decay = 0.2 * dk; length = (int64_t) ((0.05 + decay) * sr);
     }
-    else                                             // caja, hi-hats, palmas, platillo: ruido filtrado
+    else                                             // caja, hi-hats, palmas, platillo: ruido filtrado (tono = filtro)
     {
         static constexpr double de[] = { 0, 0.18, 0.05, 0.3, 0.12, 0, 0.9 };
         static constexpr double fq[] = { 0, 1200, 7000, 7000, 1500, 0, 5000 };
-        g0 = v; decay = de[lane]; length = (int64_t) ((de[lane] + 0.05) * sr);
-        filter.set (lane == 4 ? Biquad::Type::bandpass : Biquad::Type::highpass, fq[lane] * k, sr);
+        g0 = v; decay = de[lane] * dk; length = (int64_t) ((decay + 0.05) * sr);
+        filter.set (lane == 4 ? Biquad::Type::bandpass : Biquad::Type::highpass, fq[lane] * k * std::pow (2.0, 2.0 * tone), sr);
         useFilter = true;
     }
     if (s != nullptr && s->data.size() > 1 && s->sampleRate > 0)    // sampler: el golpe grabado, tal cual
@@ -166,6 +173,7 @@ void Voice::startDrum (const Params& p, int drumLane, double sampleRate, int del
         sample = s; useFilter = false; g0 = v;
         sstep = s->sampleRate / sr * k;
         length = (int64_t) ((double) (s->data.size() - 1) / sstep);
+        if (dk < 1.0) length = (int64_t) ((double) length * dk);               // caída: acorta el golpe
     }
 }
 

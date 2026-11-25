@@ -24,6 +24,14 @@ namespace
         p.mode = s.mode; p.wave = s.wave; p.vel = s.vel; p.bri = s.bri; p.sus = s.sus; p.vol = s.vol; p.tun = s.tun; p.rev = s.rev;
         p.glide = s.glide; p.drive = s.drive; p.punch = s.punch;
         p.arp = s.arp; p.arpRate = s.arpRate; p.arpOct = s.arpOct; p.arpGate = s.arpGate;
+        for (size_t i = 0; i < 8 && i < s.lanes.size(); ++i)
+        {
+            const auto& l = s.lanes[i];
+            if (l.size() > 0) p.dTun[i] = l[0];
+            if (l.size() > 1) p.dDec[i] = l[1];
+            if (l.size() > 2) p.dTone[i] = l[2];
+            if (l.size() > 3) p.dLvl[i] = l[3];
+        }
         return p;
     }
 

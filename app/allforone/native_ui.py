@@ -883,6 +883,18 @@ def _native_sequencer_checks(rep, app, host, window, prop) -> None:
                       off == (False,) * 3 and on == (True,) * 3 and vis() == (False,) * 3 and bool(heard),
                       f"otro preset {off} · 808 {on} · se escucha {heard}")
 
+        # Drum Synth: perillas del pad elegido; un ajuste llega al motor y suena al pulsar el pad
+        lane_knobs = [window.findChild(QObject, n) for n in ("drumLaneKnobs", "drumLaneTun", "drumLaneDec", "drumLaneTone", "drumLaneLvl")]
+        if None in lane_knobs:
+            rep.check("Drum Synth: perillas por pad en la Batería", False, "faltan las perillas del pad")
+        else:
+            heard = host.audition({"type": "drum", "cfg": {"vol": 80, "tun": 50, "lanes": [[30, 80, 60, 55]]}, "lane": 0})
+            host.engine.preview_stop()
+            vals = [round(float(k.property("value"))) for k in lane_knobs[1:]]
+            rep.check("Drum Synth: perillas por pad en la Batería",
+                      vals == [50, 50, 50, 50] and bool(heard),
+                      f"pad de fábrica {vals} · el pad suena con sus ajustes {heard}")
+
         # Arpegiador: visible con el sintetizador del motor; ritmo, octavas y duración se activan
         # al elegir un patrón, y la canción sigue sonando con los acordes arpegiados
         arp = [window.findChild(QObject, n) for n in ("instArp", "arpMode", "arpRate", "arpOct", "arpGate")]

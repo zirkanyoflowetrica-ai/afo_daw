@@ -6,6 +6,7 @@
 // para escuchar una nota suelta al pulsar (Synth::renderHit).
 #pragma once
 
+#include <array>
 #include <atomic>
 #include <cstdint>
 #include <vector>
@@ -33,6 +34,11 @@ struct Params
     int arpRate = 2;        // 0..3 → negras, corcheas, semicorcheas, fusas
     int arpOct = 1;         // 1..4 octavas que recorre
     float arpGate = 50.0f;  // 5..100 % del paso que suena cada nota
+    // Drum Synth: ajustes de cada carril de la batería, 0..100 (50 = el golpe de fábrica)
+    //   afinación ×2^((v−50)/50) · caída ×2^((v−50)/25) · tono (filtro / golpe de afinación / intervalo)
+    //   · nivel (v/50)², 0 = mudo, 100 = +12 dB
+    std::array<float, 8> dTun { 50, 50, 50, 50, 50, 50, 50, 50 }, dDec { 50, 50, 50, 50, 50, 50, 50, 50 },
+                         dTone { 50, 50, 50, 50, 50, 50, 50, 50 }, dLvl { 50, 50, 50, 50, 50, 50, 50, 50 };
 };
 
 constexpr int bass808 = 8;              // índice del preset 808 en Instrumentos
@@ -46,6 +52,8 @@ struct AtomicParams
     std::atomic<bool> sus { false };
     std::atomic<int> arp { 0 }, arpRate { 2 }, arpOct { 1 };
     std::atomic<float> arpGate { 50 };
+    std::array<std::atomic<float>, 8> dTun, dDec, dTone, dLvl;
+    AtomicParams() { for (int i = 0; i < 8; ++i) dTun[(size_t) i] = dDec[(size_t) i] = dTone[(size_t) i] = dLvl[(size_t) i] = 50.0f; }
     void store (const Params& p);
     Params load() const;
 };
