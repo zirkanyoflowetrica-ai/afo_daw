@@ -108,6 +108,21 @@ FACTORY: dict[str, dict[str, dict[str, float]]] = {
         "Rosa (4,5 dB/oct)": {"slope": 2},
         "Lateral (Side)": {"channel": 4},
     },
+    # «taps» es el índice de la lista 1…8 (3 = cuatro ecos)
+    "multitap": {
+        "Cuatro corcheas": {"sync": 3, "taps": 3, "shape": 0, "decay": 70, "spread": 60, "mix": 35},
+        "Crecida hacia la caja": {"sync": 4, "taps": 7, "shape": 1, "decay": 75, "spread": 30, "mix": 40},
+        "Ecos de estadio": {"sync": 1, "taps": 2, "decay": 60, "spread": 100, "feedback": 40, "lp": 5000, "mix": 30},
+        "Ráfaga de semicorcheas": {"sync": 4, "taps": 5, "shape": 2, "spread": 80, "mix": 30},
+        "Tresillos": {"sync": 5, "taps": 2, "decay": 65, "spread": 70, "mix": 30},
+    },
+    "trancegate": {
+        "Trance clásico": {"pattern": 3, "rate": 1, "length": 60},
+        "Corcheas suaves": {"pattern": 1, "rate": 1, "length": 80, "attack": 8, "release": 40, "depth": 80},
+        "Galope": {"pattern": 4, "rate": 1, "length": 50},
+        "Ping-pong": {"pattern": 0, "rate": 1, "length": 70, "stereo": 1},
+        "Bombeo a negras": {"pattern": 2, "rate": 1, "length": 95, "attack": 30, "release": 120, "depth": 70},
+    },
 }
 
 

@@ -130,7 +130,7 @@ def _native_fx_checks(rep, app, host, window, bridge, track_id: int) -> None:
         return v.toVariant() if hasattr(v, "toVariant") else v
 
     st = fx("target", track_id)
-    rep.check("Efectos: catálogo del motor (14 módulos)", st and st["catalog"] == 14, st and st["catalog"])
+    rep.check("Efectos: catálogo del motor (16 módulos)", st and st["catalog"] == 16, st and st["catalog"])
     fx("add", "eq")
     st = fx("add", "analyzer")
     rep.check("Efectos: insertar EQ y Analizador en la pista", [e["key"] for e in st["chain"]] == ["eq", "analyzer"],
@@ -143,10 +143,10 @@ def _native_fx_checks(rep, app, host, window, bridge, track_id: int) -> None:
         return v.toVariant() if hasattr(v, "toVariant") else v
     br = lay("browser")
     secs = dict((s[0], s[1]) for s in br["sections"])
-    rep.check("Navegador: efectos del motor por categoría (Dinámica, EQ y filtro, Tono y voz, Espacio, Utilidad)",
-              list(secs)[:5] == ["Dinámica", "EQ y filtro", "Tono y voz", "Espacio", "Utilidad"] and "tune" in secs["Tono y voz"]
-              and "glue" in secs["Dinámica"] and "transient" in secs["Dinámica"]
-              and sum(len(v) for v in secs.values()) == 14, secs)
+    rep.check("Navegador: efectos del motor por categoría (Dinámica, EQ y filtro, Tono y voz, Espacio, Utilidad, Ritmo)",
+              list(secs) == ["Dinámica", "EQ y filtro", "Tono y voz", "Espacio", "Utilidad", "Ritmo"] and "tune" in secs["Tono y voz"]
+              and "glue" in secs["Dinámica"] and "transient" in secs["Dinámica"] and "multitap" in secs["Espacio"]
+              and secs["Ritmo"] == ["trancegate"] and sum(len(v) for v in secs.values()) == 16, secs)
     lay("browser", "compressor")
     keys = [e["key"] for e in host.engine.effects(track_id)]
     rep.check("Navegador: doble clic en Compresor lo añade a la pista elegida", keys == ["eq", "analyzer", "compressor"], keys)

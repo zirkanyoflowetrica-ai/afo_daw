@@ -18,8 +18,9 @@ Column {
         ["Dinámica", ["compressor", "glue", "transient", "gate", "limiter", "deesser"]],
         ["EQ y filtro", ["eq", "strip"]],
         ["Tono y voz", ["tune", "saturator"]],
-        ["Espacio", ["space", "delay"]],
-        ["Utilidad", ["gain", "analyzer"]]]
+        ["Espacio", ["space", "delay", "multitap"]],
+        ["Utilidad", ["gain", "analyzer"]],
+        ["Ritmo", ["trancegate"]]]
     readonly property var catalog: studio && studio.fxBody ? studio.fxBody.catalog : []
     property string filter: ""
     property string selKey: ""                  // efecto nativo elegido («vst3:<id>» para un plugin)

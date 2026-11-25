@@ -99,9 +99,15 @@ public:
 
         inPeak.store (juce::jmax (inPeak.load(), peakOf (l, r, n)));
         inScope.push (l, r, n);                     // lo que entra: el «antes» de la cadena
+        // Posición en la canción (segundos) al empezar el bloque: la del transporte al reproducir o
+        // exportar; parado, un reloj libre para que los efectos al tempo sigan sonando al monitorizar
+        const bool rolling = fc.isPlaying || fc.isRendering;
+        const double pos0 = rolling ? fc.editTime.getStart().inSeconds() : freePos;
+        freePos = pos0 + n / sampleRate;
         for (int off = 0; off < n; off += chunk)
         {
             const int m = juce::jmin (chunk, n - off);
+            songPos = pos0 + off / sampleRate;
             for (size_t i = 0; i < params.size(); ++i)
             {
                 const float target = params[i].getCurrentValue();
@@ -226,6 +232,7 @@ protected:
 
     static constexpr int chunk = 32;
     double sampleRate = 48000.0;
+    double songPos = 0.0;                       // segundos de la canción al empezar el tramo de processFx
     ScopeFifo scope, inScope;
     bool ownsScope = false;
 
@@ -233,6 +240,7 @@ private:
     std::vector<te::ParameterWithStateValue> params;
     std::vector<float> smooth;
     float smoothCoef = 0.1f;
+    double freePos = 0.0;
     std::atomic<float> inPeak { 0.0f }, outPeak { 0.0f };
     std::unique_ptr<juce::dsp::FFT> fft;
     std::vector<float> fftData, avgIn, avgOut;
@@ -374,6 +382,40 @@ inline const FxDesc& delayDesc()
           { "ducking", "Ducking", 0, 100, 0, "%", 0, nullptr, "Baja los ecos mientras suena la señal seca" },
           { "mix", "Mezcla", 0, 100, 30, "%", 0, nullptr, "Cantidad de eco" } },
         "tiempo ms" };
+    return d;
+}
+
+inline const FxDesc& multitapDesc()
+{
+    static const FxDesc d { "multitap", "AF-43", "AFO MultiTap", "Delays y ecos",
+        "Hasta 8 ecos a distancias iguales (libre o al tempo), con caída o crecida, abiertos en estéreo y realimentados.",
+        { { "time", "Tiempo", 10, 1500, 250, "ms", 300, nullptr, "Distancia entre ecos (si Sincronía = Libre)" },
+          { "sync", "Sincronía", 0, 5, 3, "", 0, "Libre|1/4|1/8 con puntillo|1/8|1/16|1/8 tresillo", "Distancia entre ecos al tempo del proyecto" },
+          { "taps", "Ecos", 0, 7, 3, "", 0, "1|2|3|4|5|6|7|8", "Cuántos ecos suenan" },
+          { "shape", "Forma", 0, 2, 0, "", 0, "Caída|Crecida|Plana", "Caída: cada eco más bajo; Crecida: el último es el más fuerte" },
+          { "decay", "Caída", 10, 100, 70, "%", 0, nullptr, "Nivel de cada eco frente al anterior" },
+          { "spread", "Apertura", 0, 100, 60, "%", 0, nullptr, "Ecos alternos a la izquierda y la derecha" },
+          { "feedback", "Repeticiones", 0, 90, 0, "%", 0, nullptr, "El último eco vuelve a entrar y repite la serie" },
+          { "hp", "Paso alto", 20, 2000, 150, "Hz", 300, nullptr, "Quita graves a los ecos" },
+          { "lp", "Paso bajo", 1000, 20000, 8000, "Hz", 5000, nullptr, "Oscurece los ecos" },
+          { "mix", "Mezcla", 0, 100, 35, "%", 0, nullptr, "Cantidad de ecos" } },
+        "distancia ms" };
+    return d;
+}
+
+inline const FxDesc& tranceDesc()
+{
+    static const FxDesc d { "trancegate", "AF-55", "AFO Trance Gate", "Ritmo y glitch",
+        "Corta el sonido con un patrón de 16 pasos al tempo de la canción, con ataque, liberación y modo alterno L/R.",
+        { { "pattern", "Patrón", 0, 7, 3, "", 0, "Todos|Corcheas|Negras|Trance|Galope|Contratiempo|3+3+2|Síncopa", "Qué pasos de los 16 dejan pasar el sonido" },
+          { "rate", "Paso", 0, 2, 1, "", 0, "1/8|1/16|1/32", "Duración de cada paso al tempo" },
+          { "length", "Largo", 10, 100, 60, "%", 0, nullptr, "Parte de cada paso que queda abierta" },
+          { "depth", "Profundidad", 0, 100, 100, "%", 0, nullptr, "Cuánto baja al cerrar (100 = silencio)" },
+          { "attack", "Ataque", 0.5f, 50, 2, "ms", 5, nullptr, "Suaviza la apertura (evita chasquidos)" },
+          { "release", "Liberación", 1, 200, 20, "ms", 30, nullptr, "Suaviza el cierre" },
+          { "stereo", "Estéreo", 0, 1, 0, "", 0, "Igual|Alterno L/R", "Alterno: los pasos pares suenan a la izquierda y los impares a la derecha" },
+          { "mix", "Mezcla", 0, 100, 100, "%", 0, nullptr, "Señal cortada frente a la original" } },
+        "paso" };
     return d;
 }
 
@@ -931,6 +973,132 @@ private:
 };
 
 //==============================================================================
+// AF-43: una línea mono con hasta 8 lecturas a distancias iguales; el último eco realimenta la línea
+class MultiTapFx : public FxBase
+{
+public:
+    MultiTapFx (te::PluginCreationInfo i) : FxBase (i, multitapDesc()) {}
+    AFO_FX_TYPE ("afoFxMultiTap", multitapDesc)
+    double getTailLength() const override { return 20.0; }
+    std::vector<float> extraMeters() override { return { (float) (spacing / sampleRate * 1000.0) }; }
+
+    static constexpr double maxSeconds = 12.0;      // el último eco nunca pasa de aquí
+    static double spacingSeconds (int sync, float timeMs, float bpm)
+    {
+        static constexpr double beats[] = { 0, 1.0, 0.75, 0.5, 0.25, 1.0 / 3.0 };
+        return sync <= 0 ? timeMs / 1000.0 : beats[juce::jlimit (1, 5, sync)] * 60.0 / juce::jmax (20.0f, bpm);
+    }
+
+protected:
+    void prepareFx (double sr) override
+    {
+        line.prepare ((int) ((maxSeconds + 0.1) * sr));
+        spacing = want (sr, tapCount (target (2)));
+        resetFx();
+    }
+    void resetFx() override { line.clear(); for (auto& f : hp) f.reset(); for (auto& f : lp) f.reset(); }
+
+    void processFx (float* l, float* r, int n) override
+    {
+        const int taps = tapCount (p (2)), shape = juce::jlimit (0, 2, choice (3));
+        const double goal = want (sampleRate, taps);
+        const float dec = p (4) / 100.0f, spread = p (5) / 100.0f, fb = p (6) / 100.0f, mix = p (9) / 100.0f;
+        std::array<float, 8> g {}, gl {}, gr {};
+        for (int k = 0; k < taps; ++k)
+        {
+            const int e = shape == 0 ? k : shape == 1 ? taps - 1 - k : 0;
+            g[(size_t) k] = std::pow (dec, (float) e);
+            const float pos = (k % 2 == 0 ? -1.0f : 1.0f) * spread;     // el primero a la izquierda
+            gl[(size_t) k] = g[(size_t) k] * (1.0f - juce::jmax (0.0f, pos));
+            gr[(size_t) k] = g[(size_t) k] * (1.0f + juce::jmin (0.0f, pos));
+        }
+        for (int c = 0; c < 2; ++c)
+        {
+            hp[(size_t) c].set (Biquad::Type::highpass, p (7), 0.7071, 0, sampleRate);
+            lp[(size_t) c].set (Biquad::Type::lowpass, p (8), 0.7071, 0, sampleRate);
+        }
+        const double glide = 1.0 - std::exp (-1.0 / (0.05 * sampleRate));
+        for (int i = 0; i < n; ++i)
+        {
+            spacing += glide * (goal - spacing);
+            float wl = 0.0f, wr = 0.0f, last = 0.0f;
+            for (int k = 0; k < taps; ++k)
+            {
+                const float x = line.read ((float) (spacing * (k + 1)));
+                wl += gl[(size_t) k] * x; wr += gr[(size_t) k] * x;
+                if (k == taps - 1) last = g[(size_t) k] * x;
+            }
+            line.push (std::tanh (0.5f * (l[i] + r[i]) + fb * last));
+            wl = lp[0].process (hp[0].process (wl, 0), 0);
+            wr = lp[1].process (hp[1].process (wr, 0), 0);
+            l[i] = l[i] * (1.0f - mix) + wl * mix;
+            r[i] = r[i] * (1.0f - mix) + wr * mix;
+        }
+    }
+
+private:
+    // «Ecos» es una lista 1..8 guardada como índice 0..7
+    static int tapCount (float v) { return juce::jlimit (1, 8, juce::roundToInt (v) + 1); }
+    double want (double sr, int taps) const
+    {
+        const double s = spacingSeconds (juce::roundToInt (target (1)), target (0), bpm.load());
+        return juce::jlimit (1.0, maxSeconds * sr / juce::jmax (1, taps), s * sr);
+    }
+    DelayLine line;
+    std::array<Biquad, 2> hp, lp;
+    double spacing = 12000.0;
+};
+
+//==============================================================================
+// AF-55: compuerta rítmica. El paso sale de la posición en la canción (songPos) y del tempo, así que
+// el patrón cae siempre en la rejilla, también al exportar o al empezar a reproducir a mitad
+class TranceGateFx : public FxBase
+{
+public:
+    TranceGateFx (te::PluginCreationInfo i) : FxBase (i, tranceDesc()) {}
+    AFO_FX_TYPE ("afoFxTranceGate", tranceDesc)
+    std::vector<float> extraMeters() override { return { (float) (step.load() + 1) }; }
+
+    // 16 pasos por patrón, el primero en el bit más alto
+    static constexpr std::array<uint16_t, 8> patterns {
+        0b1111111111111111, 0b1010101010101010, 0b1000100010001000, 0b1011011010110110,
+        0b1011101110111011, 0b0010001000100010, 0b1001001010010010, 0b0110011001100110 };
+    static bool on (int pattern, int s) { return (patterns[(size_t) juce::jlimit (0, 7, pattern)] >> (15 - (s & 15))) & 1; }
+
+protected:
+    void resetFx() override { env = { 1.0f, 1.0f }; }
+    void processFx (float* l, float* r, int n) override
+    {
+        static constexpr double perBeat[] = { 2.0, 4.0, 8.0 };
+        const int pat = choice (0), alt = choice (6);
+        const double stepsPerSec = juce::jmax (20.0f, bpm.load()) / 60.0 * perBeat[juce::jlimit (0, 2, choice (1))];
+        const double len = p (2) / 100.0;
+        const float depth = p (3) / 100.0f, mix = p (7) / 100.0f;
+        const float up = onePole (p (4), sampleRate), down = onePole (p (5), sampleRate);
+        int s = 0;
+        for (int i = 0; i < n; ++i)
+        {
+            const double pos = (songPos + i / sampleRate) * stepsPerSec + 1e-9;
+            const double fl = std::floor (pos);
+            s = (int) ((int64_t) fl % 16);
+            const bool open = on (pat, s) && pos - fl < len;
+            for (int c = 0; c < 2; ++c)
+            {
+                const bool o = open && (alt == 0 || (s % 2) == c);
+                const float t = o ? 1.0f : 0.0f;
+                env[(size_t) c] += (t > env[(size_t) c] ? up : down) * (t - env[(size_t) c]);
+            }
+            l[i] *= 1.0f - mix * depth * (1.0f - env[0]);
+            r[i] *= 1.0f - mix * depth * (1.0f - env[1]);
+        }
+        step.store (s);
+    }
+private:
+    std::array<float, 2> env { 1.0f, 1.0f };
+    std::atomic<int> step { 0 };
+};
+
+//==============================================================================
 class AnalyzerFx : public FxBase
 {
 public:
@@ -1207,7 +1375,7 @@ inline const std::vector<FxType>& fxTypes()
         { compDesc, CompressorFx::xmlTypeName }, { glueDesc, GlueFx::xmlTypeName }, { limiterDesc, LimiterFx::xmlTypeName }, { gateDesc, GateFx::xmlTypeName }, { deesserDesc, DeEsserFx::xmlTypeName },
         { transientDesc, TransientFx::xmlTypeName }, { satDesc, SaturatorFx::xmlTypeName },
         { delayDesc, DelayFx::xmlTypeName }, { spaceDesc, SpaceFx::xmlTypeName }, { analyzerDesc, AnalyzerFx::xmlTypeName },
-        { tuneDesc, TuneFx::xmlTypeName } };
+        { tuneDesc, TuneFx::xmlTypeName }, { multitapDesc, MultiTapFx::xmlTypeName }, { tranceDesc, TranceGateFx::xmlTypeName } };
     return t;
 }
 
@@ -1218,6 +1386,7 @@ inline void registerFx (te::PluginManager& pm)
     pm.createBuiltInType<DelayFx>();     pm.createBuiltInType<SpaceFx>();   pm.createBuiltInType<AnalyzerFx>();
     pm.createBuiltInType<DeEsserFx>();  pm.createBuiltInType<LimiterFx>();  pm.createBuiltInType<TuneFx>();
     pm.createBuiltInType<GlueFx>();     pm.createBuiltInType<TransientFx>();
+    pm.createBuiltInType<MultiTapFx>(); pm.createBuiltInType<TranceGateFx>();
 }
 
 inline const char* xmlTypeFor (const std::string& key)

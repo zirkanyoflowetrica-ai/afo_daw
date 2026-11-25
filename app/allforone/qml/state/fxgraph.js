@@ -148,6 +148,39 @@ function draw(ctx, w, h, fx, d, live) {
         ctx.fillStyle = "#5ee0b0"; ctx.fillRect(0, 2, 4, h - 4)
         return
     }
+    if (key === "multitap") {
+        // Los ecos en 2 s con el nivel de la forma elegida; los de la derecha en el otro tono
+        var gap = live && live.length > 2 && live[2] > 0 ? live[2] : v(fx, d, "time"), taps = Math.round(v(fx, d, "taps")) + 1
+        var shape = Math.round(v(fx, d, "shape")), dec = v(fx, d, "decay") / 100, wetM = v(fx, d, "mix") / 100, spr = v(fx, d, "spread")
+        frame(ctx, w, h, [], [h - 2])
+        for (var k = 0; k < taps; k++) {
+            var e = shape === 0 ? k : shape === 1 ? taps - 1 - k : 0, gx = w * gap * (k + 1) / 2000
+            if (gx > w) break
+            var gh = (h - 6) * wetM * Math.pow(dec, e)
+            ctx.fillStyle = spr > 0 && k % 2 ? pal.soft : pal.lcd
+            ctx.fillRect(gx - 2, h - 2 - gh, 4, gh)
+        }
+        ctx.fillStyle = "#5ee0b0"; ctx.fillRect(0, 2, 4, h - 4)
+        return
+    }
+    if (key === "trancegate") {
+        // Los 16 pasos del patrón: la parte abierta de cada uno y, al sonar, el paso actual (lo dice el motor)
+        var pats = ["1111111111111111", "1010101010101010", "1000100010001000", "1011011010110110",
+                    "1011101110111011", "0010001000100010", "1001001010010010", "0110011001100110"]
+        var pat = pats[Math.max(0, Math.min(7, Math.round(v(fx, d, "pattern"))))], len = v(fx, d, "length") / 100
+        var depthT = v(fx, d, "depth") / 100, alt = v(fx, d, "stereo") > 0.5, cur = live && live.length > 2 ? live[2] - 1 : -1
+        var sw = w / 16
+        frame(ctx, w, h, [w / 4, w / 2, w * 3 / 4], [])
+        for (var s = 0; s < 16; s++) {
+            if (s === cur) { ctx.fillStyle = "rgba(94,224,176,0.25)"; ctx.fillRect(s * sw, 0, sw, h) }
+            var floorH = (h - 4) * (1 - depthT)
+            ctx.fillStyle = pal.soft; ctx.fillRect(s * sw + 1, h - 2 - floorH, sw - 2, floorH)
+            if (pat[s] !== "1") continue
+            ctx.fillStyle = alt && s % 2 ? pal.soft : pal.lcd
+            ctx.fillRect(s * sw + 1, 3, Math.max(2, (sw - 2) * len), h - 5)
+        }
+        return
+    }
     if (key === "space") {
         var pre = v(fx, d, "predelay"), dec = Math.max(0.1, v(fx, d, "decay")), wetS = v(fx, d, "mix") / 100, span = Math.max(1, dec * 1.3)
         frame(ctx, w, h, [w * 0.25, w * 0.5, w * 0.75], [])

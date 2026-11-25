@@ -19,7 +19,7 @@ existe de verdad y cómo está hecho; el mapa completo del navegador está en
 | Pieza | Archivo |
 |---|---|
 | DSP compartida (biquad RBJ, líneas de retardo con Lagrange, compresor con rodilla, puerta, FDN de 8 líneas, FIFO de osciloscopio) | `native/src/fx/FxDsp.h` |
-| Los 10 módulos, sus parámetros y `registerFx` | `native/src/fx/FxPlugins.h` |
+| Los módulos, sus parámetros y `registerFx` | `native/src/fx/FxPlugins.h` |
 | Sonoridad BS.1770 (LUFS M/S/I, RMS, pico) por pista y en el master | `native/src/AfoLoudness.h` |
 | Cadena por pista y en el master (insertar, mover, puentear, quitar, medidores, espectro) | `native/src/AfoEngine.cpp` (`addEffect` … `effectSpectrum`) |
 | API Python | `afo_audio.effect_catalog()`, `Engine.add_effect`, `move_effect`, `set_effect_param`, `set_effect_enabled`, `effects`, `effect_info`, `effect_meters`, `effect_spectrum`, `set_effect_automation`, `effect_automation`, `chain_scope` (antes/después de una cadena), `read_levels` (incluye `loud` y `master_loud`), `reset_loudness`, `measure_mix` (sesión procesada en memoria), `set_master_ceiling` |
@@ -116,9 +116,16 @@ cada efecto. `--selftest` repite el ciclo desde la interfaz con todas las pistas
 | Hito | Módulos |
 |---|---|
 | 2 · Instrumentales y MIDI | **Completo**: Transient Designer AF-22, Glue AF-15, 808 Lab, Drum Synth, Drum Rack, Step Sequencer, Analog Synth, Wavetable Synth, Sampler Pro y Arpegiador (Step Sequencer: el patrón de la Batería se convierte en el motor, `synth::expandSteps`, con fuerza (normal / fuerte / suave), probabilidad (100–25 %, decidida con una semilla: «Otra variación» cambia dónde suenan y la misma suena igual al exportar), repeticiones 1–4 dentro del paso y largo propio de cada pad, 1–16 pasos, para polimetrías; Drum Rack: cada pad de la Batería con su paneo, su grupo de corte (Corte A / B: el hi-hat cerrado corta al abierto con un fundido de 5 ms, a la muestra exacta) y su golpe grabado propio; Sampler Pro: preset «Sampler» del Instrumento que toca el sonido cargado en la pista (hasta 30 s), afinado desde su nota raíz, con inicio, bucle con fundido en la unión, ataque y liberación; Wavetable Synth: preset «Sinte de tablas» con cuatro tablas de 8 ondas (Básica, Vocal, Metálica, Digital), una versión por octava sin aliasing, posición, barrido, movimiento, ataque y liberación; Analog Synth: preset «Sinte analógico» con dos sierras PolyBLEP desafinadas y filtro TPT resonante con envolvente, ataque y liberación; Drum Synth: afinación, caída, tono y nivel propios de cada pad de la Batería, `Voice::startDrum`: el arpegiador va en el sintetizador del motor, `AfoPlugins.h`, con patrón arriba / abajo / arriba y abajo / al azar repetible, negras a fusas al tempo de la sesión, 1–4 octavas y duración de nota) |
-| 3 · Diseño sonoro | Texture Verb, Shimmer, Infinity, MultiTap, Trance Gate, Granular FX, Spectral FX, FX Lab |
+| 3 · Diseño sonoro | **Hechos**: MultiTap (AF-43) y Trance Gate (AF-55), ver abajo. Faltan Texture Verb, Shimmer, Infinity, Granular FX, Spectral FX y FX Lab |
 | 4 · Voz profesional | Pitch Editor, Vocal Align, Harmonizer, Doubler, Dynamic EQ, Noise Reducer (De-Esser ya está, AF-20; **Tune ya está, AF-60**) |
 | 5 · Mastering | True Peak Limiter validado, Loudness, Master Dynamics, Match EQ, Linear EQ, Master Imager, Dither y el resto |
+
+## Hito 3 — diseño sonoro (en curso)
+
+| AF | Módulo | Qué hace | Prueba de señal (`tests/test_diseno_sonoro.py`) |
+|---|---|---|---|
+| AF-43 | MultiTap | Hasta 8 ecos a distancias iguales (libre o 1/4, 1/8 con puntillo, 1/8, 1/16, 1/8 tresillo), forma Caída / Crecida / Plana, apertura L/R alterna, realimentación desde el último eco, filtros y mezcla. Medidor: distancia real en ms | Corcheas a 120 BPM: ecos a 250 ms exactos, L-R-L-R, −6 dB cada uno con caída 50 %, nada al otro lado; Crecida sube 6 dB por eco |
+| AF-55 | Trance Gate | Patrón de 16 pasos (8 patrones) a 1/8, 1/16 o 1/32 del tempo, largo, profundidad, ataque, liberación, alterno L/R y mezcla. El paso sale de la posición del transporte (`FxBase::songPos`), así que cae en la rejilla también al exportar o al empezar a mitad; parado, sigue un reloj libre. Medidor: paso actual | Abierto = tono intacto, cerrado < −70 dB; profundidad 50 % = −6 dB; «Contratiempo» a 90 BPM solo en los pasos 3/7/11/15; alterno: pares a la izquierda, impares a la derecha; house completo con el sinte cortado en el patrón «Trance» |
 
 ## Añadir un módulo
 
