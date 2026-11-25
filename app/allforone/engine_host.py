@@ -80,10 +80,15 @@ SAMPLER = 11
 SAMPLER_KNOBS = (("smRoot", 60), ("smStart", 0), ("smLoop", 0), ("smLoopAt", 50), ("smAtk", 2), ("smRel", 25))
 
 
+# Drum Synth / Drum Rack: por pad [afinación, caída, tono, nivel, paneo, grupo de corte] y sus valores de fábrica
+LANE_DEFAULTS = (50.0, 50.0, 50.0, 50.0, 50.0, 0.0)
+
+
 def synth_settings(track: dict) -> dict:
     cfg = track.get("cfg", {})
     if track["type"] == "drum":
-        lanes = [[50.0 if x is None else float(x) for x in (list(l or []) + [50.0] * 4)[:4]] for l in (cfg.get("lanes") or [])[:8]]
+        lanes = [[d if x is None else float(x) for x, d in zip((list(l or []) + [None] * 6)[:6], LANE_DEFAULTS)]
+                 for l in (cfg.get("lanes") or [])[:8]]
         return {"mode": 1, "vol": float(cfg.get("vol", 80)), "tun": float(cfg.get("tun", 50)), "lanes": lanes}
     return {"mode": 0, "wave": int(cfg.get("v", 0)), "vel": float(cfg.get("vel", 70)),
             "bri": float(cfg.get("bri", 50)), "sus": bool(track.get("sus")), "rev": float(cfg.get("rev", 0)),

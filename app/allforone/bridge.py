@@ -1598,6 +1598,15 @@ class Bridge(QObject):
             return json.dumps({"ok": False, "cancelled": True})
         return _ok(path=f, name=Path(f).name)
 
+    @Slot(int, result=str)
+    @_safe
+    def pickPadSample(self, lane: int) -> str:
+        """Drum Rack: elegir el golpe grabado de un pad (hasta 10 s; se lee en mono)."""
+        f, _ = QFileDialog.getOpenFileName(self.parent_widget, f"Golpe para el pad {lane + 1}", str(Path.home()), AUDIO_FILTER)
+        if not f:
+            return json.dumps({"ok": False, "cancelled": True})
+        return _ok(path=f, name=Path(f).name)
+
     @Slot(result=str)
     @_safe
     def addTestTone(self) -> str:

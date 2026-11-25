@@ -803,6 +803,7 @@ def _native_sequencer_checks(rep, app, host, window, prop) -> None:
     import soundfile as sf
     from PySide6.QtCore import QMetaObject, Q_ARG, Q_RETURN_ARG
 
+    from .engine_host import synth_settings
     from .selftest import _wait
 
     def snap():
@@ -946,6 +947,20 @@ def _native_sequencer_checks(rep, app, host, window, prop) -> None:
                       on and "Sin sonido" in empty_text and loaded_text == "nota.wav" and inst_id >= 0 and bool(heard)
                       and not bool(sm.property("visible")),
                       f"visible {on} · vacío «{empty_text[:30]}» · cargado «{loaded_text}» · pista {inst_id} · se escucha {heard}")
+
+        # Drum Rack: paneo, grupo de corte y golpe propio del pad elegido; el motor recibe los 6 ajustes
+        rack = [window.findChild(QObject, n) for n in ("drumLanePan", "padChoke", "padLoad")]
+        if None in rack:
+            rep.check("Drum Rack: paneo, corte y golpe propio en cada pad", False, "faltan controles del Drum Rack")
+        else:
+            pan0 = round(float(rack[0].property("value")))
+            choke0 = str(rack[1].property("current"))
+            panned = synth_settings({"type": "drum", "cfg": {"lanes": [[50, 50, 50, 50, 100, 1]]}})["lanes"][0]
+            heard = host.audition({"type": "drum", "cfg": {"vol": 80, "tun": 50, "lanes": [[50, 50, 50, 50, 100, 1]]}, "lane": 0})
+            host.engine.preview_stop()
+            rep.check("Drum Rack: paneo, corte y golpe propio en cada pad",
+                      pan0 == 50 and choke0 == "0" and panned[4:] == [100.0, 1.0] and bool(heard),
+                      f"pad de fábrica paneo {pan0} · corte {choke0} · ajustes al motor {panned} · suena {heard}")
 
         # Drum Synth: perillas del pad elegido; un ajuste llega al motor y suena al pulsar el pad
         lane_knobs = [window.findChild(QObject, n) for n in ("drumLaneKnobs", "drumLaneTun", "drumLaneDec", "drumLaneTone", "drumLaneLvl")]

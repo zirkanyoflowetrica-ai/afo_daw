@@ -144,7 +144,8 @@ struct SynthSettings
     float glide = 30, drive = 30, punch = 50;   // 808 Lab (preset 8)
     int arp = 0, arpRate = 2, arpOct = 1;        // arpegiador (ver synth::Params)
     float arpGate = 50;
-    // Drum Synth: por carril [afinación, caída, tono, nivel] 0..100 (50 = de fábrica); vacío = de fábrica
+    // Drum Synth / Drum Rack: por carril [afinación, caída, tono, nivel, paneo (0..100, 50 centro), grupo de
+    // corte (0 ninguno, 1 A, 2 B)]; 50 / 0 = de fábrica; vacío = de fábrica
     std::vector<std::vector<float>> lanes;
     // Sinte analógico: [desafinación, corte, resonancia, envolvente, ataque, liberación] 0..100; vacío = de fábrica
     std::vector<float> analog;

@@ -46,17 +46,29 @@ Column {
     property int flash: -1
     // Drum Synth: el último pad tocado se edita con sus propias perillas
     property int selLane: 0
+    // [afinación, caída, tono, nivel, paneo, grupo de corte]: de fábrica 50, salvo el grupo (0 = ninguno)
+    readonly property var laneDefault: [50, 50, 50, 50, 50, 0]
     function laneVal(i, k) {
         var l = root.t && root.t.cfg.lanes ? root.t.cfg.lanes[i] : null
-        return l && l[k] !== undefined && l[k] !== null ? l[k] : 50
+        return l && l[k] !== undefined && l[k] !== null ? l[k] : laneDefault[k]
     }
-    function setLane(k, v) {
+    function setLane(k, v) { setLaneMany([[k, v]]) }
+    function setLaneMany(pairs) {
         if (!root.t) return
         var all = []
-        for (var i = 0; i < 8; ++i)
-            all.push([laneVal(i, 0), laneVal(i, 1), laneVal(i, 2), laneVal(i, 3)])
-        all[selLane][k] = v
+        for (var i = 0; i < 8; ++i) {
+            var row = []
+            for (var k = 0; k < 6; ++k) row.push(laneVal(i, k))
+            all.push(row)
+        }
+        pairs.forEach(function (p) { all[selLane][p[0]] = p[1] })
         root.seq.setCfg("drum", "lanes", all)
+    }
+    function padSample(i) { return root.t && root.t.cfg.smp && root.t.cfg.smp[i] ? root.t.cfg.smp[i] : "" }
+    function setPadSample(path) {
+        var paths = []
+        for (var i = 0; i < 8; ++i) paths.push(i === selLane ? path : padSample(i))
+        root.seq.setDrumSamples(paths, true)
     }
     function hit(i) {
         if (!root.t) return
@@ -151,8 +163,34 @@ Column {
                    font.family: Theme.font; font.pixelSize: 14; font.weight: 700 }
             NeoButton {
                 text: "De fábrica"; fontSize: 11; padX: 6; padY: 2; shadow: 2
-                tip: "Vuelve a poner este pad como sale de fábrica (todas sus perillas a 50)"
-                onClicked: { for (var k = 0; k < 4; ++k) root.setLane(k, 50); root.seq.previewDrum(root.t.cfg, root.selLane) }
+                tip: "Vuelve a poner este pad como sale de fábrica (perillas a 50, centrado y sin grupo de corte)"
+                onClicked: { root.setLaneMany([[0, 50], [1, 50], [2, 50], [3, 50], [4, 50], [5, 0]]); root.seq.previewDrum(root.t.cfg, root.selLane) }
+            }
+        }
+        Column {                                // Drum Rack: golpe grabado del pad y grupo de corte
+            anchors.verticalCenter: parent.verticalCenter; spacing: 4
+            NeoButton {
+                objectName: "padLoad"; text: root.padSample(root.selLane) ? "Cambiar golpe…" : "Cargar golpe…"
+                fontSize: 11; padX: 6; padY: 2; shadow: 2
+                tip: "Este pad suena con un golpe tuyo (WAV, AIFF, FLAC, OGG o MP3, hasta 10 s)"
+                onClicked: {
+                    var r = root.studio.call("pickPadSample", root.selLane)
+                    if (r.ok) { root.setPadSample(r.path); root.studio.toast("Pad " + (root.selLane + 1) + ": " + r.name) }
+                    else if (!r.cancelled && r.error) root.studio.toast(r.error)
+                }
+            }
+            NeoButton {
+                objectName: "padUnload"; visible: !!root.padSample(root.selLane)
+                text: "Quitar golpe"; fontSize: 11; padX: 6; padY: 2; shadow: 2
+                tip: "Este pad vuelve al sonido sintetizado"
+                onClicked: root.setPadSample("")
+            }
+            Select {
+                objectName: "padChoke"; width: 132
+                options: [["0", "Sin corte"], ["1", "Corte A"], ["2", "Corte B"]]
+                current: String(Math.round(root.laneVal(root.selLane, 5)))
+                tip: "Un golpe de un pad corta lo que suena en los otros pads de su grupo (p. ej. el hi-hat cerrado corta al abierto)"
+                onPicked: function (v) { root.setLane(5, parseInt(v)) }
             }
         }
         Knob { objectName: "drumLaneTun"; label: "Afinación"; value: root.laneVal(root.selLane, 0)
@@ -169,6 +207,9 @@ Column {
         Knob { objectName: "drumLaneLvl"; label: "Nivel"; value: root.laneVal(root.selLane, 3)
                tip: "Volumen de este pad (0 = mudo, 50 = normal, 100 = +12 dB)"
                onMoved: function (v) { root.setLane(3, v) } }
+        Knob { objectName: "drumLanePan"; label: "Paneo"; value: root.laneVal(root.selLane, 4)
+               tip: "Dónde suena este pad: 0 a la izquierda, 50 en el centro, 100 a la derecha"
+               onMoved: function (v) { root.setLane(4, v) } }
     }
 
     Rectangle {                                 // .seq

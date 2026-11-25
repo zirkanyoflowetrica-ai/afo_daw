@@ -99,15 +99,22 @@ public:
         }
         sampleCount += n;
 
+        // Cada voz a su paneo (Drum Rack); en el centro, igual que en mono
         auto* l = buf.getWritePointer (0, start);
+        auto* r = buf.getNumChannels() > 1 ? buf.getWritePointer (1, start) : nullptr;
         for (int i = 0; i < n; ++i)
         {
-            float x = 0.0f;
+            float xl = 0.0f, xr = 0.0f;
             for (auto& v : voices)
-                if (v.active) x += v.next();
-            l[i] = x;
+                if (v.active)
+                {
+                    const float x = v.next();
+                    xl += x * v.panL; xr += x * v.panR;
+                }
+            l[i] = xl;
+            if (r != nullptr) r[i] = xr;
         }
-        for (int c = 1; c < buf.getNumChannels(); ++c)
+        for (int c = 2; c < buf.getNumChannels(); ++c)
             buf.copyFrom (c, start, buf, 0, start, n);
 
         // Reverb (solo instrumentos): sala media, mezcla según la perilla (0 = seca)
@@ -160,6 +167,8 @@ private:
     {
         if (m.isNoteOn() && p.mode == 0 && p.wave == synth::bass808 && note808 (p, m.getNoteNumber(), at, held))
             return;
+        if (m.isNoteOn() && p.mode == 1)
+            chokeGroup (p, m.getNoteNumber() - synth::firstDrumNote, at);
         if (m.isNoteOn())
         {
             auto& v = freeVoice();
@@ -282,6 +291,17 @@ private:
         for (auto& v : voices)
             if (v.active && v.is808) v.choke();
         return false;
+    }
+
+    // Drum Rack: el golpe del pad `lane` corta lo que suena en los otros pads de su grupo
+    void chokeGroup (const synth::Params& p, int lane, int at)
+    {
+        if (lane < 0 || lane >= synth::drumLanes) return;
+        const int g = juce::roundToInt (p.dChoke[(size_t) lane]);
+        if (g <= 0) return;
+        for (auto& v : voices)
+            if (v.active && v.mode == 1 && v.lane != lane && juce::roundToInt (p.dChoke[(size_t) v.lane]) == g)
+                v.chokeAt (at);
     }
 
     std::atomic<const Kit*> kit { nullptr };

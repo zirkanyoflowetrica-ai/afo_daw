@@ -31,6 +31,8 @@ namespace
             if (l.size() > 1) p.dDec[i] = l[1];
             if (l.size() > 2) p.dTone[i] = l[2];
             if (l.size() > 3) p.dLvl[i] = l[3];
+            if (l.size() > 4) p.dPan[i] = l[4];
+            if (l.size() > 5) p.dChoke[i] = l[5];
         }
         float* an[] = { &p.anDet, &p.anCut, &p.anRes, &p.anEnv, &p.anAtk, &p.anRel };
         for (size_t i = 0; i < 6 && i < s.analog.size(); ++i)
@@ -422,6 +424,12 @@ bool Engine::auditionSynth (const SynthSettings& s, int midiNote, double seconds
     juce::AudioBuffer<float> buf (2, len);
     synth::renderHit (p, midiNote, seconds, sr, buf.getWritePointer (0), len, sample);
     buf.copyFrom (1, 0, buf, 0, 0, len);
+    if (p.mode == 1 && lane >= 0 && lane < synth::drumLanes)        // Drum Rack: el pad suena en su paneo
+    {
+        const double pan = juce::jlimit (0.0f, 100.0f, p.dPan[(size_t) lane]) / 100.0;
+        buf.applyGain (0, 0, len, (float) juce::jmin (1.0, 2.0 * (1.0 - pan)));
+        buf.applyGain (1, 0, len, (float) juce::jmin (1.0, 2.0 * pan));
+    }
     pv.transport.stop();
     pv.transport.setSource (nullptr);
     pv.source = std::make_unique<juce::MemoryAudioSource> (buf, true, false);

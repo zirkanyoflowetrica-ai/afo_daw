@@ -39,6 +39,9 @@ struct Params
     //   · nivel (v/50)², 0 = mudo, 100 = +12 dB
     std::array<float, 8> dTun { 50, 50, 50, 50, 50, 50, 50, 50 }, dDec { 50, 50, 50, 50, 50, 50, 50, 50 },
                          dTone { 50, 50, 50, 50, 50, 50, 50, 50 }, dLvl { 50, 50, 50, 50, 50, 50, 50, 50 };
+    // Drum Rack: paneo de cada pad (0 izquierda, 50 centro, 100 derecha) y grupo de corte (0 ninguno,
+    // 1 A, 2 B): un golpe corta, con un fundido de 5 ms, lo que suena en los otros pads de su grupo
+    std::array<float, 8> dPan { 50, 50, 50, 50, 50, 50, 50, 50 }, dChoke { 0, 0, 0, 0, 0, 0, 0, 0 };
     // Sinte analógico (preset 9): dos dientes de sierra desafinados y filtro paso bajo resonante con envolvente
     float anDet = 30.0f;    // 0..100 → ±0..25 cents entre los dos osciladores
     float anCut = 55.0f;    // 0..100 → corte 40 Hz · 2^(v·9/100) (sigue a medias la nota)
@@ -80,14 +83,17 @@ struct AtomicParams
     std::atomic<bool> sus { false };
     std::atomic<int> arp { 0 }, arpRate { 2 }, arpOct { 1 };
     std::atomic<float> arpGate { 50 };
-    std::array<std::atomic<float>, 8> dTun, dDec, dTone, dLvl;
+    std::array<std::atomic<float>, 8> dTun, dDec, dTone, dLvl, dPan, dChoke;
     std::atomic<float> anDet { 30 }, anCut { 55 }, anRes { 30 }, anEnv { 50 }, anAtk { 5 }, anRel { 30 };
     std::atomic<int> wtTab { 0 };
     std::atomic<float> wtPos { 40 }, wtEnv { 30 }, wtLfo { 0 }, wtAtk { 5 }, wtRel { 30 };
     std::atomic<int> smRoot { 60 };
     std::atomic<bool> smLoop { false };
     std::atomic<float> smStart { 0 }, smLoopAt { 50 }, smAtk { 2 }, smRel { 25 };
-    AtomicParams() { for (int i = 0; i < 8; ++i) dTun[(size_t) i] = dDec[(size_t) i] = dTone[(size_t) i] = dLvl[(size_t) i] = 50.0f; }
+    AtomicParams()
+    {
+        for (size_t i = 0; i < 8; ++i) { dTun[i] = dDec[i] = dTone[i] = dLvl[i] = dPan[i] = 50.0f; dChoke[i] = 0.0f; }
+    }
     void store (const Params& p);
     Params load() const;
 };
@@ -142,6 +148,9 @@ struct Voice
     double detune = 1.0, cutBase = 1000, envOct = 0, res = 0;
     double ic1 = 0, ic2 = 0, fa1 = 0, fa2 = 0, fa3 = 0;
     int filtWait = 0;
+    // Drum Rack: ganancia de cada canal (paneo con el centro a 1, como antes) y corte pendiente en el bloque
+    float panL = 1.0f, panR = 1.0f;
+    int chokeWait = -1;
     // Sinte de tablas: las 8 ondas de su tabla al nivel de armónicos que cabe bajo Nyquist para esta nota
     bool isWave = false;
     const float* wtData = nullptr;
@@ -161,6 +170,8 @@ struct Voice
     void glideTo (const Params&, int midiNote, int atSample) noexcept;
     // 808 monofónico: corta esta voz con un fundido de 5 ms (sin clic) para dejar sonar la nueva
     void choke() noexcept;
+    // Grupo de corte: el golpe que corta llega en la muestra `atSample` del bloque
+    void chokeAt (int atSample) noexcept;
     double currentHz() const noexcept;
     float next() noexcept;  // una muestra (0 antes de empezar o al acabar)
 };

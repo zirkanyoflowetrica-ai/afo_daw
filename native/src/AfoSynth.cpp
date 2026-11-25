@@ -146,7 +146,8 @@ void AtomicParams::store (const Params& p)
     mode = p.mode; wave = p.wave; vel = p.vel; bri = p.bri; sus = p.sus; vol = p.vol; tun = p.tun; rev = p.rev;
     glide = p.glide; drive = p.drive; punch = p.punch;
     arp = p.arp; arpRate = p.arpRate; arpOct = p.arpOct; arpGate = p.arpGate;
-    for (size_t i = 0; i < 8; ++i) { dTun[i] = p.dTun[i]; dDec[i] = p.dDec[i]; dTone[i] = p.dTone[i]; dLvl[i] = p.dLvl[i]; }
+    for (size_t i = 0; i < 8; ++i) { dTun[i] = p.dTun[i]; dDec[i] = p.dDec[i]; dTone[i] = p.dTone[i]; dLvl[i] = p.dLvl[i];
+                                     dPan[i] = p.dPan[i]; dChoke[i] = p.dChoke[i]; }
     anDet = p.anDet; anCut = p.anCut; anRes = p.anRes; anEnv = p.anEnv; anAtk = p.anAtk; anRel = p.anRel;
     wtTab = p.wtTab; wtPos = p.wtPos; wtEnv = p.wtEnv; wtLfo = p.wtLfo; wtAtk = p.wtAtk; wtRel = p.wtRel;
     smRoot = p.smRoot; smStart = p.smStart; smLoop = p.smLoop; smLoopAt = p.smLoopAt; smAtk = p.smAtk; smRel = p.smRel;
@@ -158,7 +159,8 @@ Params AtomicParams::load() const
     p.mode = mode; p.wave = wave; p.vel = vel; p.bri = bri; p.sus = sus; p.vol = vol; p.tun = tun; p.rev = rev;
     p.glide = glide; p.drive = drive; p.punch = punch;
     p.arp = arp; p.arpRate = arpRate; p.arpOct = arpOct; p.arpGate = arpGate;
-    for (size_t i = 0; i < 8; ++i) { p.dTun[i] = dTun[i]; p.dDec[i] = dDec[i]; p.dTone[i] = dTone[i]; p.dLvl[i] = dLvl[i]; }
+    for (size_t i = 0; i < 8; ++i) { p.dTun[i] = dTun[i]; p.dDec[i] = dDec[i]; p.dTone[i] = dTone[i]; p.dLvl[i] = dLvl[i];
+                                     p.dPan[i] = dPan[i]; p.dChoke[i] = dChoke[i]; }
     p.anDet = anDet; p.anCut = anCut; p.anRes = anRes; p.anEnv = anEnv; p.anAtk = anAtk; p.anRel = anRel;
     p.wtTab = wtTab; p.wtPos = wtPos; p.wtEnv = wtEnv; p.wtLfo = wtLfo; p.wtAtk = wtAtk; p.wtRel = wtRel;
     p.smRoot = smRoot; p.smStart = smStart; p.smLoop = smLoop; p.smLoopAt = smLoopAt; p.smAtk = smAtk; p.smRel = smRel;
@@ -306,11 +308,23 @@ void Voice::choke() noexcept
     gated = true; released = true; relLevel = lastEnv; relSec = (double) t / sr; releaseSec = 0.005;
 }
 
+void Voice::chokeAt (int atSample) noexcept
+{
+    if (! active) return;
+    const int w = atSample - delay;                    // muestras de esta voz hasta el golpe que corta
+    if (w < 0) return;                                 // esta voz empieza después: no se corta
+    chokeWait = w;
+}
+
 void Voice::startDrum (const Params& p, int drumLane, double sampleRate, int delaySamples, const Sample* s)
 {
     *this = Voice();
     active = true; delay = std::max (0, delaySamples); sr = sampleRate; mode = 1;
     lane = std::clamp (drumLane, 0, 7);
+    {
+        const double pan = std::clamp (p.dPan[(size_t) lane], 0.0f, 100.0f) / 100.0;
+        panL = (float) std::min (1.0, 2.0 * (1.0 - pan)); panR = (float) std::min (1.0, 2.0 * pan);
+    }
     noise = 0x9E3779B9u * (uint32_t) (lane + 1) + (uint32_t) delaySamples;
     const auto L = (size_t) lane;
     const double lvl = std::clamp (p.dLvl[L], 0.0f, 100.0f) / 50.0;
@@ -349,6 +363,7 @@ float Voice::next() noexcept
 {
     if (! active) return 0.0f;
     if (delay > 0) { --delay; return 0.0f; }
+    if (chokeWait >= 0 && chokeWait-- == 0) choke();
     if (t >= length) { active = false; return 0.0f; }
     if (sample != nullptr && ! isSampler)
     {
@@ -356,7 +371,14 @@ float Voice::next() noexcept
         const float fr = (float) (spos - (double) i), a = sample->data[i], b = sample->data[i + 1];
         spos += sstep;
         ++t;
-        return (float) g0 * (a + (b - a) * fr);
+        float y = (float) g0 * (a + (b - a) * fr);
+        if (released)                                   // cortado por su grupo: fundido de 5 ms
+        {
+            const double r = ((double) t / sr - relSec) / releaseSec;
+            if (r >= 1.0) { active = false; return 0.0f; }
+            y *= (float) std::pow (0.001, r);
+        }
+        return y;
     }
     const double sec = (double) t / sr;
     float x;

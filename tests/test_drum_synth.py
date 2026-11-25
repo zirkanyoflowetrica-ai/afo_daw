@@ -110,7 +110,8 @@ def test_afinacion_caida_tono_y_nivel(host, tmp_path):
 
 def test_ajustes_desde_la_pista():
     s = synth_settings({"type": "drum", "cfg": {"vol": 70, "lanes": [[60, None, 40], None, [50, 50, 50, 0]]}})
-    assert s["lanes"] == [[60.0, 50.0, 40.0, 50.0], [50.0] * 4, [50.0, 50.0, 50.0, 0.0]]
+    # cada pad lleva además paneo (50 = centro) y grupo de corte (0 = ninguno) del Drum Rack
+    assert s["lanes"] == [[60.0, 50.0, 40.0, 50.0, 50.0, 0.0], [50.0] * 5 + [0.0], [50.0, 50.0, 50.0, 0.0, 50.0, 0.0]]
     assert synth_settings({"type": "drum", "cfg": {}})["lanes"] == []
 
 
