@@ -865,6 +865,24 @@ def _native_sequencer_checks(rep, app, host, window, prop) -> None:
                   before == (False, True) and withvst == (True, False) and after == (False, True),
                   f"sin VST3 {before} · con VST3 {withvst} · de vuelta {after} (nota, perillas)")
 
+        # 808 Lab: Glide, Saturación y Golpe solo con el preset «Bajo 808», y el motor lo toca
+        k808 = [window.findChild(QObject, n) for n in ("knob808Glide", "knob808Drive", "knob808Punch")]
+        if None in k808:
+            rep.check("808 Lab: perillas propias con el preset «Bajo 808»", False, "faltan las perillas del 808")
+        else:
+            vis = lambda: tuple(bool(k.property("visible")) for k in k808)
+            off = vis()
+            cmd("cfg", "v", 8)
+            _wait(app, lambda: False, 0.1, host)
+            on = vis()
+            heard = host.audition({"type": "inst", "cfg": {"v": 8, "glide": 30, "drive": 40, "punch": 50}, "note": 33,
+                                   "seconds": 0.4})
+            cmd("cfg", "v", 0)
+            _wait(app, lambda: False, 0.1, host)
+            rep.check("808 Lab: perillas propias con el preset «Bajo 808»",
+                      off == (False,) * 3 and on == (True,) * 3 and vis() == (False,) * 3 and bool(heard),
+                      f"otro preset {off} · 808 {on} · se escucha {heard}")
+
     n = len(snap()["tracks"])
     cmd("add", "ia")
     rep.check("+ IA abre el generador y no crea pistas vacías", len(snap()["tracks"]) == n and

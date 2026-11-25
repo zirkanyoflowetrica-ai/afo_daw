@@ -22,6 +22,7 @@ namespace
     {
         synth::Params p;
         p.mode = s.mode; p.wave = s.wave; p.vel = s.vel; p.bri = s.bri; p.sus = s.sus; p.vol = s.vol; p.tun = s.tun; p.rev = s.rev;
+        p.glide = s.glide; p.drive = s.drive; p.punch = s.punch;
         return p;
     }
 

@@ -7,6 +7,7 @@ Column {
     id: root
     property var seq
     readonly property var t: seq.active("inst")
+    readonly property bool is808: !!t && !t.cfg.plugin && t.cfg.v === 8        // preset «Bajo 808»
     width: parent ? parent.width : 380
     spacing: 0
 
@@ -100,5 +101,18 @@ Column {
         Knob { label: "Brillo"; value: root.t ? root.t.cfg.bri : 50; onMoved: function (v) { root.seq.setCfg("inst", "bri", v) } }
         Knob { label: "Reverb"; value: root.t ? root.t.cfg.rev : 30; tip: "Reverb de sala del motor (0 = seca)"
                onMoved: function (v) { root.seq.setCfg("inst", "rev", v) } }
+        // 808 Lab: solo con el preset «Bajo 808»
+        Knob { objectName: "knob808Glide"; visible: root.is808; label: "Glide"
+               value: root.t && root.t.cfg.glide !== undefined ? root.t.cfg.glide : 30
+               tip: "Las notas que se pisan en el piano roll se deslizan (0 = cada nota vuelve a sonar)"
+               onMoved: function (v) { root.seq.setCfg("inst", "glide", v) } }
+        Knob { objectName: "knob808Drive"; visible: root.is808; label: "Saturación"
+               value: root.t && root.t.cfg.drive !== undefined ? root.t.cfg.drive : 30
+               tip: "Armónicos para que el 808 se oiga también en altavoces pequeños"
+               onMoved: function (v) { root.seq.setCfg("inst", "drive", v) } }
+        Knob { objectName: "knob808Punch"; visible: root.is808; label: "Golpe"
+               value: root.t && root.t.cfg.punch !== undefined ? root.t.cfg.punch : 50
+               tip: "Caída rápida de afinación al empezar cada nota: el golpe del 808"
+               onMoved: function (v) { root.seq.setCfg("inst", "punch", v) } }
     }
 }

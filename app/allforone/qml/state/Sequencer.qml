@@ -44,7 +44,7 @@ QtObject {
     readonly property var tn: ({ inst: "Instrumento", drum: "Batería", ia: "IA", voz: "Voz", audio: "Audio", aux: "Aux" })
     readonly property var insts: [["Piano de cola", "Teclas"], ["Bajo sintético", "Graves"], ["Batería acústica", "Percusión"],
         ["Guitarra eléctrica", "Cuerdas"], ["Pad ambiental", "Sintetizador"], ["Cuerdas de orquesta", "Cuerdas"],
-        ["Voz coral", "Voces"], ["Campanas", "Percusión"]]
+        ["Voz coral", "Voces"], ["Campanas", "Percusión"], ["Bajo 808", "Graves"]]
     // Filas del Piano roll: C5..C4 en la octava 4; «Octava» las transpone (y lo que suena, X2)
     readonly property var notes: ["C5", "B4", "A#4", "A4", "G#4", "G4", "F#4", "F4", "E4", "D#4", "D4", "C#4", "C4"]
         .map(function (n) { return n.slice(0, -1) + (Number(n.slice(-1)) + oct - 4) })

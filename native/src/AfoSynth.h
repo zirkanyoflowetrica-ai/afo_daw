@@ -17,20 +17,27 @@ namespace afo::synth
 struct Params
 {
     int mode = 0;           // 0 = instrumento, 1 = batería
-    int wave = 0;           // preset de Instrumentos: 0..7 → triangle, saw, square, saw, sine, saw, sine, triangle
+    int wave = 0;           // preset de Instrumentos: 0..7 → triangle, saw, square, saw, sine, saw, sine, triangle; 8 = 808
     float vel = 70.0f;      // Velocidad 0..100
     float bri = 50.0f;      // Brillo 0..100 → lowpass 400 + bri·60 Hz
     bool sus = false;       // Sostenido: nota de 1,4 s en vez de 0,3 s
     float vol = 80.0f;      // Batería: volumen 0..100
     float tun = 50.0f;      // Batería: afinación 0..100 → ×2^((tun−50)/50)
     float rev = 0.0f;       // Instrumentos: reverb 0..100 (0 = seca)
+    // 808 Lab (preset 8): monofónico; las notas que se pisan se deslizan en vez de volver a sonar
+    float glide = 30.0f;    // 0..100 → deslizamiento de 0 a 300 ms entre notas que se pisan
+    float drive = 30.0f;    // 0..100 → saturación (armónicos que se oyen en altavoces pequeños)
+    float punch = 50.0f;    // 0..100 → la afinación arranca hasta 24 semitonos arriba y cae en 40 ms
 };
+
+constexpr int bass808 = 8;              // índice del preset 808 en Instrumentos
+constexpr int numPresets = 9;
 
 // Copia sin bloqueos entre el hilo de mensajes (escribe) y el de audio (lee)
 struct AtomicParams
 {
     std::atomic<int> mode { 0 }, wave { 0 };
-    std::atomic<float> vel { 70 }, bri { 50 }, vol { 80 }, tun { 50 }, rev { 0 };
+    std::atomic<float> vel { 70 }, bri { 50 }, vol { 80 }, tun { 50 }, rev { 0 }, glide { 30 }, drive { 30 }, punch { 50 };
     std::atomic<bool> sus { false };
     void store (const Params& p);
     Params load() const;
@@ -76,12 +83,21 @@ struct Voice
     // Golpe grabado (sampler): lectura con interpolación lineal; `step` incluye la afinación
     const Sample* sample = nullptr;
     double spos = 0, sstep = 1;
+    // 808: seno con golpe de afinación, saturación y deslizamiento hacia la nota siguiente
+    bool is808 = false;
+    double drive = 0, punchSemis = 0, glideFrom = 0, glideSamples = 0, glideT = 0;
+    int pendingNote = -1, pendingWait = 0;  // deslizamiento que empieza dentro del bloque
 
     void startNote (const Params&, int midiNote, double seconds, double sampleRate, int delaySamples);
     // Nota que sigue al note-off: ataque, caída hasta el nivel de sostén del preset y release
     void startHeldNote (const Params&, int midiNote, float velocity, double sampleRate, int delaySamples);
     void startDrum (const Params&, int lane, double sampleRate, int delaySamples, const Sample* s = nullptr);
     void noteOff (int atSample) noexcept;   // posición dentro del bloque
+    // 808: la nota nueva pisa a esta (que sigue pulsada): se desliza hasta ella sin volver a empezar
+    void glideTo (const Params&, int midiNote, int atSample) noexcept;
+    // 808 monofónico: corta esta voz con un fundido de 5 ms (sin clic) para dejar sonar la nueva
+    void choke() noexcept;
+    double currentHz() const noexcept;
     float next() noexcept;  // una muestra (0 antes de empezar o al acabar)
 };
 

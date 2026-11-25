@@ -115,7 +115,7 @@ cada efecto. `--selftest` repite el ciclo desde la interfaz con todas las pistas
 
 | Hito | Módulos |
 |---|---|
-| 2 · Instrumentales y MIDI | Sampler Pro, Drum Rack, Drum Synth, 808 Lab, Wavetable/Analog Synth, Step Sequencer, Arpeggiator (**Transient Designer AF-22 y Glue AF-15 ya están**) |
+| 2 · Instrumentales y MIDI | Sampler Pro, Drum Rack, Drum Synth, Wavetable/Analog Synth, Step Sequencer, Arpeggiator (**Transient Designer AF-22, Glue AF-15 y 808 Lab ya están**) |
 | 3 · Diseño sonoro | Texture Verb, Shimmer, Infinity, MultiTap, Trance Gate, Granular FX, Spectral FX, FX Lab |
 | 4 · Voz profesional | Pitch Editor, Vocal Align, Harmonizer, Doubler, Dynamic EQ, Noise Reducer (De-Esser ya está, AF-20; **Tune ya está, AF-60**) |
 | 5 · Mastering | True Peak Limiter validado, Loudness, Master Dynamics, Match EQ, Linear EQ, Master Imager, Dither y el resto |

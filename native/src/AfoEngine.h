@@ -136,11 +136,12 @@ struct ClipInfo
 struct SynthSettings
 {
     int mode = 0;           // 0 = instrumento, 1 = batería
-    int wave = 0;           // preset 0..7
+    int wave = 0;           // preset 0..8 (8 = 808)
     float vel = 70, bri = 50;
     bool sus = false;
     float vol = 80, tun = 50;
     float rev = 0;          // reverb 0..100 (instrumentos)
+    float glide = 30, drive = 30, punch = 50;   // 808 Lab (preset 8)
 };
 
 // Sonoridad de una pista o del master (BS.1770): RMS 300 ms, LUFS momentánea/corto plazo/integrada,

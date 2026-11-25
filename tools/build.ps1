@@ -17,7 +17,9 @@ param(
     [switch]$SkipTests,
     [switch]$Clean,
     [switch]$NoInstall,
-    [switch]$Yes
+    [switch]$Yes,
+    # Nucleos para compilar (0 = todos). Menos nucleos = menos calor; tools\package_partes.ps1 usa la mitad.
+    [int]$Jobs = 0
 )
 
 $ErrorActionPreference = 'Stop'
@@ -234,7 +236,9 @@ Invoke-Checked $CMake $cfgArgs "Configuracion de CMake"
 Step "7/9 Compilar motor C++ y extension afo_audio.pyd (la primera vez tarda 10-30 min)"
 Stop-AllForOne
 $sw = [Diagnostics.Stopwatch]::StartNew()
-Invoke-Checked $CMake @('--build', $Build, '--config', 'Release') "Compilacion"
+$buildArgs = @('--build', $Build, '--config', 'Release')
+if ($Jobs -gt 0) { $buildArgs += @('--parallel', "$Jobs"); Ok "Compilando con $Jobs nucleos" }
+Invoke-Checked $CMake $buildArgs "Compilacion"
 Ok ("Compilado en {0:N1} min" -f $sw.Elapsed.TotalMinutes)
 $pyd = Get-ChildItem (Join-Path $Root 'app\allforone\_native') -Filter 'afo_audio*.pyd' | Select-Object -First 1
 if (-not $pyd) { Fail "No se genero afo_audio*.pyd" }

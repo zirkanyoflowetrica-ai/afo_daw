@@ -50,6 +50,8 @@ Estados: `·` libre · `>` en curso · `✓` hecho (+ hash) · `!` bloqueado (mo
 | C14 | C | ✓ | `midi_ai.py`, `state/Sequencer.qml`, `modules/LabView.qml`, `tests/test_lab_pattern.py` | «Patrón MIDI» en cada familia del Lab: MIDI-LLM local con estilo, tonalidad y tempo de la sesión, solo notas de esa familia, a tempo; pytest test_lab_pattern pasa |
 | C15 | C | ✓ | `procs.py`, `ai_music.py`, `lab.py`, `midi_ai.py`, `stems.py`, `main.py`, `tests/test_procs.py` | Los motores de IA local (ACE-Step, llama-server, Demucs) se cierran con la sesión aunque se caiga, y al arrancar se cierran los que dejó una sesión anterior; pytest test_procs pasa |
 | C16 | C | ✓ | `native/src/fx/FxPlugins.h`, `fx_presets.py`, `modules/Browser.qml`, `docs/BIBLIOTECA_NATIVA.md`, `tests/test_engine_fx.py`, `native_ui.py` | Hito 2: Glue Compressor (AF-15) y Transient Designer (AF-22) en el motor C++ con preajustes y en el navegador; pytest test_engine_fx y --selftest pasan |
+| C17 | C | ✓ | `AfoSynth.*`, `AfoPlugins.h`, `AfoEngine.*`, `afo_audio_module.cpp`, `engine_host.py`, `state/Sequencer.qml`, `modules/InstBody.qml`, `native_ui.py`, `tests/test_808.py` | 808 Lab: preset «Bajo 808» del Instrumento, monofónico, con Golpe, Saturación y Glide entre notas que se pisan; pytest test_808 (con un trap completo) y --selftest pasan |
+| C18 | C | ✓ | `tools/package_partes.ps1`, `tools/build.ps1`, `tools/package.ps1`, `AGENTS.md` | Empaquetado por partes: compilar, pruebas C++, cada archivo de pruebas, autoprueba y Nuitka por separado, con la mitad de los núcleos, pausas para enfriar y se retoma tras un apagón desde la parte que faltaba |
 
 ## Notas
 C (24-11): el usuario avisa de que Codex no hizo nada; todas las X abiertas pasan a C, en el orden de la prioridad nueva (X14 primero).

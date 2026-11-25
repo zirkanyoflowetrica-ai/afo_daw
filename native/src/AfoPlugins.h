@@ -66,6 +66,8 @@ public:
             for (auto& m : *midi)
             {
                 const int at = juce::jlimit (0, juce::jmax (0, n - 1), juce::roundToInt (m.getTimeStamp() * sampleRate));
+                if (m.isNoteOn() && p.mode == 0 && p.wave == synth::bass808 && note808 (p, m.getNoteNumber(), at, held))
+                    continue;
                 if (m.isNoteOn())
                 {
                     auto& v = freeVoice();
@@ -132,6 +134,24 @@ public:
     }
 
 private:
+    // 808 monofónico. Si la nota anterior sigue pulsada y hay deslizamiento, se desliza hasta la
+    // nueva (true: no hace falta voz nueva). Si no, se corta con un fundido y suena la nueva.
+    bool note808 (const synth::Params& p, int noteNumber, int at, bool held)
+    {
+        synth::Voice* last = nullptr;
+        for (auto& v : voices)
+            if (v.active && v.is808 && ! v.released && (last == nullptr || v.t < last->t))
+                last = &v;
+        if (last != nullptr && held && last->gated && last->offAt < 0 && p.glide > 0.5f)
+        {
+            last->glideTo (p, noteNumber, at);
+            return true;
+        }
+        for (auto& v : voices)
+            if (v.active && v.is808) v.choke();
+        return false;
+    }
+
     std::atomic<const Kit*> kit { nullptr };
     std::vector<std::unique_ptr<Kit>> kits;
 

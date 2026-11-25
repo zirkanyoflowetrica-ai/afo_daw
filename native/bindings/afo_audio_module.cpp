@@ -71,10 +71,12 @@ py::dict toDict (const afo::EffectInfo& e)
     return d;
 }
 
-afo::SynthSettings settings (int mode, int wave, float vel, float bri, bool sus, float vol, float tun, float rev)
+afo::SynthSettings settings (int mode, int wave, float vel, float bri, bool sus, float vol, float tun, float rev,
+                             float glide, float drive, float punch)
 {
     afo::SynthSettings s;
     s.mode = mode; s.wave = wave; s.vel = vel; s.bri = bri; s.sus = sus; s.vol = vol; s.tun = tun; s.rev = rev;
+    s.glide = glide; s.drive = drive; s.punch = punch;
     return s;
 }
 }
@@ -198,18 +200,21 @@ PYBIND11_MODULE (afo_audio, m)
         .def ("remove_track", &afo::Engine::removeTrack)
         .def ("add_synth_track", [] (afo::Engine& e, const std::string& name, int mode)
               { return toDict (e.addSynthTrack (name, mode)); }, py::arg ("name"), py::arg ("mode") = 0)
-        .def ("set_synth_settings", [] (afo::Engine& e, int id, int mode, int wave, float vel, float bri, bool sus, float vol, float tun, float rev)
-              { e.setSynthSettings (id, settings (mode, wave, vel, bri, sus, vol, tun, rev)); },
+        .def ("set_synth_settings", [] (afo::Engine& e, int id, int mode, int wave, float vel, float bri, bool sus, float vol, float tun, float rev,
+                                        float glide, float drive, float punch)
+              { e.setSynthSettings (id, settings (mode, wave, vel, bri, sus, vol, tun, rev, glide, drive, punch)); },
               py::arg ("track_id"), py::arg ("mode") = 0, py::arg ("wave") = 0, py::arg ("vel") = 70.0f, py::arg ("bri") = 50.0f,
-              py::arg ("sus") = false, py::arg ("vol") = 80.0f, py::arg ("tun") = 50.0f, py::arg ("rev") = 0.0f)
+              py::arg ("sus") = false, py::arg ("vol") = 80.0f, py::arg ("tun") = 50.0f, py::arg ("rev") = 0.0f,
+              py::arg ("glide") = 30.0f, py::arg ("drive") = 30.0f, py::arg ("punch") = 50.0f)
         .def ("set_synth_notes", &afo::Engine::setSynthNotes, py::arg ("track_id"), py::arg ("notes"), py::arg ("length_beats") = 64.0)
         .def ("set_synth_midi", &afo::Engine::setSynthMidi, py::arg ("track_id"), py::arg ("notes"), py::arg ("length_beats") = 0.0,
               "Notas (inicio, duración en negras, nota, velocidad) de un MIDI importado o compuesto por la IA")
-        .def ("audition_synth", [] (afo::Engine& e, int note, double seconds, int mode, int wave, float vel, float bri, bool sus, float vol, float tun, float rev, int trackId)
-              { return e.auditionSynth (settings (mode, wave, vel, bri, sus, vol, tun, rev), note, seconds, trackId); },
+        .def ("audition_synth", [] (afo::Engine& e, int note, double seconds, int mode, int wave, float vel, float bri, bool sus, float vol, float tun, float rev,
+                                    float glide, float drive, float punch, int trackId)
+              { return e.auditionSynth (settings (mode, wave, vel, bri, sus, vol, tun, rev, glide, drive, punch), note, seconds, trackId); },
               py::arg ("note"), py::arg ("seconds") = 0.4, py::arg ("mode") = 0, py::arg ("wave") = 0, py::arg ("vel") = 70.0f,
               py::arg ("bri") = 50.0f, py::arg ("sus") = false, py::arg ("vol") = 80.0f, py::arg ("tun") = 50.0f, py::arg ("rev") = 0.0f,
-              py::arg ("track_id") = -1)
+              py::arg ("glide") = 30.0f, py::arg ("drive") = 30.0f, py::arg ("punch") = 50.0f, py::arg ("track_id") = -1)
         .def ("set_drum_samples", &afo::Engine::setDrumSamples, py::arg ("track_id"), py::arg ("paths"),
               "Sampler de la batería: un archivo de audio por carril (\"\" = sonido sintetizado)")
         .def ("set_master_processing", &afo::Engine::setMasterProcessing, py::arg ("drive"), py::arg ("tone"), py::arg ("limiter"))

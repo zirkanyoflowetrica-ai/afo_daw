@@ -10,7 +10,7 @@ namespace
 {
     constexpr double pi = 3.14159265358979323846;
     enum Wave { sine, triangle, sawtooth, square };
-    constexpr int presetWave[8] = { triangle, sawtooth, square, sawtooth, sine, sawtooth, sine, triangle };
+    constexpr int presetWave[numPresets] = { triangle, sawtooth, square, sawtooth, sine, sawtooth, sine, triangle, sine };
 
     float osc (int wave, double phase) noexcept
     {
@@ -36,12 +36,14 @@ namespace
 void AtomicParams::store (const Params& p)
 {
     mode = p.mode; wave = p.wave; vel = p.vel; bri = p.bri; sus = p.sus; vol = p.vol; tun = p.tun; rev = p.rev;
+    glide = p.glide; drive = p.drive; punch = p.punch;
 }
 
 Params AtomicParams::load() const
 {
     Params p;
     p.mode = mode; p.wave = wave; p.vel = vel; p.bri = bri; p.sus = sus; p.vol = vol; p.tun = tun; p.rev = rev;
+    p.glide = glide; p.drive = drive; p.punch = punch;
     return p;
 }
 
@@ -74,8 +76,15 @@ void Voice::startNote (const Params& p, int midiNote, double seconds, double sam
 {
     *this = Voice();
     active = true; delay = std::max (0, delaySamples); sr = sampleRate; mode = 0;
-    wave = presetWave[std::clamp (p.wave, 0, 7)];
+    wave = presetWave[std::clamp (p.wave, 0, numPresets - 1)];
     freq = noteHz (midiNote);
+    note = midiNote;
+    if (p.wave == bass808)
+    {
+        is808 = true;
+        drive = std::clamp (p.drive, 0.0f, 100.0f) / 100.0;
+        punchSemis = std::clamp (p.punch, 0.0f, 100.0f) / 100.0 * 24.0;
+    }
     decay = seconds;
     length = (int64_t) (seconds * sr);
     g0 = std::max (0.05, p.vel / 100.0) * 0.25;
@@ -86,11 +95,11 @@ void Voice::startNote (const Params& p, int midiNote, double seconds, double sam
 void Voice::startHeldNote (const Params& p, int midiNote, float velocity, double sampleRate, int delaySamples)
 {
     startNote (p, midiNote, 60.0, sampleRate, delaySamples);       // tope de seguridad: un minuto
-    // Sostén y release por preset: piano, bajo, batería (no se usa), guitarra, pad, cuerdas, coro, campanas
-    static constexpr double sus[8] = { 0.25, 0.6, 0.3, 0.35, 0.9, 0.85, 0.9, 0.08 };
-    static constexpr double rel[8] = { 0.15, 0.08, 0.1, 0.12, 0.45, 0.35, 0.4, 0.6 };
-    static constexpr double att[8] = { 0.004, 0.004, 0.004, 0.004, 0.06, 0.04, 0.05, 0.002 };
-    const int k = std::clamp (p.wave, 0, 7);
+    // Sostén y release por preset: piano, bajo, batería (no se usa), guitarra, pad, cuerdas, coro, campanas, 808
+    static constexpr double sus[numPresets] = { 0.25, 0.6, 0.3, 0.35, 0.9, 0.85, 0.9, 0.08, 0.55 };
+    static constexpr double rel[numPresets] = { 0.15, 0.08, 0.1, 0.12, 0.45, 0.35, 0.4, 0.6, 0.09 };
+    static constexpr double att[numPresets] = { 0.004, 0.004, 0.004, 0.004, 0.06, 0.04, 0.05, 0.002, 0.002 };
+    const int k = std::clamp (p.wave, 0, numPresets - 1);
     gated = true; note = midiNote;
     sustain = sus[k]; releaseSec = p.sus ? rel[k] * 3 : rel[k]; attack = att[k];
     g0 *= std::clamp (velocity / 100.0, 0.05, 1.27);
@@ -100,6 +109,29 @@ void Voice::noteOff (int atSample) noexcept
 {
     if (offAt >= 0 || released) return;
     offAt = delay > 0 ? std::max (1, atSample - delay) : t + std::max (0, atSample);
+}
+
+double Voice::currentHz() const noexcept
+{
+    if (glideFrom > 0 && glideT < glideSamples)
+        return glideFrom * std::pow (freq / glideFrom, glideT / glideSamples);
+    return freq;
+}
+
+void Voice::glideTo (const Params& p, int midiNote, int atSample) noexcept
+{
+    pendingNote = midiNote;
+    pendingWait = delay > 0 ? std::max (0, atSample - delay) : std::max (0, atSample);
+    note = midiNote;
+    glideSamples = std::clamp (p.glide, 0.0f, 100.0f) / 100.0 * 0.3 * sr;
+}
+
+void Voice::choke() noexcept
+{
+    if (! active) return;
+    if (delay > 0) { active = false; return; }        // aún no sonaba
+    if (released && relSec >= 0 && releaseSec <= 0.005) return;
+    gated = true; released = true; relLevel = lastEnv; relSec = (double) t / sr; releaseSec = 0.005;
 }
 
 void Voice::startDrum (const Params& p, int drumLane, double sampleRate, int delaySamples, const Sample* s)
@@ -150,7 +182,25 @@ float Voice::next() noexcept
     }
     const double sec = (double) t / sr;
     float x;
-    if (mode == 0)
+    if (mode == 0 && is808)
+    {
+        if (pendingNote >= 0 && pendingWait-- <= 0)
+        {
+            glideFrom = currentHz(); freq = noteHz (pendingNote); glideT = 0; pendingNote = -1;
+            if (glideSamples < 1) glideFrom = 0;
+        }
+        double f = currentHz();
+        if (glideFrom > 0 && glideT < glideSamples) glideT += 1;
+        if (punchSemis > 0) f *= std::pow (2.0, punchSemis / 12.0 * std::exp (-sec / 0.04));
+        x = osc (sine, phase);
+        phase += f / sr;
+        if (drive > 0)
+        {
+            const double k = 1.0 + drive * 9.0;
+            x = (float) (std::tanh (k * x) / std::tanh (k));
+        }
+    }
+    else if (mode == 0)
     {
         x = osc (wave, phase);
         phase += freq / sr;
@@ -186,7 +236,8 @@ float Voice::next() noexcept
             e = lastEnv = g0 * std::min (1.0, sec / attack) * (sustain + (1 - sustain) * std::exp (-sec / 0.6));
         return x * (float) e;
     }
-    return x * (float) envelope (g0, decay, sec);
+    lastEnv = envelope (g0, decay, sec);
+    return x * (float) lastEnv;
 }
 
 int hitLengthSamples (const Params& p, int midiNote, double seconds, double sampleRate, const Sample* s)

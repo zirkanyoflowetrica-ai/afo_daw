@@ -15,7 +15,8 @@
   Verificacion: ejecuta AllForOne.exe --selftest desde una copia en .cache\tmp con un entorno
   limpio (sin PYTHONPATH ni .venv en el PATH) antes de instalarlo en EXE.
 #>
-param([switch]$SkipBuild)
+# -SkipBuild: no compila ni prueba (ya lo hizo tools\package_partes.ps1). -Jobs: nucleos (0 = todos).
+param([switch]$SkipBuild, [int]$Jobs = 0)
 
 $ErrorActionPreference = 'Stop'
 $env:PYTHONIOENCODING = 'utf-8'
@@ -61,7 +62,7 @@ Stop-AllForOne
 $Py = Join-Path $Root '.venv\Scripts\python.exe'
 if (-not $SkipBuild) {
     Step "Compilando y probando (build.ps1)"
-    & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'build.ps1') -NoInstall
+    & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'build.ps1') -NoInstall -Jobs $Jobs
     if ($LASTEXITCODE -ne 0) { Fail "build.ps1 fallo; revisa logs\" }
 }
 if (-not (Test-Path $Py)) { Fail "Falta .venv: ejecuta build_and_run.bat primero" }
@@ -108,6 +109,7 @@ $nargs = @('-m', 'nuitka',
     "--output-dir=$Dist",
     "--report=$LogDir\nuitka_report_$Stamp.xml",
     "$Root\app\AllForOne.py") + $mixerModules
+if ($Jobs -gt 0) { $nargs = @($nargs[0], $nargs[1], "--jobs=$Jobs") + $nargs[2..($nargs.Count - 1)] }
 $sw = [Diagnostics.Stopwatch]::StartNew()
 if ((Run-Native $Py $nargs) -ne 0) { Fail "Nuitka fallo" }
 $built = Join-Path $Dist 'AllForOne.dist'
