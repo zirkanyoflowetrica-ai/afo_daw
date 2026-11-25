@@ -115,4 +115,46 @@ Column {
                tip: "Caída rápida de afinación al empezar cada nota: el golpe del 808"
                onMoved: function (v) { root.seq.setCfg("inst", "punch", v) } }
     }
+    // Arpegiador del motor: las notas pulsadas suenan de una en una, al tempo de la sesión
+    Column {
+        id: arpBox
+        objectName: "instArp"
+        readonly property int arp: root.t && root.t.cfg.arp !== undefined ? root.t.cfg.arp : 0
+        visible: !!root.t && !root.t.cfg.plugin
+        height: visible ? implicitHeight : 0
+        anchors.horizontalCenter: parent.horizontalCenter; spacing: 6; topPadding: 10
+      Row {
+        anchors.horizontalCenter: parent.horizontalCenter; spacing: 8
+        Text { text: "Arpegiador"; anchors.verticalCenter: parent.verticalCenter; color: Theme.ink
+               font.family: Theme.font; font.pixelSize: 13; font.weight: 700 }
+        Select {
+            objectName: "arpMode"; width: 128; anchors.verticalCenter: parent.verticalCenter
+            options: [["0", "Apagado"], ["1", "Arriba"], ["2", "Abajo"], ["3", "Arriba y abajo"], ["4", "Al azar"]]
+            current: String(arpBox.arp)
+            tip: "Las notas del acorde suenan una tras otra en la rejilla del tempo («Al azar» repite el mismo orden en cada render)"
+            onPicked: function (v) { root.seq.setCfg("inst", "arp", parseInt(v)) }
+        }
+      }
+      Row {
+        anchors.horizontalCenter: parent.horizontalCenter; spacing: 8
+        Select {
+            objectName: "arpRate"; width: 118; enabled: arpBox.arp > 0; anchors.verticalCenter: parent.verticalCenter
+            options: [["0", "Negras"], ["1", "Corcheas"], ["2", "Semicorcheas"], ["3", "Fusas"]]
+            current: String(root.t && root.t.cfg.arpRate !== undefined ? root.t.cfg.arpRate : 2)
+            tip: "Cada cuánto suena la nota siguiente, sincronizado con el tempo"
+            onPicked: function (v) { root.seq.setCfg("inst", "arpRate", parseInt(v)) }
+        }
+        Select {
+            objectName: "arpOct"; width: 90; enabled: arpBox.arp > 0; anchors.verticalCenter: parent.verticalCenter
+            options: [["1", "1 octava"], ["2", "2 octavas"], ["3", "3 octavas"], ["4", "4 octavas"]]
+            current: String(root.t && root.t.cfg.arpOct !== undefined ? root.t.cfg.arpOct : 1)
+            tip: "Octavas que recorre el arpegio hacia arriba"
+            onPicked: function (v) { root.seq.setCfg("inst", "arpOct", parseInt(v)) }
+        }
+        Knob { objectName: "arpGate"; label: "Duración"; enabled: arpBox.arp > 0
+               value: root.t && root.t.cfg.arpGate !== undefined ? root.t.cfg.arpGate : 50
+               tip: "Parte del paso que suena cada nota (100 = ligadas)"
+               onMoved: function (v) { root.seq.setCfg("inst", "arpGate", v) } }
+      }
+    }
 }

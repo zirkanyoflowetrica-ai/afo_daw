@@ -37,6 +37,7 @@ void AtomicParams::store (const Params& p)
 {
     mode = p.mode; wave = p.wave; vel = p.vel; bri = p.bri; sus = p.sus; vol = p.vol; tun = p.tun; rev = p.rev;
     glide = p.glide; drive = p.drive; punch = p.punch;
+    arp = p.arp; arpRate = p.arpRate; arpOct = p.arpOct; arpGate = p.arpGate;
 }
 
 Params AtomicParams::load() const
@@ -44,6 +45,7 @@ Params AtomicParams::load() const
     Params p;
     p.mode = mode; p.wave = wave; p.vel = vel; p.bri = bri; p.sus = sus; p.vol = vol; p.tun = tun; p.rev = rev;
     p.glide = glide; p.drive = drive; p.punch = punch;
+    p.arp = arp; p.arpRate = arpRate; p.arpOct = arpOct; p.arpGate = arpGate;
     return p;
 }
 

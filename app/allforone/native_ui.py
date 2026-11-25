@@ -883,6 +883,24 @@ def _native_sequencer_checks(rep, app, host, window, prop) -> None:
                       off == (False,) * 3 and on == (True,) * 3 and vis() == (False,) * 3 and bool(heard),
                       f"otro preset {off} · 808 {on} · se escucha {heard}")
 
+        # Arpegiador: visible con el sintetizador del motor; ritmo, octavas y duración se activan
+        # al elegir un patrón, y la canción sigue sonando con los acordes arpegiados
+        arp = [window.findChild(QObject, n) for n in ("instArp", "arpMode", "arpRate", "arpOct", "arpGate")]
+        if None in arp:
+            rep.check("Arpegiador: controles en el Instrumento y el motor lo toca", False, "faltan controles del arpegiador")
+        else:
+            usable = lambda: bool(arp[0].property("visible")) and all(bool(a.property("enabled")) for a in arp[2:])
+            before = usable()
+            cmd("cfg", "arp", 1)
+            _wait(app, lambda: False, 0.1, host)
+            during = usable()
+            peak_arp = render_peak()
+            cmd("cfg", "arp", 0)
+            _wait(app, lambda: False, 0.1, host)
+            rep.check("Arpegiador: controles en el Instrumento y el motor lo toca",
+                      not before and during and not usable() and peak_arp > -30,
+                      f"apagado {before} · arriba {during} · render {peak_arp:.1f} dBFS")
+
     n = len(snap()["tracks"])
     cmd("add", "ia")
     rep.check("+ IA abre el generador y no crea pistas vacías", len(snap()["tracks"]) == n and

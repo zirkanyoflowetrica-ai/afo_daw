@@ -23,6 +23,7 @@ namespace
         synth::Params p;
         p.mode = s.mode; p.wave = s.wave; p.vel = s.vel; p.bri = s.bri; p.sus = s.sus; p.vol = s.vol; p.tun = s.tun; p.rev = s.rev;
         p.glide = s.glide; p.drive = s.drive; p.punch = s.punch;
+        p.arp = s.arp; p.arpRate = s.arpRate; p.arpOct = s.arpOct; p.arpGate = s.arpGate;
         return p;
     }
 
@@ -490,6 +491,7 @@ TrackInfo Engine::addSynthTrack (const std::string& name, int mode)
     synth::Params p;
     p.mode = mode;
     synthPlugin->params.store (p);
+    synthPlugin->bpm = (float) tempo();
 
     auto slot = std::make_unique<TrackSlot>();
     slot->id = impl->nextId++;
@@ -1321,6 +1323,9 @@ void Engine::setTempo (double bpm)
     for (auto& [id, f] : impl->fxSlots)
         if (f.fx != nullptr)
             f.fx->bpm = (float) juce::jlimit (20.0, 400.0, bpm);
+    for (auto& [id, s] : impl->slots)
+        if (s->synth != nullptr)
+            s->synth->bpm = (float) juce::jlimit (20.0, 400.0, bpm);         // arpegiador
 }
 
 double Engine::tempo() const

@@ -142,6 +142,8 @@ struct SynthSettings
     float vol = 80, tun = 50;
     float rev = 0;          // reverb 0..100 (instrumentos)
     float glide = 30, drive = 30, punch = 50;   // 808 Lab (preset 8)
+    int arp = 0, arpRate = 2, arpOct = 1;        // arpegiador (ver synth::Params)
+    float arpGate = 50;
 };
 
 // Sonoridad de una pista o del master (BS.1770): RMS 300 ms, LUFS momentánea/corto plazo/integrada,

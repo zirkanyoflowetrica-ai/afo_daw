@@ -10,6 +10,7 @@
 
 #include "AfoSynth.h"
 
+#include <algorithm>
 #include <array>
 #include <atomic>
 #include <cmath>
@@ -58,37 +59,45 @@ public:
             buf.clear (c, start, n);
 
         const auto p = params.load();
-        if (auto* midi = fc.bufferForMidiMessages)
+        const bool held = heldNotes.load();
+        const bool arpOn = p.mode == 0 && p.arp > 0;
+        if (! arpOn) arpCount = 0;
+        auto* midi = fc.bufferForMidiMessages;
+        if (midi != nullptr && midi->isAllNotesOff)
         {
-            if (midi->isAllNotesOff)
-                for (auto& v : voices) v.active = false;
-            const bool held = heldNotes.load();
-            for (auto& m : *midi)
-            {
-                const int at = juce::jlimit (0, juce::jmax (0, n - 1), juce::roundToInt (m.getTimeStamp() * sampleRate));
-                if (m.isNoteOn() && p.mode == 0 && p.wave == synth::bass808 && note808 (p, m.getNoteNumber(), at, held))
-                    continue;
-                if (m.isNoteOn())
-                {
-                    auto& v = freeVoice();
-                    if (p.mode == 1)  v.startDrum (p, m.getNoteNumber() - synth::firstDrumNote, sampleRate, at,
-                                                   laneSample (m.getNoteNumber() - synth::firstDrumNote));
-                    else if (held)    v.startHeldNote (p, m.getNoteNumber(), (float) m.getVelocity(), sampleRate, at);
-                    else              v.startNote (p, m.getNoteNumber(), synth::noteSeconds (p), sampleRate, at);
-                    if (p.mode == 1 && held)
-                        v.g0 *= juce::jlimit (0.05, 1.27, m.getVelocity() / 100.0);
-                }
-                else if (m.isNoteOff() && held)
-                {
-                    synth::Voice* best = nullptr;           // la más antigua de esa nota aún pulsada
-                    for (auto& v : voices)
-                        if (v.active && v.gated && ! v.released && v.offAt < 0 && v.note == m.getNoteNumber()
-                            && (best == nullptr || v.t > best->t))
-                            best = &v;
-                    if (best != nullptr) best->noteOff (at);
-                }
-            }
+            for (auto& v : voices) v.active = false;
+            arpCount = 0;
         }
+        if (! arpOn)
+        {
+            if (midi != nullptr)
+                for (auto& m : *midi)
+                    playEvent (p, m, eventSample (m, n), held);
+        }
+        else
+        {
+            // Arpegiador: las notas del clip solo se apuntan; suenan de una en una en cada paso de
+            // la rejilla del tempo (posición de la canción, así cada render es idéntico)
+            const double stepLen = sampleRate * 60.0 / (juce::jlimit (20.0f, 400.0f, bpm.load()) * (double) (1 << juce::jlimit (0, 3, p.arpRate)));
+            const bool rolling = fc.isPlaying || fc.isRendering;
+            const double pos0 = rolling ? fc.editTime.getStart().inSeconds() * sampleRate : freePos;
+            int ev = 0;
+            const int numEv = midi != nullptr ? midi->size() : 0;
+            for (auto k = (int64_t) std::ceil (pos0 / stepLen - 1e-9); ; ++k)
+            {
+                const int b = (int) std::ceil (k * stepLen - pos0 - 1e-6);
+                if (b >= n) break;
+                for (; ev < numEv && eventSample ((*midi)[ev], n) <= b; ++ev)
+                    arpEvent (p, (*midi)[ev], eventSample ((*midi)[ev], n), held);
+                arpExpire (sampleCount + juce::jmax (0, b));
+                arpStep (p, juce::jmax (0, b), k, stepLen);
+            }
+            for (; ev < numEv; ++ev)
+                arpEvent (p, (*midi)[ev], eventSample ((*midi)[ev], n), held);
+            arpExpire (sampleCount + n);
+            if (! rolling) freePos += n;
+        }
+        sampleCount += n;
 
         auto* l = buf.getWritePointer (0, start);
         for (int i = 0; i < n; ++i)
@@ -133,7 +142,125 @@ public:
         return (k != nullptr && lane >= 0 && lane < synth::drumLanes) ? (*k)[(size_t) lane].get() : nullptr;
     }
 
+    std::atomic<float> bpm { 120.0f };      // tempo de la sesión (lo pone setTempo): rejilla del arpegiador
+
 private:
+    int eventSample (const juce::MidiMessage& m, int n) const
+    {
+        return juce::jlimit (0, juce::jmax (0, n - 1), juce::roundToInt (m.getTimeStamp() * sampleRate));
+    }
+
+    // Una nota del clip sin arpegiador
+    void playEvent (const synth::Params& p, const juce::MidiMessage& m, int at, bool held)
+    {
+        if (m.isNoteOn() && p.mode == 0 && p.wave == synth::bass808 && note808 (p, m.getNoteNumber(), at, held))
+            return;
+        if (m.isNoteOn())
+        {
+            auto& v = freeVoice();
+            if (p.mode == 1)  v.startDrum (p, m.getNoteNumber() - synth::firstDrumNote, sampleRate, at,
+                                           laneSample (m.getNoteNumber() - synth::firstDrumNote));
+            else if (held)    v.startHeldNote (p, m.getNoteNumber(), (float) m.getVelocity(), sampleRate, at);
+            else              v.startNote (p, m.getNoteNumber(), synth::noteSeconds (p), sampleRate, at);
+            if (p.mode == 1 && held)
+                v.g0 *= juce::jlimit (0.05, 1.27, m.getVelocity() / 100.0);
+        }
+        else if (m.isNoteOff() && held)
+        {
+            synth::Voice* best = nullptr;           // la más antigua de esa nota aún pulsada
+            for (auto& v : voices)
+                if (v.active && v.gated && ! v.released && v.offAt < 0 && v.note == m.getNoteNumber()
+                    && (best == nullptr || v.t > best->t))
+                    best = &v;
+            if (best != nullptr) best->noteOff (at);
+        }
+    }
+
+    // ---- Arpegiador -------------------------------------------------------------------------
+    // Notas pulsadas: con duración propia (clip MIDI) hasta su note-off; las de la rejilla de 16
+    // pasos no traen note-off y cuentan como pulsadas lo que dura su nota (0,3 s o 1,4 s).
+    struct ArpNote { int note = 0; float vel = 100.0f; int64_t until = -1; };
+    static constexpr int maxArpNotes = 32;
+    std::array<ArpNote, maxArpNotes> arpNotes {};
+    int arpCount = 0;
+    int64_t arpCounter = 0;                 // pasos tocados desde que empezó el acorde
+    int64_t sampleCount = 0;                // muestras procesadas (reloj propio para la rejilla)
+    double freePos = 0.0;                   // posición de la rejilla con el transporte parado
+
+    void arpEvent (const synth::Params& p, const juce::MidiMessage& m, int at, bool held)
+    {
+        const int note = m.getNoteNumber();
+        if (m.isNoteOn())
+        {
+            for (int i = 0; i < arpCount; ++i)
+                if (arpNotes[(size_t) i].note == note) { removeArpNote (i); break; }
+            if (arpCount == 0) arpCounter = 0;          // acorde nuevo: empieza por su primera nota
+            if (arpCount < maxArpNotes)
+                arpNotes[(size_t) arpCount++] = { note, held ? (float) m.getVelocity() : 100.0f,
+                                                  held ? -1 : sampleCount + at + (int64_t) (synth::noteSeconds (p) * sampleRate) };
+        }
+        else if (m.isNoteOff() && held)
+        {
+            for (int i = 0; i < arpCount; ++i)
+                if (arpNotes[(size_t) i].note == note) { removeArpNote (i); break; }
+        }
+    }
+
+    void removeArpNote (int i)
+    {
+        for (int j = i; j + 1 < arpCount; ++j) arpNotes[(size_t) j] = arpNotes[(size_t) j + 1];
+        --arpCount;
+    }
+
+    void arpExpire (int64_t now)
+    {
+        for (int i = arpCount - 1; i >= 0; --i)
+            if (arpNotes[(size_t) i].until >= 0 && arpNotes[(size_t) i].until <= now)
+                removeArpNote (i);
+    }
+
+    // Paso k de la rejilla en la muestra `at` del bloque: suena la nota que toca del patrón
+    void arpStep (const synth::Params& p, int at, int64_t k, double stepLen)
+    {
+        if (arpCount == 0) return;
+        std::array<int, maxArpNotes> sorted {};
+        std::array<float, maxArpNotes * 4> vel {};
+        int count = 0;
+        for (int i = 0; i < arpCount; ++i) { sorted[(size_t) count] = i; ++count; }
+        std::sort (sorted.begin(), sorted.begin() + count,
+                   [this] (int a, int b) { return arpNotes[(size_t) a].note < arpNotes[(size_t) b].note; });
+        const int octaves = juce::jlimit (1, 4, p.arpOct);
+        std::array<int, maxArpNotes * 4> pattern {};
+        int len = 0;
+        for (int o = 0; o < octaves; ++o)
+            for (int i = 0; i < count; ++i)
+            {
+                const auto& a = arpNotes[(size_t) sorted[(size_t) i]];
+                if (a.note + 12 * o > 127) continue;
+                vel[(size_t) len] = a.vel;
+                pattern[(size_t) len++] = a.note + 12 * o;
+            }
+        if (len == 0) return;
+        const int64_t c = arpCounter++;
+        int idx = 0;
+        switch (p.arp)
+        {
+            case 2:  idx = len - 1 - (int) (c % len); break;                                   // abajo
+            case 3:  if (len > 1) { const int per = 2 * len - 2, m = (int) (c % per); idx = m < len ? m : per - m; } break;
+            case 4:  { auto h = (uint64_t) k * 0x9E3779B97F4A7C15ull; h ^= h >> 31; h *= 0xBF58476D1CE4E5B9ull; h ^= h >> 29;
+                       idx = (int) (h % (uint64_t) len); } break;                               // al azar, repetible
+            default: idx = (int) (c % len); break;                                              // arriba
+        }
+        const int note = pattern[(size_t) idx];
+        const float v = vel[(size_t) idx];
+        if (p.wave == synth::bass808)
+            for (auto& o : voices)
+                if (o.active && o.is808) o.choke();                                            // 808: una a la vez
+        auto& voice = freeVoice();
+        voice.startHeldNote (p, note, v, sampleRate, at);
+        voice.offAt = juce::jmax ((int64_t) 1, (int64_t) (stepLen * juce::jlimit (5.0f, 100.0f, p.arpGate) / 100.0));
+    }
+
     // 808 monofónico. Si la nota anterior sigue pulsada y hay deslizamiento, se desliza hasta la
     // nueva (true: no hace falta voz nueva). Si no, se corta con un fundido y suena la nueva.
     bool note808 (const synth::Params& p, int noteNumber, int at, bool held)

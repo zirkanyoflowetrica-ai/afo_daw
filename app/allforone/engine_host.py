@@ -77,7 +77,9 @@ def synth_settings(track: dict) -> dict:
         return {"mode": 1, "vol": float(cfg.get("vol", 80)), "tun": float(cfg.get("tun", 50))}
     return {"mode": 0, "wave": int(cfg.get("v", 0)), "vel": float(cfg.get("vel", 70)),
             "bri": float(cfg.get("bri", 50)), "sus": bool(track.get("sus")), "rev": float(cfg.get("rev", 0)),
-            "glide": float(cfg.get("glide", 30)), "drive": float(cfg.get("drive", 30)), "punch": float(cfg.get("punch", 50))}
+            "glide": float(cfg.get("glide", 30)), "drive": float(cfg.get("drive", 30)), "punch": float(cfg.get("punch", 50)),
+            "arp": int(cfg.get("arp", 0)), "arp_rate": int(cfg.get("arpRate", 2)), "arp_oct": int(cfg.get("arpOct", 1)),
+            "arp_gate": float(cfg.get("arpGate", 50))}
 
 
 def _loud(d: dict) -> list[float]:

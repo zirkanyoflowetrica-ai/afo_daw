@@ -28,6 +28,11 @@ struct Params
     float glide = 30.0f;    // 0..100 → deslizamiento de 0 a 300 ms entre notas que se pisan
     float drive = 30.0f;    // 0..100 → saturación (armónicos que se oyen en altavoces pequeños)
     float punch = 50.0f;    // 0..100 → la afinación arranca hasta 24 semitonos arriba y cae en 40 ms
+    // Arpegiador (Instrumentos): las notas pulsadas suenan una tras otra, al tempo de la sesión
+    int arp = 0;            // 0 apagado, 1 arriba, 2 abajo, 3 arriba y abajo, 4 al azar (repetible)
+    int arpRate = 2;        // 0..3 → negras, corcheas, semicorcheas, fusas
+    int arpOct = 1;         // 1..4 octavas que recorre
+    float arpGate = 50.0f;  // 5..100 % del paso que suena cada nota
 };
 
 constexpr int bass808 = 8;              // índice del preset 808 en Instrumentos
@@ -39,6 +44,8 @@ struct AtomicParams
     std::atomic<int> mode { 0 }, wave { 0 };
     std::atomic<float> vel { 70 }, bri { 50 }, vol { 80 }, tun { 50 }, rev { 0 }, glide { 30 }, drive { 30 }, punch { 50 };
     std::atomic<bool> sus { false };
+    std::atomic<int> arp { 0 }, arpRate { 2 }, arpOct { 1 };
+    std::atomic<float> arpGate { 50 };
     void store (const Params& p);
     Params load() const;
 };
