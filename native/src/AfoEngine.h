@@ -149,7 +149,9 @@ struct ClipInfo
     double offset = 0.0;                       // desde dónde del archivo empieza a sonar
     float gainDb = 0.0f;
     double fadeIn = 0.0, fadeOut = 0.0;
-    double sourceLength = 0.0;                 // duración del archivo
+    double sourceLength = 0.0;                 // duración del archivo en la línea de tiempo (÷ velocidad)
+    double speed = 1.0;                        // velocidad (F11: proyecto / tempo del audio); 1 = original
+    float semitones = 0.0f;                    // transposición sin cambiar la duración (F11)
 };
 
 // Parámetros de una pista de Instrumento/Batería (ver AfoSynth.h)
@@ -271,6 +273,9 @@ public:
     bool removeClip (long long clipId);
     ClipInfo setClipGain (long long clipId, float db);
     ClipInfo setClipFades (long long clipId, double fadeIn, double fadeOut);
+    // F11: estirar (velocidad) y transponer (semitonos) un clip con SoundTouch en tiempo real; la
+    // duración y el inicio dentro del archivo se reescalan para que suene el mismo trozo
+    ClipInfo setClipStretch (long long clipId, double speed, float semitones);
     float clipPeakDb (long long clipId);                 // pico real del trozo de archivo que suena (sin la ganancia)
     std::vector<ClipInfo> setClips (int trackId, const std::vector<ClipInfo>& clips);
 

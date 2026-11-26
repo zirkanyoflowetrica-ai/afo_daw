@@ -29,6 +29,7 @@ py::dict toDict (const afo::ClipInfo& c)
     py::dict d;
     d["id"] = c.id; d["track_id"] = c.trackId; d["start"] = c.start; d["length"] = c.length; d["offset"] = c.offset;
     d["gain_db"] = c.gainDb; d["fade_in"] = c.fadeIn; d["fade_out"] = c.fadeOut; d["source_length"] = c.sourceLength;
+    d["speed"] = c.speed; d["semitones"] = c.semitones;
     return d;
 }
 
@@ -373,6 +374,8 @@ PYBIND11_MODULE (afo_audio, m)
         .def ("set_clip_fades", [] (afo::Engine& e, long long id, double fi, double fo) { return toDict (e.setClipFades (id, fi, fo)); },
               py::arg ("clip_id"), py::arg ("fade_in"), py::arg ("fade_out"))
         .def ("clip_peak_db", &afo::Engine::clipPeakDb, py::arg ("clip_id"))
+        .def ("set_clip_stretch", [] (afo::Engine& e, long long id, double speed, float semi) { return toDict (e.setClipStretch (id, speed, semi)); },
+              py::arg ("clip_id"), py::arg ("speed"), py::arg ("semitones"))
         // plugins VST3 externos
         .def ("scan_plugins", [] (afo::Engine& e, const std::vector<std::string>& extra)
               {
@@ -404,6 +407,8 @@ PYBIND11_MODULE (afo_audio, m)
                       c.gainDb = d.contains ("gain_db") ? d["gain_db"].cast<float>() : 0.0f;
                       c.fadeIn = d.contains ("fade_in") ? d["fade_in"].cast<double>() : 0.0;
                       c.fadeOut = d.contains ("fade_out") ? d["fade_out"].cast<double>() : 0.0;
+                      c.speed = d.contains ("speed") ? d["speed"].cast<double>() : 1.0;
+                      c.semitones = d.contains ("semitones") ? d["semitones"].cast<float>() : 0.0f;
                       v.push_back (c);
                   }
                   return toList (e.setClips (t, v));

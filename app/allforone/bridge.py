@@ -953,6 +953,45 @@ class Bridge(QObject):
                 return str(p)
         return ""
 
+    # --- Tempo y tonalidad de un clip (F11): análisis en otro hilo, el motor estira y transpone ------
+    @Slot(int, float, float, result=str)
+    @_safe
+    def clipAnalyze(self, track_id: int, clip_id: float, near_bpm: float) -> str:
+        """Tempo y tonalidad del trozo de archivo que suena en el clip; llega por `aiEvent` («aiTempoKey»)."""
+        if (g := self._guard()):
+            return g
+        src = self._playing_path(track_id)
+        if not src:
+            return _err("La pista no tiene audio que analizar")
+        c = next((c for c in self.host.engine.clips(int(track_id)) if c["id"] == int(clip_id)), None)
+        if c is None:
+            return _err("El clip ya no existe")
+        sp = float(c.get("speed", 1.0)) or 1.0
+        job = {"type": "aiTempoKey", "trackId": int(track_id), "clip": int(clip_id),
+               "speed": sp, "semitones": float(c.get("semitones", 0.0))}
+        start, length = c["offset"] * sp, c["length"] * sp        # en segundos del archivo
+
+        def work():
+            from . import analysis
+            try:
+                r = analysis.analyze_file(src, start, length, near_bpm)
+                out = {**job, "ok": True, **r}
+            except Exception as exc:
+                out = {**job, "ok": False, "error": f"No se pudo analizar: {exc}"}
+            self._mixer_events.put(out)
+
+        threading.Thread(target=work, name="afo-tempokey", daemon=True).start()
+        return _ok(started=True, **job)
+
+    @Slot(str, str, str, str, result=int)
+    def keyShift(self, from_key: str, from_scale: str, to_key: str, to_scale: str) -> int:
+        """Semitonos (−6…+5) para llevar lo que está en una tonalidad a otra (relativos iguales)."""
+        from . import analysis
+        try:
+            return analysis.semitones_between(from_key, from_scale, to_key, to_scale)
+        except Exception:
+            return 0
+
     # --- Vocal Align (AF-67): la toma se ajusta en el tiempo a una voz guía ----------------
     def _file_start(self, track_id: int) -> float:
         """Segundo del proyecto en que cae el principio del archivo de la pista (por su primer clip)."""
@@ -1144,7 +1183,7 @@ class Bridge(QObject):
     @Slot(int, str, result=str)
     @_safe
     def clipEdit(self, track_id: int, op_json: str) -> str:
-        """Una edición de clip: range (mover/recortar), split, dup, remove, gain, fades, normalize o set
+        """Una edición de clip: range (mover/recortar), split, dup, remove, gain, fades, normalize, stretch o set
         (sustituir todos: deshacer y abrir proyecto). Devuelve los clips de la pista y su duración."""
         if (g := self._guard()):
             return g
@@ -1170,6 +1209,8 @@ class Bridge(QObject):
                 if peak <= -99:
                     return _err("El clip está en silencio: no se puede normalizar")
                 eng.set_clip_gain(cid, float(op.get("target", -1.0)) - peak)
+            elif kind == "stretch":             # F11: velocidad y semitonos (SoundTouch en el motor)
+                eng.set_clip_stretch(cid, float(op.get("speed", 1.0)), float(op.get("semitones", 0.0)))
             elif kind == "set":
                 src = op.get("source") or ""           # deshacer un «Rehacer con IA»: vuelve el archivo anterior
                 if src and src != (self.host.tracks.get(int(track_id)) or {}).get("originalPath"):

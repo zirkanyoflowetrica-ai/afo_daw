@@ -1176,8 +1176,21 @@ namespace
         r.gainDb = c.getGainDB();
         r.fadeIn = c.getFadeIn().inSeconds();
         r.fadeOut = c.getFadeOut().inSeconds();
-        r.sourceLength = c.getSourceLength().inSeconds();
+        r.speed = c.getSpeedRatio();
+        r.semitones = c.getPitchChange();
+        r.sourceLength = c.getSourceLength().inSeconds() / std::max (0.01, r.speed);
         return r;
+    }
+
+    // Velocidad y tono de un clip (F11). SoundTouch en tiempo real: sin archivo intermedio que esperar
+    void applyStretch (te::WaveAudioClip& c, double speed, float semitones)
+    {
+        const bool on = std::abs (speed - 1.0) > 1e-6 || std::abs (semitones) > 1e-4f;
+        c.setUsesProxy (false);
+        c.setResamplingQuality (te::ResamplingQuality::sincMedium);
+        c.setTimeStretchMode (on ? te::TimeStretcher::soundtouchBetter : te::TimeStretcher::disabled);
+        c.setSpeedRatio (speed);
+        c.setPitchChange (semitones);
     }
 
     // Id de la pista de AllForOne que contiene el clip
@@ -1222,7 +1235,7 @@ ClipInfo Engine::setClipRange (long long clipId, double start, double length, do
 {
     requireMessageThread();
     auto* c = waveClip (*impl->edit, clipId);
-    const double src = c->getSourceLength().inSeconds();
+    const double src = c->getSourceLength().inSeconds() / std::max (0.01, c->getSpeedRatio());
     offset = juce::jlimit (0.0, std::max (0.0, src - 0.01), offset);
     length = juce::jlimit (0.01, std::max (0.01, src - offset), length);
     start = std::max (0.0, start);
@@ -1266,6 +1279,8 @@ ClipInfo Engine::duplicateClip (long long clipId)
                                          { { start, pos.getLength() }, pos.getOffset() }, false);
     if (copy == nullptr)
         throw std::runtime_error ("afo_audio: Tracktion no pudo duplicar el clip");
+    applyStretch (*copy, c->getSpeedRatio(), c->getPitchChange());
+    copy->setPosition ({ { start, pos.getLength() }, pos.getOffset() });
     copy->setGainDB (c->getGainDB());
     copy->setFadeIn (c->getFadeIn());
     copy->setFadeOut (c->getFadeOut());
@@ -1304,6 +1319,26 @@ ClipInfo Engine::setClipFades (long long clipId, double fadeIn, double fadeOut)
     return clipInfoOf (*c, trackIdOf (impl->slots, *c));
 }
 
+ClipInfo Engine::setClipStretch (long long clipId, double speed, float semitones)
+{
+    requireMessageThread();
+    auto* c = waveClip (*impl->edit, clipId);
+    speed = juce::jlimit (0.25, 4.0, speed);
+    semitones = juce::jlimit (-24.0f, 24.0f, semitones);
+    const double f = c->getSpeedRatio() / speed;          // > 1: más lento, el clip se alarga
+    auto pos = c->getPosition();
+    const double fin = c->getFadeIn().inSeconds() * f, fout = c->getFadeOut().inSeconds() * f;
+    applyStretch (*c, speed, semitones);
+    c->setPosition ({ { pos.getStart(), te::TimeDuration::fromSeconds (pos.getLength().inSeconds() * f) },
+                      te::TimeDuration::fromSeconds (pos.getOffset().inSeconds() * f) });
+    c->setFadeIn (te::TimeDuration::fromSeconds (fin));
+    c->setFadeOut (te::TimeDuration::fromSeconds (fout));
+    const int tid = trackIdOf (impl->slots, *c);
+    if (tid) refreshLength (impl->slot (tid));
+    impl->edit->getTransport().ensureContextAllocated();
+    return clipInfoOf (*c, tid);
+}
+
 float Engine::clipPeakDb (long long clipId)
 {
     requireMessageThread();
@@ -1340,6 +1375,9 @@ std::vector<ClipInfo> Engine::setClips (int trackId, const std::vector<ClipInfo>
                                             te::TimeDuration::fromSeconds (std::max (0.0, ci.offset)) }, false);
         if (w == nullptr)
             throw std::runtime_error ("afo_audio: Tracktion no pudo crear el clip");
+        applyStretch (*w, ci.speed, ci.semitones);
+        w->setPosition ({ { te::TimePosition::fromSeconds (std::max (0.0, ci.start)), te::TimeDuration::fromSeconds (std::max (0.01, ci.length)) },
+                          te::TimeDuration::fromSeconds (std::max (0.0, ci.offset)) });
         w->setGainDB (ci.gainDb);
         w->setFadeIn (te::TimeDuration::fromSeconds (ci.fadeIn));
         w->setFadeOut (te::TimeDuration::fromSeconds (ci.fadeOut));

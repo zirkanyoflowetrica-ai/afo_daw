@@ -52,7 +52,7 @@ Window {
     Timer { interval: 2500; repeat: true; running: win.engineOk; onTriggered: win.refreshDevice() }
     property bool playing: false
     property real posSec: 0                   // posición del motor en segundos
-    property int bpm: 96
+    property real bpm: 96
     property int step: -1                     // semicorchea dentro de los 16 compases (como la plantilla)
     property var tracks: []
     property int selected: -1
@@ -141,6 +141,9 @@ Window {
         case "clip.align": return clipPicked && !!a.alignGuide && !sq.alignUid
         case "clip.pitch": return clipPicked && !!a.selTrack && a.selTrack.id > 0 && !sq.pitchBusy
         case "clip.stems": return clipPicked && !!a.selTrack && a.selTrack.type === "audio" && !sq.splitting
+        case "clip.tempoKey": case "clip.toProjectTempo": case "clip.projectToTempo": case "clip.toProjectKey":
+        case "clip.projectToKey": return clipPicked && !(tkInfo && tkInfo.busy)
+        case "clip.original": return clipPicked && ((a.selInfo.speed || 1) !== 1 || (a.selInfo.semitones || 0) !== 0)
         case "track.solo": case "track.mute": case "track.remove": return !!t
         case "track.effects": return !!t && t.id > 0
         case "track.stems": return !!t && t.type === "audio" && t.id >= 0 && !sq.splitting
@@ -215,6 +218,12 @@ Window {
         "clip.align": function () { sq.alignTrack(arrange.clipUid, arrange.alignGuide.uid) },
         "clip.pitch": function () { var id = arrange.selTrack.id; tuneBody.trackId = id; goTo("afina"); sq.pitchAnalyze(id) },
         "clip.stems": function () { sq.splitStems(arrange.selTrack.id) },
+        "clip.tempoKey": function () { tempoKey("clip.tempoKey") },
+        "clip.toProjectTempo": function () { tempoKey("clip.toProjectTempo") },
+        "clip.projectToTempo": function () { tempoKey("clip.projectToTempo") },
+        "clip.toProjectKey": function () { tempoKey("clip.toProjectKey") },
+        "clip.projectToKey": function () { tempoKey("clip.projectToKey") },
+        "clip.original": function () { tempoKey("clip.original") },
         "mix.auto": function () { mx.mix(false) },
         "mix.remix": function () { mx.mix(true) },
         "mix.abA": function () { mx.bypass("A") },
@@ -243,6 +252,113 @@ Window {
         return true
     }
     Shortcut { sequence: "Ctrl+K"; onActivated: palette.open() }
+
+    // ---------------- tempo y tonalidad (F11): audio ⇄ proyecto, como en un DAW profesional ----------------
+    // Tonalidad del proyecto: la que se ve en la cabecera; el Afinador y la IA la usan
+    property var songKey: ({ key: "", scale: "" })
+    readonly property var keyNames: ["Do", "Do#", "Re", "Re#", "Mi", "Fa", "Fa#", "Sol", "Sol#", "La", "La#", "Si"]
+    readonly property var keyCodes: ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
+    readonly property var keyOptions: {
+        var o = [["", "—"]]
+        for (var i = 0; i < 12; i++) o.push([keyCodes[i] + "|Mayor", keyNames[i] + " mayor"])
+        for (var j = 0; j < 12; j++) o.push([keyCodes[j] + "|Menor natural", keyNames[j] + " menor"])
+        return o
+    }
+    function keyLabel(k, s) { var i = keyCodes.indexOf(k); return i < 0 ? "—" : keyNames[i] + (String(s).indexOf("Menor") === 0 ? " menor" : " mayor") }
+    function setSongKey(k, s, quiet) {
+        songKey = { key: k || "", scale: k ? s : "" }
+        if (k) mx.setTune({ key: k, scale: s })
+        if (!quiet) markDirty()
+    }
+    property var audioInfo: ({})            // uid de la pista → {bpm, key, scale, busy, error}
+    property string tkPending: ""           // orden que espera al análisis
+    readonly property var tkInfo: arrange.clipUid ? (audioInfo[arrange.clipUid] || null) : null
+    function setAudioInfo(uid, v) { var a = Object.assign({}, audioInfo); a[uid] = v; audioInfo = a }
+    function analyzeClip(then) {
+        var t = arrange.selTrack, c = arrange.selInfo
+        if (!t || !c) return false
+        tkPending = then || ""
+        var r = call("clipAnalyze", t.id, c.id, bpm)
+        if (!r.ok) { toast(r.error); tkPending = ""; return false }
+        setAudioInfo(t.uid, Object.assign({}, audioInfo[t.uid] || {}, { busy: true, error: "" }))
+        toast("Analizando el tempo y la tonalidad de «" + t.name + "»…")
+        return true
+    }
+    function onTempoKey(ev) {
+        var uid = ""
+        for (var i = 0; i < tracks.length; i++) if (tracks[i].id === ev.trackId) uid = tracks[i].uid
+        if (!uid) return
+        if (!ev.ok) { setAudioInfo(uid, { busy: false, error: ev.error }); toast(ev.error); tkPending = ""; return }
+        var info = { busy: false, error: "", bpm: ev.tempo.bpm, raw: ev.tempo.raw, key: ev.key.key, scale: ev.key.scale,
+                     sure: ev.tempo.confidence >= 0.3 && ev.key.confidence >= 0.2 }
+        setAudioInfo(uid, info)
+        toast("«" + sq.trackOf(uid).name + "»: " + (info.bpm ? info.bpm + " BPM" : "sin pulso claro") + " · "
+              + (info.key ? keyLabel(info.key, info.scale) : "sin tonalidad clara") + (info.sure ? "" : " (dudoso: puedes corregirlo)"))
+        var next = tkPending; tkPending = ""
+        if (next && next !== "clip.tempoKey") runAction(next)
+    }
+    // Corregir a mano lo detectado (el panel de tempo y tonalidad)
+    function setAudioTempo(uid, v) { setAudioInfo(uid, Object.assign({}, audioInfo[uid] || {}, { bpm: v })) }
+    function setAudioKey(uid, k, s) { setAudioInfo(uid, Object.assign({}, audioInfo[uid] || {}, { key: k, scale: s })) }
+    function clipStretch(speed, semis) {
+        var c = arrange.selInfo; if (!c) return null
+        return arrange.edit(arrange.clipUid, { op: "stretch", clip: c.id, speed: speed, semitones: semis })
+    }
+    function keyShift(fk, fs, tk, ts) { return afo.keyShift(fk, fs, tk, ts) }
+    // Las cuatro órdenes (y volver al original). Si falta el análisis, lo hace y sigue sola.
+    function tempoKey(id) {
+        var t = arrange.selTrack, c = arrange.selInfo
+        if (!t || !c) return
+        var info = audioInfo[t.uid]
+        if (id === "clip.original") { clipStretch(1, 0); toast("«" + t.name + "» vuelve a su tempo y su tono"); return }
+        if (id === "clip.tempoKey") { tkBox.openFor(t.uid); if (!info || !info.bpm) analyzeClip(id); return }
+        if (!info || info.busy || (!info.bpm && !info.key)) { if (!info || !info.busy) analyzeClip(id); return }
+        var sp = c.speed || 1, se = c.semitones || 0
+        if (id === "clip.toProjectTempo") {
+            if (!info.bpm) { toast("No se encontró un pulso claro en el audio: escribe su tempo en «Tempo y tonalidad…»"); return }
+            clipStretch(bpm / info.bpm, se)
+            toast("«" + t.name + "» a " + bpm + " BPM (estaba a " + info.bpm + "). Ctrl+Z lo deshace")
+        } else if (id === "clip.projectToTempo") {
+            if (!info.bpm) { toast("No se encontró un pulso claro en el audio: escribe su tempo en «Tempo y tonalidad…»"); return }
+            if (sp !== 1) clipStretch(1, se)
+            applyTempo(info.bpm)
+            toast("El proyecto pasa a " + info.bpm + " BPM, el tempo de «" + t.name + "»")
+        } else if (id === "clip.toProjectKey") {
+            if (!songKey.key) { toast("El proyecto aún no tiene tonalidad: elígela en la cabecera (Tono) o usa «Proyecto a la tonalidad del audio»"); return }
+            if (!info.key) { toast("No se encontró una tonalidad clara: elígela en «Tempo y tonalidad…»"); return }
+            var n = keyShift(info.key, info.scale, songKey.key, songKey.scale)
+            clipStretch(sp, n)
+            toast("«" + t.name + "» de " + keyLabel(info.key, info.scale) + " a " + keyLabel(songKey.key, songKey.scale)
+                  + " (" + (n > 0 ? "+" : "") + n + " semitonos). Ctrl+Z lo deshace")
+        } else if (id === "clip.projectToKey") {
+            if (!info.key) { toast("No se encontró una tonalidad clara: elígela en «Tempo y tonalidad…»"); return }
+            if (se !== 0) clipStretch(sp, 0)
+            if (!songKey.key) { setSongKey(info.key, info.scale); toast("Tonalidad del proyecto: " + keyLabel(info.key, info.scale)); return }
+            var m = keyShift(songKey.key, songKey.scale, info.key, info.scale)
+            var moved = transposeProject(m, t.uid)
+            setSongKey(info.key, info.scale)
+            toast("Proyecto a " + keyLabel(info.key, info.scale) + " (" + (m > 0 ? "+" : "") + m + " semitonos): " + moved + " pista(s) transpuestas")
+        }
+    }
+    // Transpone el proyecto: los clips de audio (en el motor) y las notas de los instrumentos; la batería no
+    function transposeProject(n, exceptUid) {
+        if (!n) return 0
+        var moved = 0
+        for (var i = 0; i < tracks.length; i++) {
+            var t = tracks[i]
+            if (t.uid === exceptUid || t.id < 0) continue
+            if ((t.type === "audio" || t.type === "voz") && (t.aclips || []).length) {
+                var cs = t.aclips.map(function (c) { return Object.assign({}, c, { semitones: Math.max(-24, Math.min(24, (c.semitones || 0) + n)) }) })
+                var r = call("clipEdit", t.id, JSON.stringify({ op: "set", clips: cs }))
+                if (r.ok) { sq.replace(t.uid, { aclips: r.clips }); moved++ }
+            } else if (t.type === "inst") {
+                var cfg = Object.assign({}, t.cfg); cfg.tr = Math.max(-24, Math.min(24, (cfg.tr || 0) + n))
+                sq.replace(t.uid, { cfg: cfg }); sq.update(t.uid); moved++
+            }
+        }
+        markDirty()
+        return moved
+    }
     Shortcut { sequences: [StandardKey.Open]; onActivated: pj.open("") }
     Shortcut { sequences: [StandardKey.Save]; onActivated: pj.save(false) }
     Shortcut { sequence: "Ctrl+Shift+S"; onActivated: pj.save(true) }
@@ -609,7 +725,7 @@ Window {
     }
     function trackLevel(id) { var v = trackDb[String(id)]; return v === undefined ? -100 : v }
     function setMaster(v) { masterPos = v; if (engineOk) call("setMasterVolume", v) }
-    function applyTempo(v) { bpm = v; bpmInput.text = String(v); if (engineOk) call("setTempo", v) }
+    function applyTempo(v) { v = Math.round(v * 100) / 100; bpm = v; bpmInput.text = String(v); if (engineOk) call("setTempo", v) }
     function setMasterProcessing(drive, tone, lim) {
         masterDrive = drive; masterTone = tone; limiter = lim
         if (engineOk) call("setMasterProcessing", drive, tone, lim)
@@ -640,7 +756,7 @@ Window {
     Connections {
         target: afo
         function onAiEvent(s) {
-            try { var ev = JSON.parse(s); if (!lb.onAiEvent(ev)) sq.onAiEvent(ev) } catch (e) { console.warn(e) }
+            try { var ev = JSON.parse(s); if (ev.type === "aiTempoKey") win.onTempoKey(ev); else if (!lb.onAiEvent(ev)) sq.onAiEvent(ev) } catch (e) { console.warn(e) }
         }
         function onPluginScanEvent(s) { try { win.onScanEvent(JSON.parse(s)) } catch (e) { console.warn(e) } }
         function onStateChanged(s) {
@@ -731,6 +847,7 @@ Window {
     ActionMenu { id: barMenu; objectName: "barMenu"; studio: win; property string menu: "" }
     ActionMenu { id: ctxMenu; objectName: "ctxMenu"; studio: win }
     CommandPalette { id: palette; objectName: "palette"; studio: win }
+    TempoKeyBox { id: tkBox; objectName: "tempoKeyBox"; studio: win }
     // Clic derecho en el Arreglo: el clip (o la pista) ya está elegido; sale su menú donde está el ratón
     function openContext(ctx, item, x, y) { ctxMenu.ctx = ctx; ctxMenu.items = actionsCtx(ctx); ctxMenu.openAt(item, x, y) }
 
@@ -835,12 +952,22 @@ Window {
                             text: "96"
                             color: Theme.ink; selectByMouse: true
                             font.family: Theme.font; font.pixelSize: 14; font.weight: 500
-                            validator: IntValidator { bottom: 1; top: 220 }
+                            validator: DoubleValidator { bottom: 1; top: 220; decimals: 2; notation: DoubleValidator.StandardNotation }
                             onTextEdited: {
-                                var v = parseInt(text)
+                                var v = parseFloat(text)
                                 if (v >= 40 && v <= 220) { win.bpm = v; if (win.engineOk) win.call("setTempo", v) }
                             }
                         }
+                    }
+                    Text { text: "Tono"; color: Theme.ink; font.family: Theme.font; font.pixelSize: 13; font.weight: 600
+                           anchors.verticalCenter: parent.verticalCenter }
+                    Select {
+                        objectName: "songKey"
+                        width: 118; anchors.verticalCenter: parent.verticalCenter
+                        options: win.keyOptions
+                        current: win.songKey.key ? win.songKey.key + "|" + win.songKey.scale : ""
+                        tip: "Tonalidad del proyecto: la usan el Afinador, la IA y «Audio a la tonalidad del proyecto» (clic derecho en un clip)"
+                        onPicked: function (v) { var p = v.split("|"); win.setSongKey(p[0], p[1] || "") }
                     }
                 }
             }

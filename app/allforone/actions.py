@@ -57,6 +57,12 @@ _A = [
     ("clip.align", "Alinear a la guía", "Clip", 4, "", "Ajusta el tiempo de su pista a la pista guía sin cambiar el tono"),
     ("clip.pitch", "Editar tono", "Clip", 4, "", "Analiza las notas de la voz y abre el editor de tono"),
     ("clip.stems", "Separar en pistas", "Clip", 4, "", "Demucs: separa la pista del clip en instrumentos"),
+    ("clip.tempoKey", "Tempo y tonalidad…", "Clip", 5, "", "Detecta el tempo y la tonalidad del audio y los acomoda"),
+    ("clip.toProjectTempo", "Audio al tempo del proyecto", "Clip", 5, "", "Estira el clip al tempo del proyecto sin cambiar su tono"),
+    ("clip.projectToTempo", "Proyecto al tempo del audio", "Clip", 5, "", "Pone el proyecto al tempo detectado en el audio"),
+    ("clip.toProjectKey", "Audio a la tonalidad del proyecto", "Clip", 5, "", "Transpone el clip a la tonalidad del proyecto sin cambiar su tempo"),
+    ("clip.projectToKey", "Proyecto a la tonalidad del audio", "Clip", 5, "", "Transpone el resto del proyecto (audio e instrumentos) a la tonalidad del audio"),
+    ("clip.original", "Tempo y tono originales", "Clip", 5, "", "El clip vuelve a su velocidad y su tono"),
     # Mezcla
     ("mix.auto", "Mezcla automática", "Mezcla", 1, "", "La IA pone faders, paneo y efectos en las tiras (Ctrl+Z en cada efecto)"),
     ("mix.remix", "Volver a mezclar", "Mezcla", 1, "", "Repite la mezcla automática con los ajustes de ahora"),
@@ -83,13 +89,14 @@ _A = [
 # Clic derecho: qué órdenes salen sobre un clip de audio y sobre la cabecera de una pista
 CTX_CLIP = ("clip.split", "clip.duplicate", "clip.delete", "clip.gainUp", "clip.gainDown", "clip.normalize",
             "clip.fadeIn", "clip.fadeOut", "clip.noFades", "clip.repaint", "clip.cover", "clip.align",
-            "clip.pitch", "clip.stems")
+            "clip.pitch", "clip.stems", "clip.tempoKey", "clip.toProjectTempo", "clip.projectToTempo",
+            "clip.toProjectKey", "clip.projectToKey", "clip.original")
 CTX_TRACK = ("track.solo", "track.mute", "track.effects", "track.stems", "track.generate", "track.newAudio",
              "track.newInst", "track.newDrum", "track.remove")
 # Órdenes que borran: piden un segundo clic en la misma fila (confirmación en el sitio, guía de diseño)
 CONFIRM = {"track.remove": "¿Quitar la pista? Clic otra vez", "clip.delete": "¿Borrar el clip? Clic otra vez",
            "edit.delete": "¿Borrar el clip? Clic otra vez"}
-AI = {"track.generate", "track.stems", "clip.repaint", "clip.cover", "clip.align", "clip.pitch", "clip.stems",
+AI = {"clip.tempoKey", "track.generate", "track.stems", "clip.repaint", "clip.cover", "clip.align", "clip.pitch", "clip.stems",
       "mix.auto", "mix.remix", "mix.master"}
 
 

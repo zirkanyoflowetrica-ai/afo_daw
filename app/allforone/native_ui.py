@@ -301,6 +301,18 @@ def _native_daw_checks(rep, app, host, window, bridge, track_id) -> None:
               and len(eng_clips) == 1 and un["redo"] == 2 and None not in tools,
               {"dividido": [round(c["length"], 2) for c in sp["clips"]], "deshecho": len(eng_clips),
                "herramientas": [t is not None for t in tools]})
+    # F11: estirar y transponer un clip desde el Arreglo (SoundTouch en el motor) y deshacerlo
+    c0 = json.loads(bridge.clipList(track_id))["clips"][0]
+    st = lay("arrClip", uid, {"op": "stretch", "clip": c0["id"], "speed": 1.25, "semitones": 2})
+    sc = st["clips"][0] if st.get("clips") else {}
+    un = lay("arrUndo", uid)
+    back = json.loads(bridge.clipList(track_id))["clips"][0]
+    rep.check("tempo y tono de un clip: estirar ×1,25 y +2 semitonos, y Ctrl+Z lo devuelve",
+              st.get("ok") and abs(sc.get("length", 0) - c0["length"] / 1.25) < 0.02 and sc.get("semitones") == 2
+              and abs(back["length"] - c0["length"]) < 0.02 and back["speed"] == 1.0 and back["semitones"] == 0,
+              {"estirado": sc, "deshecho": back})
+    rep.check("tempo y tonalidad: tono del proyecto en la cabecera y panel del clic derecho",
+              window.findChild(QObject, "songKey") is not None and window.findChild(QObject, "tempoKeyBox") is not None)
     z1 = lay("zones")
     rep.check("tamaño fijo: ninguna zona cambia de tamaño por su contenido", z0 == z1,
               {k: (z0.get(k), z1.get(k)) for k in z1 if z0.get(k) != z1.get(k)})

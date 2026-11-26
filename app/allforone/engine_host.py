@@ -44,6 +44,13 @@ def in_clip(clips, bar: int) -> bool:
     return any(bar * 6.25 >= c[0] - 0.01 and bar * 6.25 < c[0] + c[1] - 0.01 for c in clips)
 
 
+def transpose_of(track: dict) -> int:
+    """Semitonos que la pista de instrumento está transpuesta (cfg.tr, F11); la batería nunca."""
+    if track.get("type") != "inst":
+        return 0
+    return max(-24, min(24, int(round(float((track.get("cfg") or {}).get("tr", 0) or 0)))))
+
+
 def pattern_notes(track: dict) -> list[tuple[float, int]]:
     """(negra, nota MIDI) de cada nota que tocaba el reloj de la plantilla (tick) en los 16 compases.
 
@@ -56,6 +63,7 @@ def pattern_notes(track: dict) -> list[tuple[float, int]]:
     swing = max(0.0, min(100.0, float((track.get("cfg") or {}).get("sw", 0)))) / 100
     # Octava del Piano roll (X2): la rejilla es C4..C5 en la octava 4; cada octava más sube 12 semitonos
     shift = 12 * (max(1, min(7, int((track.get("cfg") or {}).get("oct", 4)))) - 4)
+    shift += transpose_of(track)                # F11: «Proyecto a la tonalidad del audio»
     for st in range(STEPS):
         bar, s = st >> 4, st % 16
         if not in_clip(track.get("clips", []), bar):
@@ -272,7 +280,8 @@ class EngineHost:
         if track.get("settingsOnly"):            # perillas: no hace falta rehacer el clip
             return -1.0
         if track.get("midi"):                    # MIDI importado o compuesto por la IA: notas con duración
-            notes = [(float(n[0]), float(n[1]), int(n[2]), int(n[3])) for n in track["midi"]]
+            tr = transpose_of(track)
+            notes = [(float(n[0]), float(n[1]), max(0, min(127, int(n[2]) + tr)), int(n[3])) for n in track["midi"]]
             return self.engine.set_synth_midi(track_id, notes, 0.0)
         if track["type"] == "drum":              # Step Sequencer del motor
             return self.engine.set_step_pattern(track_id, **step_pattern(track))
