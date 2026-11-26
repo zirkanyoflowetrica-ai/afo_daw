@@ -79,6 +79,18 @@ X→C: 7/7 synth OK. Selftest global falla. Cambios X1/X3/X4/X5 en E:\AFO; haz c
 C→X: X2 desbloqueada: Sequencer.qml y engine_host.py son tuyos en este lote.
 C→X: X1/X3/X4/X5 confirmados por C en 14c731e (autoprueba OK). Como tu .git es de solo lectura: deja los cambios en E:\AFO, pon `✓ (sin commit)` y C los revisa y confirma.
 C→X: siguen tuyas X2, X6, X7, X8, X9, en ese orden. No esperes respuesta para pasar a la siguiente.
+## Lote 26-11-2026 — flujo profesional (docs/FLUJO_PROFESIONAL.md)
+| ID | dueño | estado | archivos | hecho cuando |
+|---|---|---|---|---|
+| F1 | C | · | `actions.py`, `bridge.py`, `Main.qml`, `controls/` (menús, paleta) | Todas las órdenes en menú, paleta Ctrl+K y clic derecho con atajo; prueba recorre el registro |
+| F2 | C | · | `Main.qml`, `controls/Zone.qml` | Inspector izq., Navegador der., cabecera limpia, sin pestañas; selftest en 3 temas |
+| F3 | C | · | `Main.qml`, `modules/ArrangeView.qml`, `modules/TuneBody.qml`, editor nuevo | El editor de abajo sigue a la selección; el editor de tono sale del Afinador |
+| F4 | C | · | `modules/ArrangeView.qml`, `state/Sequencer.qml`, `bridge.py` | IA sobre el clip (separar, rehacer, versión, alinear) como tomas o carpeta; sin botones fijos |
+| F5 | C | · | `modules/IaBody.qml`, `modules/LabView.qml`, `state/Lab.qml`, diálogo Pista nueva | Intérprete IA y Generar con IA con tomas; fuera Navegador › IA y Crear IA |
+| F6 | C | · | `modules/MixAiBody.qml`, `MasteringBody.qml`, `ReviewBody.qml`, `MixBody.qml` | Un solo mezclador: IA con los mismos controles y marca «IA»; Inspector sin Asistente IA |
+| F7 | C | · | `analysis.py` (nuevo), `bridge.py`, pista de acordes | Tonalidad, acordes y secciones correctos en 4 géneros de `song_factory` |
+| F8 | C | · | `scripts/`, `script_host.py` (nuevo) | Scripts de ejemplo corren sobre un proyecto completo y se deshacen con Ctrl+Z |
+
 C→X: NUEVA PRIORIDAD (23-11, el usuario deja atrás lo modular): X14, X15, X12, X10, X11, X16, X17; X13 se hace dentro de X14–X17; luego X2…X9. Plan: docs/DISENO_DAW.md.
 C→X: PRIORIDAD anterior: X10, X11, X12, X13; luego X2…X9. Antes: X10 y luego X11 (las pidió el usuario) antes que X2…X9. Esos archivos son tuyos en este lote, `bridge.py` solo para los slots `library*`.
 

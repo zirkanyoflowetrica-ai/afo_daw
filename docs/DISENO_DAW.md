@@ -1,5 +1,7 @@
 # Diseño de AllForOne como DAW de uso diario (investigación y plan, 23-11-2026)
 
+> **26-11-2026:** §2 y §4 quedan sustituidos por `docs/FLUJO_PROFESIONAL.md` (IA dentro del flujo, un solo mezclador, menús, editor que sigue a la selección, Python).
+
 El usuario pidió dejar atrás la idea modular (paneles sueltos en un lienzo) y una interfaz para usar
 todos los días con todo lo que ya está integrado. Este documento resume cómo organizan la pantalla
 los DAW que la gente usa a diario y fija la distribución nueva. Manda sobre la parte de «módulos» de
