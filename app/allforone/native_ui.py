@@ -316,6 +316,36 @@ def _native_daw_checks(rep, app, host, window, bridge, track_id) -> None:
     z1 = lay("zones")
     rep.check("tamaño fijo: ninguna zona cambia de tamaño por su contenido", z0 == z1,
               {k: (z0.get(k), z1.get(k)) for k in z1 if z0.get(k) != z1.get(k)})
+    # F12: a cualquier tamaño de pantalla las zonas cubren la ventana sin huecos, la cabecera no se
+    # sale y la vista principal conserva sitio; en el Mezclador las tiras llenan el alto
+    size0, view0, bad, seen = (window.width(), window.height()), window.property("view"), {}, []
+    for w, h in ((1280, 720), (1600, 900), (1920, 1080), (2560, 1440)):
+        window.resize(w, h)
+        for v in ("arrange", "mixer"):
+            window.setProperty("view", v)
+            _wait(app, lambda: False, 0.35, host)
+            f = lay("fit")
+            W, H = int(f["w"]), int(f["h"])
+            if v == "arrange":
+                seen.append(f"{W}x{H}")
+            body = H - f["zones"]["menus"]["h"] - f["zones"]["cabecera"]["h"] - f["zones"]["estado"]["h"]
+            probs = [n for n, ok in (("huecos", f["covered"] == W * H),
+                                     ("cabecera se sale", f["headerRight"] <= W),
+                                     ("vista principal estrecha", f["mainW"] >= 0.45 * W),
+                                     ("vista principal baja", f["mainH"] >= 0.45 * body),
+                                     ("tiras no llenan el alto", v != "mixer" or f["mixGap"] >= 0),
+                                     # desde 900 px de alto las tiras caben enteras (más bajo: se desplazan)
+                                     ("tiras cortadas", v != "mixer" or H < 900 or f["mixGap"] <= 1)) if not ok]
+            if probs:
+                bad[f"{W}x{H} {v}"] = (probs, {k: f[k] for k in ("covered", "headerRight", "mainW", "mainH", "mixGap")})
+            if v == "mixer" or w == 1280:
+                window.grabWindow().save(str(paths.logs_dir() / f"selftest_ventana_{W}x{H}_{v}.png"))
+    window.resize(*size0)
+    window.setProperty("view", view0)
+    _wait(app, lambda: False, 0.35, host)
+    # la ventana no pasa del tamaño de la pantalla: se informa de los tamaños que se midieron de verdad
+    rep.check("distribución sin huecos de 1280×720 hasta el tamaño de la pantalla (Arreglo y Mezclador)",
+              not bad, bad or {"medidos": seen})
     tracks = call("mixerSnapshot")["tracks"]
     i_drum = next((i for i, t in enumerate(tracks) if t["type"] == "drum"), -1)
     i_tone = next((i for i, t in enumerate(tracks) if t["id"] == track_id), -1)

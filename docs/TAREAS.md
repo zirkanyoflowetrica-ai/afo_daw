@@ -93,7 +93,7 @@ C→X: siguen tuyas X2, X6, X7, X8, X9, en ese orden. No esperes respuesta para 
 | F9 | C | ✓ | `theme/Theme.qml`, `templates/*/theme.json`, QML con colores fijos | Temas Oscuro/Grafito/Claro de una familia; 0 colores fijos; contraste ≥ 4,5:1 en los tres |
 | F10 | C | · | `Main.qml`, `controls/Backdrop.qml` (nuevo), ajustes | Fondo imagen/parallax opcional, apagado de fábrica; contraste intacto con fondo |
 | F11 | C | ✓ | `analysis.py`, `native/src/AfoEngine.*` (estirar y transponer clips), `actions.py`, `ArrangeView.qml` | Clic derecho en un audio: detectar tempo y tonalidad; audio → tempo/tono del proyecto (SoundTouch en el motor) o proyecto → tempo/tono del audio; prueba con proyectos de `song_factory` |
-| F12 | C | · | `Main.qml`, `controls/Zone.qml`, módulos | La ventana se reparte sin huecos a 1280×720, 1600×900, 1920×1080 y 2560×1440 (selftest mide los huecos) |
+| F12 | C | ✓ | `Main.qml`, `controls/Zone.qml`, módulos | La ventana se reparte sin huecos a 1280×720, 1600×900, 1920×1080 y 2560×1440 (selftest mide los huecos) |
 | F13 | C | · | `controls/HelpButton.qml` (nuevo), módulos con textos largos | Botón «?» en cada panel y efecto con su explicación; fuera los párrafos fijos de ayuda |
 
 C→X: NUEVA PRIORIDAD (23-11, el usuario deja atrás lo modular): X14, X15, X12, X10, X11, X16, X17; X13 se hace dentro de X14–X17; luego X2…X9. Plan: docs/DISENO_DAW.md.

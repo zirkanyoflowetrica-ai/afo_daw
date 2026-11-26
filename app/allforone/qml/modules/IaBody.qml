@@ -178,10 +178,10 @@ Column {
         Column {
             id: eqCol
             x: 10; y: 10; width: parent.width - 20; spacing: 6
-            Row {
+            Flow {                                   // estrecho: el selector baja debajo del texto
                 width: parent.width; spacing: 8
                 Text {
-                    width: parent.width - eqSel.width - 8; anchors.verticalCenter: parent.verticalCenter; wrapMode: Text.Wrap
+                    width: parent.width >= 420 ? parent.width - eqSel.width - 8 : parent.width; wrapMode: Text.Wrap
                     color: Theme.ink; font.family: Theme.font; font.pixelSize: 13; font.weight: 700
                     text: eqBox.eq ? "Perfil del equipo: " + eqBox.eq.profile.name
                           + " · " + (eqBox.eq.hardware.gpu || "sin gráfica") + " " + eqBox.eq.hardware.vram_gb + " GB"
@@ -189,7 +189,7 @@ Column {
                 }
                 Select {
                     id: eqSel
-                    width: 190
+                    width: Math.min(190, parent.width)
                     options: eqBox.eq ? [["auto", "Automático (" + eqBox.eq.profiles.filter(function (p) { return p.id === eqBox.eq.profile.auto })[0].name + ")"]]
                                   .concat(eqBox.eq.profiles.map(function (p) { return [p.id, p.name] })) : []
                     current: eqBox.eq ? eqBox.eq.profile.override : "auto"

@@ -41,29 +41,42 @@ Rectangle {
             id: tabRow
             visible: !(root.folded && root.vertical)
             x: 6; height: parent.height; spacing: 2
+            // F12: si las pestañas no caben (zona estrecha), todas se estrechan por igual y recortan el
+            // nombre; el tooltip lo da entero
+            readonly property real natW: {
+                var s = 0
+                for (var i = 0; i < tabRep.count; i++) { var it = tabRep.itemAt(i); if (it) s += it.nat + spacing }
+                return s
+            }
+            readonly property real availW: head.width - 6 - (extraLd.item && extraLd.visible ? extraLd.width + 6 : 0) - 38
+            readonly property real k: natW > availW && natW > 0 ? Math.max(0.3, availW / natW) : 1
             Repeater {
+                id: tabRep
                 model: root.tabs
                 Rectangle {
                     id: tb
                     required property var modelData
+                    readonly property real nat: tl.implicitWidth + 18
                     readonly property bool on: root.current === modelData[0] && !root.folded
                     anchors.verticalCenter: parent.verticalCenter
-                    width: tl.implicitWidth + 18; height: 26; radius: Theme.radius
+                    width: Math.max(24, Math.floor(nat * tabRow.k)); height: 26; radius: Theme.radius
                     // elegida: color de acento (texto negro); las demás, como el chip del modelo
                     color: on ? Theme.accent : Theme.chip
                     border.color: th.hovered && !on ? Theme.accent : Theme.line
                     border.width: 1
                     Text { id: tl; anchors.centerIn: parent; text: tb.modelData[1]
+                           width: Math.min(implicitWidth, tb.width - 8); elide: Text.ElideRight
                            color: tb.on ? Theme.inkOnAccent : Theme.chipInk
                            font.family: Theme.font; font.pixelSize: 12; font.weight: tb.on ? 700 : 600 }
                     HoverHandler { id: th }
-                    ToolTipLite { text: tb.modelData[2] || ""; show: th.hovered && text.length > 0 }
+                    ToolTipLite { text: (tl.truncated ? tb.modelData[1] + ": " : "") + (tb.modelData[2] || ""); show: th.hovered && text.length > 0 }
                     MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor
                                 onClicked: { root.current = tb.modelData[0]; root.folded = false; root.picked(tb.modelData[0]) } }
                 }
             }
         }
         Loader {
+            id: extraLd
             visible: !root.folded
             anchors { right: foldBtn.left; rightMargin: 6; verticalCenter: parent.verticalCenter }
             sourceComponent: root.extra

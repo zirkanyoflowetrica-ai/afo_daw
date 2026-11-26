@@ -16,6 +16,13 @@ ideas comunes son de interacción, no de aspecto: no se copia la apariencia de n
    estado. A la izquierda, el navegador. En el centro, la vista principal. Abajo, el detalle de lo
    seleccionado. Las zonas se pliegan, pero no se cambian de sitio: la memoria espacial es lo que
    hace rápido el uso diario.
+   El reparto se ajusta a la pantalla (F12, noviembre 2026), sin huecos:
+   - los laterales miden el 21 % y el 25 % del ancho, con un máximo de 390 y 460 px;
+   - el panel de abajo toma el alto del usuario hasta el 36 % del alto;
+   - la cabecera pasa a dos filas antes que salirse;
+   - las pestañas se estrechan;
+   - las tiras del Mezclador alargan o acortan sus faders para llenar el alto.
+   La autoprueba lo mide desde 1280×720 hasta el tamaño de la pantalla.
 2. **Dos vistas grandes y nada más:** Arreglo (línea de tiempo) y Mezclador (consola). Se cambia
    con una tecla (Tab o F3 en varios DAW). El resto (piano roll, editor de audio, efectos) es
    *detalle* de lo seleccionado, no una vista aparte.

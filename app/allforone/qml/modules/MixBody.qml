@@ -78,14 +78,6 @@ Column {
     }
     Timer { interval: 2000; repeat: true; running: root.visible && !!root.studio && root.studio.engineOk; onTriggered: root.refresh() }
 
-    // La Mezcla IA vive en el Inspector › Asistente IA (X17)
-    Row {
-        spacing: 8; bottomPadding: 10
-        Text { anchors.verticalCenter: parent.verticalCenter; text: "Mezcla IA y Master IA: en el Inspector › Asistente IA"
-               color: Theme.ink; font.family: Theme.font; font.pixelSize: 13; font.weight: 600 }
-        NeoButton { text: "Abrir"; fontSize: 12; padX: 8; padY: 2; shadow: 2; tip: "Muestra el Asistente IA en el Inspector"
-                    onClicked: root.studio.goTo("asist") }
-    }
     // ---------------- consola: CANALES / MIXER ----------------
     Rectangle {
         width: root.width
@@ -103,6 +95,11 @@ Column {
                 Row {
                     anchors.right: parent.right; anchors.rightMargin: 10; anchors.verticalCenter: parent.verticalCenter
                     spacing: 6
+                    Chip {                           // la Mezcla IA vive en el Inspector › Asistente IA (X17)
+                        text: "MEZCLA IA"; fill: Theme.pc.mezcla; ink: Theme.inkOnColor
+                        tip: "Mezcla IA y Master IA: abre el Asistente IA en el Inspector"
+                        onClicked: root.studio.goTo("asist")
+                    }
                     Chip {
                         objectName: "mixAddAux"
                         text: "+ AUX"; tip: "Nuevo bus Aux (reverb o eco compartidos): las pistas le mandan señal con sus envíos"
@@ -174,9 +171,9 @@ Column {
                                        font.family: Theme.font; font.pixelSize: 13; font.weight: 700 }
                                 Row {
                                     spacing: 5; anchors.horizontalCenter: parent.horizontalCenter
-                                    Fader { height: 170; value: root.studio.masterPos; tip: "Volumen master (70 = 0 dB)"
+                                    Fader { height: 170 + root.grow; value: root.studio.masterPos; tip: "Volumen master (70 = 0 dB)"
                                             onMoved: function (v) { root.studio.setMaster(v) } }
-                                    StereoMeter { height: 170; color2: Theme.pc.mezcla
+                                    StereoMeter { height: 170 + root.grow; color2: Theme.pc.mezcla
                                                   l: root.studio.playing ? MD.dbToPct(root.studio.masterDb[0]) : 0
                                                   r: root.studio.playing ? MD.dbToPct(root.studio.masterDb[1]) : 0 }
                                 }
@@ -194,7 +191,12 @@ Column {
     }
     DashedBox { visible: root.studio.tracks.length === 0; width: root.width; height: visible ? implicitHeight : 0; text: "Sin pistas." }
 
-    readonly property real stripH: 384 + insertsH + sendsH
+    // F12: las tiras llenan el alto de la vista; lo que sobra alarga los faders
+    property real fitHeight: 0
+    readonly property real baseStripH: 384 + insertsH + sendsH
+    // en pantallas bajas los faders se acortan (hasta 60 px) antes de cortar las tiras
+    readonly property real grow: fitHeight > 0 ? Math.max(-90, Math.floor(fitHeight - 66 - baseStripH)) : 0
+    readonly property real stripH: baseStripH + grow
     readonly property string rackName: {
         if (root.studio.rackTrack === 0) return "Master"
         var t = root.studio.tracks
@@ -282,10 +284,10 @@ Column {
                        font.family: Theme.font; font.pixelSize: 13; font.weight: 700 }
                 Row {
                     spacing: 5; anchors.horizontalCenter: parent.horizontalCenter
-                    Fader { height: 150; value: strip.track.vol; tip: "Volumen " + strip.track.name
+                    Fader { height: 150 + root.grow; value: strip.track.vol; tip: "Volumen " + strip.track.name
                             onMoved: function (v) { root.studio.setTrackMixUid(strip.track.uid, v, strip.track.pan) }
                             onReleased: root.studio.trackRelease(strip.track.uid) }
-                    StereoMeter { height: 150; color2: strip.cc
+                    StereoMeter { height: 150 + root.grow; color2: strip.cc
                                   l: root.studio.playing ? MD.dbToPct(root.studio.meterMode === "dB" ? strip.lr[0] : root.studio.stripValue(strip.tid)) : 0
                                   r: root.studio.playing ? MD.dbToPct(root.studio.meterMode === "dB" ? strip.lr[1] : root.studio.stripValue(strip.tid)) : 0 }
                 }

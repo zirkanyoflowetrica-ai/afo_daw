@@ -65,6 +65,13 @@ Window {
     property alias inspZone: inspZ
     property alias detailZone: detZ
     property real detailH: lu.clamp(savedLayout.detailH || 360, 200, 700)
+    // F12: la ventana se reparte sin huecos a cualquier tamaño. Los laterales y el panel de abajo
+    // toman su tamaño (el de fábrica o el que eligió el usuario) si caben; en pantallas pequeñas se
+    // estrechan para que la vista principal conserve al menos la mitad del ancho y del alto.
+    readonly property real bodyH: height - menuBar.height - header.height - statusBar.height
+    readonly property real navW: Math.round(lu.clamp(width * 0.21, 270, 390))
+    readonly property real inspW: Math.round(lu.clamp(width * 0.25, 330, 460))
+    readonly property real detailFitH: Math.round(Math.min(detailH, Math.max(180, bodyH * 0.36)))
     property var plugins: []                   // plugins VST3 encontrados: [{id, name, vendor, instrument, path}]
     property string pluginStatus: "Aún no se han buscado plugins."
     property bool pluginScanning: false
@@ -466,6 +473,20 @@ Window {
         return mixerSnapshot()
     }
     // Para la autoprueba: zonas fijas, ir a una página, plegar, contraste, vistas y temas
+    // F12: huecos y desbordes de la distribución a este tamaño de ventana
+    function fitReport() {
+        var r = zoneRects(), area = 0
+        for (var k in r) if (r[k].visible) area += r[k].w * r[k].h
+        var right = 0
+        for (var i = 0; i < leftGroup.children.length; i++) {
+            var c = leftGroup.children[i]
+            if (c.visible) right = Math.max(right, c.mapToItem(null, c.width, 0).x)
+        }
+        var mixFill = view === "mixer" ? Math.round(mixBody.height - mixFlick.height) : 0
+        return { w: Math.round(width), h: Math.round(height), zones: r, covered: Math.round(area),
+                 headerRight: Math.round(right), mainW: r.principal.w, mainH: r.principal.h, mixGap: mixFill,
+                 navW: r.navegador.w, inspW: r.inspector.w, detailH: r.detalle.h }
+    }
     function zoneRects() {
         var out = {}, z = { menus: menuBar, cabecera: header, navegador: navZ, principal: mainArea, inspector: inspZ, detalle: detZ, estado: statusBar }
         for (var k in z) { var it = z[k], p = it.mapToItem(null, 0, 0); out[k] = { x: Math.round(p.x), y: Math.round(p.y), w: Math.round(it.width), h: Math.round(it.height), visible: it.visible } }
@@ -473,6 +494,7 @@ Window {
     }
     function layoutCommand(what, a, b) {
         if (what === "zones") return zoneRects()
+        if (what === "fit") return fitReport()
         if (what === "actions") { loadActions()
                                   return { ids: actionsReg.map(function (x) { return x.id }),
                                            missing: actionsReg.filter(function (x) { return actionHandlers[x.id] === undefined }).map(function (x) { return x.id }),
@@ -838,10 +860,44 @@ Window {
                 }
             }
         }
-        Text {
-            anchors.right: parent.right; anchors.rightMargin: 10; anchors.verticalCenter: parent.verticalCenter
-            text: "Ctrl+K: buscar una orden"; color: Theme.inkDim; font.family: Theme.font; font.pixelSize: 12
-            MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: palette.open() }
+        // F12: proyecto y tema en la barra de menús, así la cabecera cabe en una fila desde 1280 px
+        Row {
+            anchors.right: parent.right; anchors.rightMargin: 8; anchors.verticalCenter: parent.verticalCenter
+            spacing: 10
+            Text {                                  // dónde vive el proyecto: Artista · Lanzamiento · Canción
+                objectName: "projectTitle"
+                width: Math.min(implicitWidth, Math.max(80, win.width - 900)); elide: Text.ElideRight
+                anchors.verticalCenter: parent.verticalCenter
+                text: pj.title + (win.dirty ? " •" : "")
+                color: Theme.ink; font.family: Theme.font; font.pixelSize: 13; font.weight: 700
+                HoverHandler { id: ptH }
+                ToolTipLite { text: (pj.file || pj.songTarget || "Sin guardar") + (win.dirty ? " · cambios sin guardar" : ""); show: ptH.hovered }
+            }
+            Row {                                   // selector de tema (carpetas de templates/)
+                spacing: 3
+                anchors.verticalCenter: parent.verticalCenter
+                Select {
+                    width: 140; fontSize: 12; padY: 2
+                    anchors.verticalCenter: parent.verticalCenter
+                    options: win.themes.map(function (t) { return [t.name, t.name] })
+                    current: Theme.name
+                    tip: "Tema · " + (win.themes.filter(function (t) { return t.name === Theme.name })[0] || { description: "" }).description
+                    onPicked: function (v) { win.setTheme(v) }
+                }
+                NeoButton { text: "↻"; tip: "Volver a leer la carpeta de temas (templates)"; padX: 6; padY: 1; fontSize: 12; shadow: 0
+                            anchors.verticalCenter: parent.verticalCenter
+                            onClicked: { win.loadThemes(); win.toast(win.themes.length + " temas en templates") } }
+                NeoButton { text: "📁"; tip: "Abrir la carpeta de temas: copia aquí la carpeta de un tema para usarlo"; padX: 6; padY: 1; fontSize: 12; shadow: 0
+                            anchors.verticalCenter: parent.verticalCenter
+                            onClicked: win.call("themeFolder") }
+            }
+            Text {
+                anchors.verticalCenter: parent.verticalCenter
+                text: "Ctrl+K: buscar"; color: Theme.inkDim; font.family: Theme.font; font.pixelSize: 12
+                MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: palette.open() }
+                HoverHandler { id: ckH }
+                ToolTipLite { text: "Buscar una orden: escribe lo que quieres hacer y pulsa Intro (Ctrl+K)"; show: ckH.hovered }
+            }
         }
     }
     ActionMenu { id: barMenu; objectName: "barMenu"; studio: win; property string menu: "" }
@@ -861,9 +917,10 @@ Window {
         color: Theme.header
         Rectangle { y: parent.height - Math.max(1, Theme.border); width: parent.width; height: Math.max(1, Theme.border); color: Theme.line }
 
-        Row {
+        Flow {
             id: leftGroup
             x: 14; y: 10
+            width: parent.width - 28
             spacing: 16
             Row {                                   // .transport
                 spacing: 6
@@ -973,32 +1030,6 @@ Window {
             }
             Row {                                   // .zoom
                 spacing: 6
-                Text {                              // dónde vive el proyecto: Artista · Lanzamiento · Canción
-                    width: Math.min(implicitWidth, 300); elide: Text.ElideRight
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: pj.title + (win.dirty ? " •" : "")
-                    color: Theme.ink; font.family: Theme.font; font.pixelSize: 13; font.weight: 700
-                    HoverHandler { id: ptH }
-                    ToolTipLite { text: (pj.file || pj.songTarget || "Sin guardar") + (win.dirty ? " · cambios sin guardar" : ""); show: ptH.hovered }
-                }
-                NeoButton { text: "Restaurar zonas"; tip: "Abre todas las zonas con su tamaño y sus pestañas de fábrica (Ctrl+Mayús+R)"; onClicked: win.resetLayout() }
-                Row {                               // selector de tema (carpetas de templates/)
-                    spacing: 4
-                    Text { text: "Tema"; anchors.verticalCenter: parent.verticalCenter; color: Theme.ink
-                           font.family: Theme.font; font.pixelSize: 13; font.weight: 600 }
-                    Select {
-                        width: 170; fontSize: 13; padY: 4
-                        anchors.verticalCenter: parent.verticalCenter
-                        options: win.themes.map(function (t) { return [t.name, t.name] })
-                        current: Theme.name
-                        tip: (win.themes.filter(function (t) { return t.name === Theme.name })[0] || { description: "" }).description
-                        onPicked: function (v) { win.setTheme(v) }
-                    }
-                    NeoButton { text: "↻"; tip: "Volver a leer la carpeta de temas (templates)"; padX: 6
-                                onClicked: { win.loadThemes(); win.toast(win.themes.length + " temas en templates") } }
-                    NeoButton { text: "📁"; tip: "Abrir la carpeta de temas: copia aquí la carpeta de un tema para usarlo"; padX: 6
-                                onClicked: win.call("themeFolder") }
-                }
                 NeoButton {
                     text: "⚙ Audio"
                     tip: "Driver (Windows Audio, DirectSound, ASIO4ALL…), dispositivo, frecuencia y búfer (Ctrl+,)"
@@ -1034,7 +1065,7 @@ Window {
         z: 4
         title: "Navegador"; vertical: true
         anchors { top: header.bottom; bottom: detZ.top; left: parent.left }
-        width: folded ? 34 : 390
+        width: folded ? 34 : win.navW
         foldTip: folded ? "Mostrar el navegador (Ctrl+B)" : "Plegar el navegador (Ctrl+B)"
         tabs: [["add", "Añadir", "Instrumentos, batería, voz, audio y plugins VST3: cada uno crea su pista"],
                ["fxlist", "Efectos", "Efectos nativos por categoría y VST3: doble clic añade a la pista elegida"],
@@ -1053,10 +1084,10 @@ Window {
             tab: 1
             visible: navZ.current === "add" && !navZ.folded
         }
-        ZonePage { zid: "fxlist"; tint: "fx"; minWidth: 300; Browser { id: fxBrowser; studio: win } }
-        ZonePage { zid: "recent"; tint: "pistas"; minWidth: 300; Browser { studio: win; mode: "home" } }
-        ZonePage { zid: "ia"; tint: "ia"; minWidth: 300; IaBody { seq: sq } }
-        ZonePage { zid: "audios"; tint: "audios"; minWidth: 300; AudiosBody { mixer: mx; studio: win } }
+        ZonePage { zid: "fxlist"; tint: "fx"; minWidth: 246; Browser { id: fxBrowser; studio: win } }
+        ZonePage { zid: "recent"; tint: "pistas"; minWidth: 246; Browser { studio: win; mode: "home" } }
+        ZonePage { zid: "ia"; tint: "ia"; minWidth: 246; IaBody { seq: sq } }
+        ZonePage { zid: "audios"; tint: "audios"; minWidth: 246; AudiosBody { mixer: mx; studio: win } }
     }
 
     // Inspector (derecha): asistente de mezcla y master, versiones y grabación
@@ -1065,7 +1096,7 @@ Window {
         z: 4
         title: "Inspector"; vertical: true
         anchors { top: header.bottom; bottom: detZ.top; right: parent.right }
-        width: folded ? 34 : 460
+        width: folded ? 34 : win.inspW
         foldTip: folded ? "Mostrar el inspector (Ctrl+I)" : "Plegar el inspector (Ctrl+I)"
         tabs: [["pista", "Pista", "Volumen, paneo, envíos y efectos de la pista elegida"],
                ["asist", "Asistente IA", "Mezcla IA, Master IA y Antes / Después en un sitio"],
@@ -1075,9 +1106,9 @@ Window {
         extra: srcToggle
         onFoldedChanged: if (!win.loading) win.saveLayout()
         onPicked: if (!win.loading) win.saveLayout()
-        ZonePage { id: pistaPage; zid: "pista"; tint: "mezcla"; minWidth: 360; Inspector { objectName: "inspector"; studio: win; mixer: mx; shown: pistaPage.shown } }
+        ZonePage { id: pistaPage; zid: "pista"; tint: "mezcla"; minWidth: 306; Inspector { objectName: "inspector"; studio: win; mixer: mx; shown: pistaPage.shown } }
         ZonePage {
-            id: abPage; zid: "asist"; tint: "mastia"; minWidth: 380
+            id: abPage; zid: "asist"; tint: "mastia"; minWidth: 306
             Column {
                 width: parent ? parent.width : 400; spacing: 14
                 MixAiBody { mixer: mx; studio: win }
@@ -1088,8 +1119,8 @@ Window {
                 ReviewBody { mixer: mx; studio: win; shown: abPage.shown }
             }
         }
-        ZonePage { zid: "master"; tint: "master"; minWidth: 380; MasterBody { studio: win; mixer: mx } }
-        ZonePage { zid: "cinta"; tint: "cinta"; minWidth: 360; CintaBody { seq: sq; studio: win } }
+        ZonePage { zid: "master"; tint: "master"; minWidth: 306; MasterBody { studio: win; mixer: mx } }
+        ZonePage { zid: "cinta"; tint: "cinta"; minWidth: 306; CintaBody { seq: sq; studio: win } }
     }
 
     // Vista principal: Arreglo ⇄ Mezclador (Tab)
@@ -1114,7 +1145,7 @@ Window {
                 x: 12; y: 10; width: parent.width - 24; height: parent.height - 20
                 contentWidth: mixBody.width; contentHeight: mixBody.height
                 clip: true; boundsBehavior: Flickable.StopAtBounds
-                MixBody { id: mixBody; width: Math.max(mixFlick.width, 700); mixer: mx; studio: win }
+                MixBody { id: mixBody; width: Math.max(mixFlick.width, 700); fitHeight: mixFlick.height; mixer: mx; studio: win }
             }
         }
         LabView { id: labView; objectName: "labView"; studio: win; anchors.fill: parent; visible: win.view === "lab" }
@@ -1141,7 +1172,7 @@ Window {
         z: 4
         title: "Detalle"
         anchors { left: parent.left; right: parent.right; bottom: statusBar.top }
-        height: folded ? headH : win.detailH
+        height: folded ? headH : win.detailFitH
         foldTip: folded ? "Mostrar el panel de detalle (Ctrl+E)" : "Plegar el panel de detalle (Ctrl+E)"
         tabs: [["piano", "Piano roll", "Notas de la pista de instrumento elegida"],
                ["inst", "Instrumento", "Sonido de la pista de instrumento: sintetizador del motor o VST3"],
@@ -1164,7 +1195,7 @@ Window {
                 cursorShape: Qt.SizeVerCursor
                 property real y0
                 property real h0
-                onPressed: function (m) { y0 = mapToItem(null, m.x, m.y).y; h0 = win.detailH }
+                onPressed: function (m) { y0 = mapToItem(null, m.x, m.y).y; h0 = win.detailFitH }
                 onPositionChanged: function (m) {
                     if (!pressed) return
                     win.detailH = lu.clamp(h0 - (mapToItem(null, m.x, m.y).y - y0), 200, Math.max(200, win.height - 320))
