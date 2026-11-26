@@ -235,6 +235,28 @@ function draw(ctx, w, h, fx, d, live) {
         ctx.strokeStyle = "#5ee0b0"; ctx.lineWidth = 2; ctx.stroke()
         return
     }
+    if (key === "fxlab") {
+        // Cuánto suena cada rama (cruce A↔B por igual potencia, nivel) y el seco, en barras
+        var c = v(fx, d, "cross") / 100
+        var gA = Math.min(1, Math.SQRT2 * Math.cos(c * Math.PI / 2)) * Math.pow(10, v(fx, d, "levelA") / 20)
+        var gB = Math.min(1, Math.SQRT2 * Math.sin(c * Math.PI / 2)) * Math.pow(10, v(fx, d, "levelB") / 20)
+        var bars = [["A", gA], ["B", gB], ["seco", v(fx, d, "dry") / 100]]
+        frame(ctx, w, h, [], [h / 2])
+        ctx.font = "11px sans-serif"
+        for (var bi = 0; bi < 3; bi++) {
+            var bw = (w - 16) / 3, bx = 4 + bi * (bw + 4), bhh = (h - 18) * Math.min(2, bars[bi][1]) / 2
+            ctx.fillStyle = bi === 2 ? pal.soft : pal.lcd
+            ctx.fillRect(bx, h - 14 - Math.min(h - 18, bhh), bw, Math.min(h - 18, bhh))
+            ctx.fillStyle = pal.lcd; ctx.fillText(bars[bi][0], bx + 2, h - 3)
+        }
+        return
+    }
+    if (key === "fxlab_b" || key === "fxlab_end") {         // separadores del FX Lab: sin pantalla propia
+        frame(ctx, w, h, [], [])
+        ctx.fillStyle = pal.lcd; ctx.font = "11px sans-serif"
+        ctx.fillText(key === "fxlab_b" ? "← rama A · rama B →" : "mezcla A + B + seco", 6, h / 2 + 4)
+        return
+    }
     if (key === "analyzer" && live && live.length > 1) {
         frame(ctx, w, h, [100, 1000, 10000].map(function (f) { return logX(f, w) }), [])
         ctx.beginPath()

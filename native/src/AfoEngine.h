@@ -86,6 +86,24 @@ struct EffectInfo
     std::string pluginId;                      // plugin VST3 externo ("" = efecto nativo)
 };
 
+// FX Lab (AF-62): una macro sobre un parámetro de un efecto de la misma pista
+struct MacroAssign
+{
+    int effectId = 0;
+    std::string paramId;
+    int macro = 1;                             // 1..4
+    float amount = 0;                          // −1..1 del recorrido del parámetro con la macro al 100 %
+};
+
+// Estado de un FX Lab: sus piezas, sus ramas (ids de efecto en orden) y la latencia compensada
+struct FxLabInfo
+{
+    bool linked = false;                       // «FX Lab», «Rama B» y «Fin» en orden en la pista
+    int splitId = 0, endId = 0;
+    std::vector<int> branchA, branchB;
+    double latencyA = 0, latencyB = 0;         // segundos
+};
+
 // Un plugin VST3 encontrado en el disco
 struct PluginDesc
 {
@@ -305,6 +323,11 @@ public:
     std::vector<std::pair<double, float>> effectAutomation (int effectId, const std::string& paramId) const;
     std::vector<float> effectMeters (int effectId);                   // [entrada dB, salida dB, propias...]
     std::vector<float> effectSpectrum (int effectId, int bands);      // espectro de la salida (dBFS)
+    // FX Lab: la macro 1..4 del FX Lab `labId` mueve `paramId` del efecto `effectId` (misma pista).
+    // amount 0 quita la asignación. Un parámetro lleva como mucho una macro
+    bool setEffectMacro (int labId, int macro, int effectId, const std::string& paramId, float amount);
+    std::vector<MacroAssign> effectMacros (int labId) const;
+    FxLabInfo fxLabInfo (int labId) const;
     // Antes / después de la cadena de una pista (0 = master): entrada del primer efecto activo y
     // salida del último. active = 0 si no hay efectos activos (entonces no hay nada que comparar).
     struct ChainScope { std::vector<float> pre, post; float preDb = -100, postDb = -100; int active = 0; };

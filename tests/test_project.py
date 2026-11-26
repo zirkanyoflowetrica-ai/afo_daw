@@ -54,8 +54,9 @@ def levels(eng, tmp_path, name):
 
 def test_presets_de_fabrica_validos():
     """Cada preset de fábrica nombra parámetros que existen y valores dentro de su rango."""
-    cat = {d["key"]: d for d in afo_audio.effect_catalog()}
-    assert set(fx_presets.FACTORY) == set(cat), "cada módulo del Hito 1 tiene presets"
+    # «Rama B» y «Fin» del FX Lab no tienen parámetros: sus ajustes son los del FX Lab
+    cat = {d["key"]: d for d in afo_audio.effect_catalog() if d["params"]}
+    assert set(fx_presets.FACTORY) == set(cat), "cada módulo con parámetros tiene presets"
     for key, presets in fx_presets.FACTORY.items():
         params = {p["id"]: p for p in cat[key]["params"]}
         assert len(presets) >= 3

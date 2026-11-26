@@ -39,7 +39,7 @@ Column {
 
     readonly property var built: {
         var m = {}
-        for (var i = 0; i < catalog.length; i++) m[catalog[i].af] = catalog[i]
+        for (var i = 0; i < catalog.length; i++) if (!isLabPart(catalog[i].key)) m[catalog[i].af] = catalog[i]
         return m
     }
     // la tira elegida en el Mezclador (0 = el master); sin ninguna, la primera pista
@@ -58,13 +58,14 @@ Column {
     readonly property string curKey: cur ? cur.key : ""
     readonly property int curId: cur ? cur.id : -1
     onCurKeyChanged: loadPresets()
-    onCurIdChanged: { presetName = ""; autoParam = type && type.params.length ? pickAutoParam() : ""; loadAuto() }
+    onCurIdChanged: { presetName = ""; autoParam = type && type.params.length ? pickAutoParam() : ""; loadAuto(); loadLab() }
     onAutoParamChanged: loadAuto()
     readonly property var autoDesc: { if (!type) return null; for (var i = 0; i < type.params.length; i++) if (type.params[i].id === autoParam) return type.params[i]; return null }
     readonly property real span: studio.bar16                   // la línea abarca los 16 compases del Arreglo
 
     // Índice de un parámetro por su id (el modelData de un Repeater es una copia: indexOf no lo encuentra)
     function paramIndex(desc, id) { if (desc) for (var i = 0; i < desc.params.length; i++) if (desc.params[i].id === id) return i; return -1 }
+    function isLabPart(key) { return key === "fxlab_b" || key === "fxlab_end" }
     function typeOf(key) { for (var i = 0; i < catalog.length; i++) if (catalog[i].key === key) return catalog[i]; return null }
     function setChain(c) {
         chain = c || []
@@ -75,6 +76,7 @@ Column {
         }
         if (fresh) presetCache = c
         studio.fxCountChanged()
+        loadLab()
     }
     function nameOf(e) { return e.label || (typeOf(e.key) || { name: e.key }).name.replace("AFO ", "") }
     function reload() {
@@ -114,6 +116,37 @@ Column {
         if (a.length) return a[0]
         for (var i = 0; i < type.params.length; i++) if (type.params[i].id === "output" || type.params[i].id === "mix") return type.params[i].id
         return type.params[0].id
+    }
+
+    // ---------------- FX Lab (AF-62): ramas y macros ----------------
+    property var labInfo: null                  // {linked, branch_a, branch_b, latency_a, latency_b}
+    property var labMacros: []                  // [{macro, effect_id, param, amount, fx, name}]
+    property int macroPick: 1
+    property int macroFx: -1
+    property string macroParam: ""
+    property real macroAmount: 0.5
+    readonly property var labTargets: chain.filter(function (e) {        // efectos de la pista con parámetros
+        var d = typeOf(e.key); return e.key !== "fxlab" && !isLabPart(e.key) && e.key !== "vst3" && !!d && d.params.length > 0 })
+    readonly property var macroFxDesc: { for (var i = 0; i < chain.length; i++) if (chain[i].id === macroFx) return typeOf(chain[i].key); return null }
+    function loadLab() {
+        if (!cur || cur.key !== "fxlab" || !studio.engineOk) { labInfo = null; labMacros = []; return }
+        var r = studio.call("fxLab", cur.id)
+        if (r.ok) { labInfo = r.lab; labMacros = r.macros } else { labInfo = null; labMacros = [] }
+    }
+    function setMacro(macro, fxId, param, amount) {
+        var r = studio.call("fxMacroSet", cur.id, macro, fxId, param, amount, target)
+        if (!r.ok) { studio.toast(r.error); return }
+        labInfo = r.lab; labMacros = r.macros; studio.dirty = true
+    }
+    function labBranchText() {
+        if (!labInfo) return ""
+        if (!labInfo.linked) return "⚠ Sin enlazar: el orden debe ser FX Lab → rama A → «Rama B» → rama B → «Fin». Mientras, la señal pasa tal cual."
+        function names(ids) {
+            var out = ids.map(function (id) { for (var i = 0; i < chain.length; i++) if (chain[i].id === id) return nameOf(chain[i]); return "" })
+            return out.length ? out.join(" → ") : "vacía (señal limpia)"
+        }
+        return "Rama A: " + names(labInfo.branch_a) + "   ·   Rama B: " + names(labInfo.branch_b)
+             + "   ·   compensación " + (1000 * (labInfo.latency_a + labInfo.latency_b)).toFixed(1) + " ms"
     }
 
     // ---------------- presets ----------------
@@ -307,7 +340,60 @@ Column {
                            color: Theme.deviceInk; font.family: Theme.font; font.pixelSize: 11; font.weight: 600 }
                 }
             }
+            Column {                            // FX Lab: ramas y macros
+                visible: root.curKey === "fxlab"
+                width: ed.width; spacing: 6
+                Text { width: parent.width; wrapMode: Text.Wrap; text: root.labBranchText()
+                       color: Theme.deviceInk
+                       font.family: Theme.font; font.pixelSize: 12; font.weight: 700 }
+                Text { width: parent.width; wrapMode: Text.Wrap
+                       text: "Arrastra efectos entre «FX Lab» y «Rama B» (rama A) o entre «Rama B» y «Fin» (rama B). Las dos ramas suenan a la vez, alineadas aunque tengan latencias distintas."
+                       color: Theme.deviceInk; font.family: Theme.font; font.pixelSize: 11; font.weight: 500 }
+                Text { text: "Macros"; color: Theme.deviceInk; font.family: Theme.font; font.pixelSize: 13; font.weight: 700 }
+                Text { visible: root.labMacros.length === 0; width: parent.width; wrapMode: Text.Wrap
+                       text: "Sin asignar. Una macro mueve uno o varios parámetros de los efectos de esta pista: al girarla, al reproducir su automatización y al exportar."
+                       color: Theme.deviceInk; font.family: Theme.font; font.pixelSize: 11; font.weight: 500 }
+                Repeater {
+                    model: root.labMacros
+                    Row {
+                        required property var modelData
+                        spacing: 8
+                        Text { height: 26; verticalAlignment: Text.AlignVCenter; color: Theme.deviceInk
+                               text: "Macro " + modelData.macro + " → " + modelData.fx + " · " + modelData.name
+                                     + "  " + (modelData.amount > 0 ? "+" : "−") + Math.round(Math.abs(modelData.amount) * 100) + " % del recorrido"
+                               font.family: Theme.font; font.pixelSize: 12; font.weight: 600 }
+                        NeoButton { text: "Quitar"; fontSize: 11; padX: 6; padY: 1; shadow: 2
+                                    tip: "Quitar esta asignación (el parámetro vuelve a su valor de la perilla)"
+                                    onClicked: root.setMacro(modelData.macro, modelData.effect_id, modelData.param, 0) }
+                    }
+                }
+                Flow {
+                    width: parent.width; spacing: 8
+                    Select { width: 100; fontSize: 11; padY: 3
+                             options: [["1", "Macro 1"], ["2", "Macro 2"], ["3", "Macro 3"], ["4", "Macro 4"]]
+                             current: String(root.macroPick); tip: "La macro que se asigna"
+                             onPicked: function (v) { root.macroPick = Number(v) } }
+                    Select { width: 170; fontSize: 11; padY: 3
+                             options: [["-1", root.labTargets.length ? "— efecto —" : "— añade un efecto —"]].concat(root.labTargets.map(function (e) { return [String(e.id), root.nameOf(e)] }))
+                             current: String(root.macroFx); tip: "Efecto de esta pista cuyo parámetro moverá la macro"
+                             onPicked: function (v) { root.macroFx = Number(v); root.macroParam = "" } }
+                    Select { width: 150; fontSize: 11; padY: 3
+                             options: [["", "— parámetro —"]].concat(root.macroFxDesc ? root.macroFxDesc.params.map(function (p) { return [p.id, p.name] }) : [])
+                             current: root.macroParam; tip: "Parámetro que se mueve"
+                             onPicked: function (v) { root.macroParam = v } }
+                    Select { width: 120; fontSize: 11; padY: 3
+                             options: [["1", "+100 %"], ["0.75", "+75 %"], ["0.5", "+50 %"], ["0.25", "+25 %"], ["-0.25", "−25 %"], ["-0.5", "−50 %"], ["-0.75", "−75 %"], ["-1", "−100 %"]]
+                             current: String(root.macroAmount)
+                             tip: "Cuánto del recorrido del parámetro mueve la macro de 0 a 100 % (negativo: al revés)"
+                             onPicked: function (v) { root.macroAmount = Number(v) } }
+                    NeoButton { text: "Asignar"; fontSize: 12; padX: 8; padY: 2; shadow: 2
+                                tip: "Asignar la macro a ese parámetro (si ya tenía una, la sustituye)"
+                                onClicked: { if (root.macroFx < 0 || !root.macroParam) root.studio.toast("Elige el efecto y el parámetro")
+                                             else root.setMacro(root.macroPick, root.macroFx, root.macroParam, root.macroAmount) } }
+                }
+            }
             Row {                               // presets
+                visible: !!root.type && root.type.params.length > 0
                 width: ed.width; spacing: 8
                 Text { text: "Preset"; height: 28; verticalAlignment: Text.AlignVCenter; color: Theme.deviceInk
                        font.family: Theme.font; font.pixelSize: 13; font.weight: 700 }
@@ -336,6 +422,7 @@ Column {
                             tip: "Borrar este preset tuyo"; onClicked: root.deletePreset() }
             }
             Column {                            // línea de automatización del parámetro elegido
+                visible: !!root.type && root.type.params.length > 0
                 width: ed.width; spacing: 4
                 Row {
                     spacing: 8
@@ -501,7 +588,7 @@ Column {
     Text {
         visible: root.libOpen; height: visible ? implicitHeight : 0
         width: root.width; topPadding: 8; wrapMode: Text.Wrap
-        text: "Disponibles: " + root.catalog.length + " de 96 (Hito 1). Los efectos suenan en el motor C++, tienen presets y automatización, se guardan en el proyecto (Guardar / Abrir) y su latencia se compensa. Los marcados «por construir» aún no existen."
+        text: "Disponibles: " + Object.keys(root.built).length + " de 96 (Hito 1). Los efectos suenan en el motor C++, tienen presets y automatización, se guardan en el proyecto (Guardar / Abrir) y su latencia se compensa. Los marcados «por construir» aún no existen."
         color: Theme.ink; font.family: Theme.font; font.pixelSize: 13; font.weight: 500
     }
 

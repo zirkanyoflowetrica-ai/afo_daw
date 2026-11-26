@@ -150,6 +150,11 @@ struct Engine::Impl
 {
     juce::ScopedJuceInitialiser_GUI juceInit;   // crea MessageManager en este hilo
     std::unique_ptr<te::Engine> engine;
+    // FX Lab: un bus por FX Lab (id del efecto «FX Lab»). Se declaran antes que el Edit para que vivan
+    // más que los plugins que los leen; uno quitado se queda sin enlazar, no se libera
+    std::map<int, std::unique_ptr<fx::FxLabBus>> labBuses;
+    struct LabAssign { int labId = 0; MacroAssign a; };
+    std::vector<LabAssign> labAssigns;
     std::unique_ptr<te::Edit> edit;
     std::map<int, std::unique_ptr<TrackSlot>> slots;
     int nextId = 1;
@@ -198,6 +203,9 @@ struct Engine::Impl
         engine->getPluginManager().createBuiltInType<AfoMasterPlugin>();
         engine->getPluginManager().createBuiltInType<AfoMeterPlugin>();
         fx::registerFx (engine->getPluginManager());
+        // Las piezas del FX Lab procesan el bloque entero (sin troceo por automatización): así las
+        // tres comparten la posición del bloque. Los demás plugins siguen con la automatización fina
+        engine->getPluginManager().canUseFineGrainAutomation = [] (te::Plugin& p) { return dynamic_cast<fx::FxLabPart*> (&p) == nullptr; };
 
         // Edit vacío en memoria. El formato de proyecto .afo (V0.2) guardará su estado.
         auto editFile = base.getChildFile ("sesion").getChildFile ("session.tracktionedit");
@@ -338,6 +346,69 @@ struct Engine::Impl
             if (auto* a = dynamic_cast<te::AuxSendPlugin*> (p); a != nullptr && a->getBusNumber() == bus)
                 return a;
         return nullptr;
+    }
+
+    fx::FxLabBus& labBus (int labId)
+    {
+        auto& b = labBuses[labId];
+        if (b == nullptr) b = std::make_unique<fx::FxLabBus>();
+        return *b;
+    }
+
+    // Enlaza los FX Lab de una pista: «FX Lab» → rama A → «Rama B» → rama B → «Fin», cada rama con la
+    // latencia de sus efectos activos (los desactivados no suenan ni retrasan), y aplica las macros.
+    // Se llama tras cualquier cambio de la cadena (añadir, quitar, mover, activar, parámetros)
+    void relinkLabs (int trackId)
+    {
+        auto c = chain (trackId);
+        const double sr = engine->getDeviceManager().getSampleRate() > 0 ? engine->getDeviceManager().getSampleRate() : 48000.0;
+        for (auto* f : c)
+            if (auto* part = dynamic_cast<fx::FxLabPart*> (f->fx))
+            {
+                part->bus.store (nullptr);
+                if (dynamic_cast<fx::FxLabFx*> (f->fx) != nullptr) labBus (f->id).linked.store (false);
+            }
+        for (size_t i = 0; i < c.size(); ++i)
+        {
+            auto* s = dynamic_cast<fx::FxLabFx*> (c[i]->fx);
+            if (s == nullptr) continue;
+            fx::FxLabPart* split = nullptr; fx::FxLabPart* end = nullptr;
+            int la = 0, lb = 0;
+            for (size_t j = i + 1; j < c.size() && end == nullptr; ++j)
+            {
+                auto* f = c[j]->fx;
+                if (dynamic_cast<fx::FxLabFx*> (f) != nullptr) break;
+                if (auto* m = dynamic_cast<fx::FxLabSplitFx*> (f)) { if (split != nullptr) break; split = m; continue; }
+                if (auto* e = dynamic_cast<fx::FxLabEndFx*> (f)) { if (split != nullptr) end = e; break; }
+                if (c[j]->fx != nullptr) c[j]->fx->prepareIfNew (sr);
+                if (c[j]->plugin->isEnabled())
+                    (split == nullptr ? la : lb) += juce::roundToInt (c[j]->plugin->getLatencySeconds() * sr);
+            }
+            if (end == nullptr || la + lb > fx::FxLabBus::ringSize - 16384)
+                continue;
+            auto& bus = labBus (c[i]->id);
+            bus.latA.store (la); bus.latB.store (lb);
+            s->bus.store (&bus); split->bus.store (&bus); end->bus.store (&bus);
+            bus.linked.store (true);
+        }
+        // Macros: las de los efectos de esta pista, desde su FX Lab si está en la misma pista y enlazado
+        for (auto* f : c)
+            if (f->fx != nullptr) f->fx->clearModulations();
+        for (auto& la : labAssigns)
+        {
+            auto lab = fxSlots.find (la.labId), tgt = fxSlots.find (la.a.effectId);
+            if (lab == fxSlots.end() || tgt == fxSlots.end() || tgt->second.trackId != trackId
+                || lab->second.trackId != trackId || tgt->second.fx == nullptr)
+                continue;
+            auto& bus = labBus (la.labId);
+            if (bus.linked.load())
+                tgt->second.fx->setModulation (juce::String::fromUTF8 (la.a.paramId.c_str()), &bus, la.a.macro - 1, la.a.amount);
+        }
+    }
+    void relinkAllLabs()
+    {
+        relinkLabs (0);
+        for (auto& [id, s] : slots) relinkLabs (id);
     }
 
     FxSlot& fxSlot (int id)
@@ -796,7 +867,19 @@ bool Engine::removeTrack (int id)
     if (impl->armedTrack == id)
         disarm();
     for (auto f = impl->fxSlots.begin(); f != impl->fxSlots.end();)
-        f = f->second.trackId == id ? impl->fxSlots.erase (f) : std::next (f);
+    {
+        if (f->second.trackId == id)
+        {
+            const int fid = f->first;
+            if (auto* part = dynamic_cast<fx::FxLabPart*> (f->second.fx)) part->bus.store (nullptr);
+            impl->labAssigns.erase (std::remove_if (impl->labAssigns.begin(), impl->labAssigns.end(),
+                                                    [&] (auto& a) { return a.labId == fid || a.a.effectId == fid; }),
+                                    impl->labAssigns.end());
+            f = impl->fxSlots.erase (f);
+        }
+        else
+            f = std::next (f);
+    }
     impl->edit->deleteTrack (s.track.get());
     impl->slots.erase (it);
     return true;
@@ -1002,6 +1085,7 @@ EffectInfo Engine::addPluginEffect (int trackId, const std::string& pluginId, in
         throw std::runtime_error ("afo_audio: Tracktion no aceptó el plugin " + toStd (ext->getName()));
     Impl::FxSlot s { impl->nextFxId++, trackId, plugin, nullptr, pluginId };
     impl->fxSlots[s.id] = s;
+    impl->relinkLabs (trackId);
     impl->edit->getTransport().ensureContextAllocated();
     return impl->describe (impl->fxSlots[s.id]);
 }
@@ -1374,6 +1458,7 @@ void Engine::play()
     requireMessageThread();
     auto& t = impl->edit->getTransport();
     t.ensureContextAllocated();
+    impl->relinkAllLabs();                       // latencia de plugins externos ya preparados
     impl->attachMasterMeter();
     t.play (false);
 }
@@ -1510,6 +1595,7 @@ bool Engine::renderToWav (const std::string& path)
         return false;
     if (edit.getTransport().isPlaying())
         edit.getTransport().stop (false, false);
+    impl->relinkAllLabs();
 
     // Tracktion arranca el render con un salto del cabezal: el primer bloque sale corrido (64 muestras
     // sin efectos, y con latencia se desplaza o se pierde lo que suena en él). Se empieza un segundo
@@ -1613,6 +1699,7 @@ std::string Engine::setAudioDevice (const std::string& typeName, const std::stri
     transport.freePlaybackContext();
     transport.ensureContextAllocated();
     impl->attachMasterMeter();
+    impl->relinkAllLabs();                       // la latencia de cada rama, en muestras de la frecuencia nueva
     return toStd (err);
 }
 
@@ -1872,6 +1959,7 @@ EffectInfo Engine::addEffect (int trackId, const std::string& key, int index)
         throw std::runtime_error ("afo_audio: Tracktion no aceptó el efecto " + key);
     Impl::FxSlot s { impl->nextFxId++, trackId, plugin, f };
     impl->fxSlots[s.id] = s;
+    impl->relinkLabs (trackId);
     impl->edit->getTransport().ensureContextAllocated();
     return impl->describe (impl->fxSlots[s.id]);
 }
@@ -1883,8 +1971,15 @@ bool Engine::removeEffect (int effectId)
     if (it == impl->fxSlots.end())
         return false;
     impl->closeEditor (it->second.plugin.get());
+    const int trackId = it->second.trackId;
+    if (auto* part = dynamic_cast<fx::FxLabPart*> (it->second.fx)) part->bus.store (nullptr);
+    if (it->second.fx != nullptr) it->second.fx->clearModulations();
     it->second.plugin->deleteFromParent();
     impl->fxSlots.erase (it);
+    impl->labAssigns.erase (std::remove_if (impl->labAssigns.begin(), impl->labAssigns.end(),
+                                            [&] (auto& a) { return a.labId == effectId || a.a.effectId == effectId; }),
+                            impl->labAssigns.end());
+    impl->relinkLabs (trackId);
     return true;
 }
 
@@ -1900,6 +1995,7 @@ bool Engine::moveEffect (int effectId, int newIndex)
     // Se mueve el nodo del plugin dentro del árbol de la pista; Tracktion reordena la cadena
     auto parent = f.plugin->state.getParent();
     parent.moveChild (parent.indexOf (f.plugin->state), parent.indexOf (c[(size_t) newIndex]->plugin->state), nullptr);
+    impl->relinkLabs (f.trackId);
     return true;
 }
 
@@ -1907,13 +2003,17 @@ bool Engine::setEffectParam (int effectId, const std::string& paramId, float val
 {
     requireMessageThread();
     auto& f = impl->fxSlot (effectId);
-    return f.fx != nullptr && f.fx->setValue (juce::String::fromUTF8 (paramId.c_str()), value);
+    const bool ok = f.fx != nullptr && f.fx->setValue (juce::String::fromUTF8 (paramId.c_str()), value);
+    if (ok) impl->relinkLabs (f.trackId);       // la latencia de un efecto puede depender de sus parámetros
+    return ok;
 }
 
 void Engine::setEffectEnabled (int effectId, bool enabled)
 {
     requireMessageThread();
-    impl->fxSlot (effectId).plugin->setEnabled (enabled);
+    auto& f = impl->fxSlot (effectId);
+    f.plugin->setEnabled (enabled);
+    impl->relinkLabs (f.trackId);
 }
 
 std::vector<EffectInfo> Engine::effects (int trackId) const
@@ -1978,6 +2078,58 @@ std::vector<float> Engine::effectSpectrum (int effectId, int bands)
 {
     auto& f = impl->fxSlot (effectId);
     return f.fx != nullptr ? f.fx->spectrum (bands) : std::vector<float>();
+}
+
+//==============================================================================
+// FX Lab (AF-62)
+bool Engine::setEffectMacro (int labId, int macro, int effectId, const std::string& paramId, float amount)
+{
+    requireMessageThread();
+    auto& lab = impl->fxSlot (labId);
+    auto& tgt = impl->fxSlot (effectId);
+    if (dynamic_cast<fx::FxLabFx*> (lab.fx) == nullptr || tgt.fx == nullptr || dynamic_cast<fx::FxLabPart*> (tgt.fx) != nullptr
+        || tgt.trackId != lab.trackId || macro < 1 || macro > 4
+        || tgt.fx->parameter (juce::String::fromUTF8 (paramId.c_str())) == nullptr)
+        return false;
+    auto& v = impl->labAssigns;
+    v.erase (std::remove_if (v.begin(), v.end(), [&] (auto& a) { return a.a.effectId == effectId && a.a.paramId == paramId; }), v.end());
+    if (amount != 0.0f)
+        v.push_back ({ labId, { effectId, paramId, macro, juce::jlimit (-1.0f, 1.0f, amount) } });
+    impl->relinkLabs (lab.trackId);
+    return true;
+}
+
+std::vector<MacroAssign> Engine::effectMacros (int labId) const
+{
+    std::vector<MacroAssign> r;
+    for (auto& a : impl->labAssigns)
+        if (a.labId == labId) r.push_back (a.a);
+    return r;
+}
+
+FxLabInfo Engine::fxLabInfo (int labId) const
+{
+    FxLabInfo r;
+    auto it = impl->fxSlots.find (labId);
+    if (it == impl->fxSlots.end() || dynamic_cast<fx::FxLabFx*> (it->second.fx) == nullptr)
+        throw std::out_of_range ("afo_audio: no es un FX Lab " + std::to_string (labId));
+    auto c = impl->chain (it->second.trackId);
+    size_t i = 0;
+    while (i < c.size() && c[i]->id != labId) ++i;
+    int stage = 0;
+    for (size_t j = i + 1; j < c.size(); ++j)
+    {
+        auto* f = c[j]->fx;
+        if (dynamic_cast<fx::FxLabFx*> (f) != nullptr) break;
+        if (dynamic_cast<fx::FxLabSplitFx*> (f) != nullptr) { if (stage != 0) break; stage = 1; r.splitId = c[j]->id; continue; }
+        if (dynamic_cast<fx::FxLabEndFx*> (f) != nullptr) { if (stage == 1) r.endId = c[j]->id; break; }
+        (stage == 0 ? r.branchA : r.branchB).push_back (c[j]->id);
+    }
+    auto b = impl->labBuses.find (labId);
+    r.linked = b != impl->labBuses.end() && b->second->linked.load();
+    const double sr = impl->engine->getDeviceManager().getSampleRate() > 0 ? impl->engine->getDeviceManager().getSampleRate() : 48000.0;
+    if (r.linked) { r.latencyA = b->second->latA.load() / sr; r.latencyB = b->second->latB.load() / sr; }
+    return r;
 }
 
 Engine::ChainScope Engine::chainScope (int trackId, int bands)

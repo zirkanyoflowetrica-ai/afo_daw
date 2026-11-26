@@ -80,11 +80,13 @@ def test_catalogo():
     cat = afo_audio.effect_catalog()
     keys = [c["key"] for c in cat]
     assert keys == ["gain", "strip", "eq", "compressor", "glue", "limiter", "gate", "deesser", "transient", "saturator", "delay",
-                    "space", "analyzer", "tune", "multitap", "trancegate", "shimmer", "textureverb", "infinity", "granular", "spectral"]
+                    "space", "analyzer", "tune", "multitap", "trancegate", "shimmer", "textureverb", "infinity", "granular", "spectral",
+                    "fxlab", "fxlab_b", "fxlab_end"]
     assert {c["af"] for c in cat} == {"AF-01", "AF-02", "AF-07", "AF-13", "AF-15", "AF-14", "AF-18", "AF-20", "AF-22", "AF-26",
-                                      "AF-41", "AF-35", "AF-76", "AF-60", "AF-43", "AF-55", "AF-37", "AF-38", "AF-40", "AF-57", "AF-58"}
+                                      "AF-41", "AF-35", "AF-76", "AF-60", "AF-43", "AF-55", "AF-37", "AF-38", "AF-40", "AF-57", "AF-58",
+                                      "AF-62"}
     for c in cat:
-        assert c["params"], c["key"]
+        assert c["params"] or c["key"] in ("fxlab_b", "fxlab_end"), c["key"]
         for p in c["params"]:
             assert p["min"] <= p["def"] <= p["max"], (c["key"], p["id"])
             if p["choices"]:

@@ -159,6 +159,13 @@ FACTORY: dict[str, dict[str, dict[str, float]]] = {
         "Metálico": {"mode": 0, "amount": 0, "shift": 300, "mix": 60},
         "Congelar": {"mode": 4, "mix": 100},
     },
+    "fxlab": {
+        "Las dos ramas": {"cross": 50},
+        "Solo rama A": {"cross": 0},
+        "Solo rama B": {"cross": 100},
+        "Paralelo con seco": {"cross": 50, "levelA": -6, "levelB": -6, "dry": 70},
+        "Ramas abiertas": {"cross": 50, "panA": -60, "panB": 60, "levelA": -3, "levelB": -3},
+    },
 }
 
 

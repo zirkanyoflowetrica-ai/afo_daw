@@ -213,6 +213,29 @@ PYBIND11_MODULE (afo_audio, m)
         .def ("effect_automation", &afo::Engine::effectAutomation, py::arg ("effect_id"), py::arg ("param"))
         .def ("set_track_audio", [] (afo::Engine& e, int id, const std::string& path, double start)
               { return toDict (e.setTrackAudio (id, path, start)); }, py::arg ("track_id"), py::arg ("path"), py::arg ("start_seconds") = 0.0)
+        .def ("set_effect_macro", &afo::Engine::setEffectMacro, py::arg ("lab_id"), py::arg ("macro"), py::arg ("effect_id"),
+              py::arg ("param"), py::arg ("amount"),
+              "FX Lab: la macro 1..4 mueve el parámetro (amount −1..1 del recorrido al 100 %); 0 quita la asignación.")
+        .def ("effect_macros", [] (const afo::Engine& e, int lab)
+              {
+                  py::list l;
+                  for (auto& a : e.effectMacros (lab))
+                  {
+                      py::dict d;
+                      d["effect_id"] = a.effectId; d["param"] = a.paramId; d["macro"] = a.macro; d["amount"] = a.amount;
+                      l.append (d);
+                  }
+                  return l;
+              }, py::arg ("lab_id"))
+        .def ("fx_lab_info", [] (const afo::Engine& e, int lab)
+              {
+                  auto r = e.fxLabInfo (lab);
+                  py::dict d;
+                  d["linked"] = r.linked; d["split_id"] = r.splitId; d["end_id"] = r.endId;
+                  d["branch_a"] = r.branchA; d["branch_b"] = r.branchB;
+                  d["latency_a"] = r.latencyA; d["latency_b"] = r.latencyB;
+                  return d;
+              }, py::arg ("lab_id"))
         .def ("effect_meters", &afo::Engine::effectMeters, py::arg ("effect_id"))
         .def ("effect_spectrum", &afo::Engine::effectSpectrum, py::arg ("effect_id"), py::arg ("bands") = 64)
         .def ("chain_scope", [] (afo::Engine& e, int track, int bands)

@@ -39,6 +39,27 @@ struct FxDesc
 };
 
 //==============================================================================
+// FX Lab (AF-62): lo que comparten sus tres piezas («FX Lab», «Rama B», «Fin») en la cadena de la pista
+// y los efectos cuyos parámetros mueven sus macros. Lo crea y lo conserva el motor; el audio solo lee
+struct FxLabBus
+{
+    static constexpr int ringSize = 1 << 15, ringMask = ringSize - 1;     // hasta ~0,68 s de latencia a 48 kHz
+    FxLabBus() { for (auto* v : { &dry, &a }) for (auto& c : *v) c.assign ((size_t) ringSize, 0.0f); }
+
+    std::atomic<bool> linked { false };          // las tres piezas en orden en la misma pista
+    std::atomic<int> latA { 0 }, latB { 0 };     // latencia (muestras) de los efectos activos de cada rama
+    std::array<std::atomic<float>, 4> macro {};  // 0..1, los escribe «FX Lab» en cada bloque
+    std::atomic<float> gainA { 1 }, gainB { 1 }, panA { 0 }, panB { 0 }, dryGain { 0 }, outGain { 1 };
+    std::atomic<float> peakA { 0 }, peakB { 0 };
+
+    // Solo el hilo de audio, en orden («FX Lab» → rama A → «Rama B» → rama B → «Fin» en el mismo bloque)
+    std::array<std::vector<float>, 2> dry, a;
+    int64_t w = 0, blockStart = 0;
+    int blockN = 0;
+    bool pending = false;                        // «FX Lab» escribió este bloque y «Fin» aún no lo cerró
+};
+
+//==============================================================================
 class FxBase : public te::Plugin
 {
 public:
@@ -50,7 +71,9 @@ public:
             if (p.centre > p.min && p.centre < p.max)
                 range.setSkewForCentre (p.centre);
             params.emplace_back (*this, p.id, juce::Identifier (p.id), juce::String::fromUTF8 (p.name), p.def, range);
+            ranges.push_back (range);
         }
+        mods = std::make_unique<ModSlot[]> (params.size());
         smooth.resize (params.size());
         for (size_t i = 0; i < params.size(); ++i)
             smooth[i] = params[i].getCurrentValue();
@@ -80,8 +103,19 @@ public:
             smooth[i] = params[i].getCurrentValue();
         smoothCoef = 1.0f - (float) std::exp (-(double) chunk / (0.03 * sampleRate));
         prepareFx (sampleRate);
+        initialised = true;
     }
     void deinitialise() override {}
+
+    // Un efecto recién insertado aún no se ha preparado (Tracktion lo hace al rehacer el grafo) y su
+    // latencia sería la de fábrica. El motor lo prepara antes para medirla: el FX Lab compensa cada rama
+    // con ese dato. Solo si nunca se ha preparado: entonces no está sonando
+    void prepareIfNew (double sr)
+    {
+        if (initialised || sr <= 0.0) return;
+        sampleRate = sr;
+        prepareFx (sr);
+    }
     void reset() override { resetFx(); }
 
     void applyToBuffer (const te::PluginRenderContext& fc) override
@@ -110,7 +144,14 @@ public:
             songPos = pos0 + off / sampleRate;
             for (size_t i = 0; i < params.size(); ++i)
             {
-                const float target = params[i].getCurrentValue();
+                float target = params[i].getCurrentValue();
+                if (auto* bus = mods[i].bus.load (std::memory_order_acquire))      // una macro del FX Lab lo mueve
+                {
+                    const float m = bus->macro[(size_t) mods[i].macro.load()].load (std::memory_order_relaxed);
+                    const auto& rg = ranges[i];
+                    target = rg.convertFrom0to1 (juce::jlimit (0.0f, 1.0f, rg.convertTo0to1 (target) + mods[i].amount.load() * m));
+                    if (desc.params[i].choices != nullptr) target = std::round (target);
+                }
                 smooth[i] = desc.params[i].choices != nullptr ? target : smooth[i] + smoothCoef * (target - smooth[i]);
             }
             if (r != nullptr)
@@ -210,6 +251,25 @@ public:
         return false;
     }
 
+    // Macro del FX Lab sobre un parámetro: amount (−1..1) es cuánto del recorrido suma la macro al 100 %.
+    // bus == nullptr la quita. Hilo de mensajes (el motor, al enlazar los FX Lab de la pista)
+    bool setModulation (const juce::String& id, FxLabBus* bus, int macro, float amount)
+    {
+        for (size_t i = 0; i < params.size(); ++i)
+            if (id == desc.params[i].id)
+            {
+                mods[i].macro.store (juce::jlimit (0, 3, macro));
+                mods[i].amount.store (juce::jlimit (-1.0f, 1.0f, amount));
+                mods[i].bus.store (bus, std::memory_order_release);
+                return true;
+            }
+        return false;
+    }
+    void clearModulations()
+    {
+        for (size_t i = 0; i < params.size(); ++i) mods[i].bus.store (nullptr, std::memory_order_release);
+    }
+
     const FxDesc& desc;
     std::atomic<float> bpm { 120.0f };          // tempo del proyecto (lo actualiza el motor)
 
@@ -232,12 +292,16 @@ protected:
 
     static constexpr int chunk = 32;
     double sampleRate = 48000.0;
+    bool initialised = false;
     double songPos = 0.0;                       // segundos de la canción al empezar el tramo de processFx
     ScopeFifo scope, inScope;
     bool ownsScope = false;
 
 private:
+    struct ModSlot { std::atomic<FxLabBus*> bus { nullptr }; std::atomic<int> macro { 0 }; std::atomic<float> amount { 0.0f }; };
     std::vector<te::ParameterWithStateValue> params;
+    std::vector<juce::NormalisableRange<float>> ranges;
+    std::unique_ptr<ModSlot[]> mods;
     std::vector<float> smooth;
     float smoothCoef = 0.1f;
     double freePos = 0.0;
@@ -1836,6 +1900,164 @@ private:
 };
 
 //==============================================================================
+// FX Lab (AF-62): dos ramas en paralelo dentro de la cadena de la pista.
+//   «FX Lab» → efectos de la rama A → «Rama B» → efectos de la rama B → «Fin»
+// «FX Lab» guarda lo que entra y deja pasar la señal a la rama A; «Rama B» guarda la salida de A y
+// entrega a la rama B lo que entró (retrasado lo que tarda A); «Fin» mezcla las dos ramas y el seco,
+// alineados aunque cada rama tenga su latencia. Las tres procesan el bloque entero y en ese orden
+// (el motor les quita el troceo por automatización), así que comparten la posición del bloque.
+inline const FxDesc& fxLabDesc()
+{
+    static const FxDesc d { "fxlab", "AF-62", "FX Lab", "Racks y cadenas",
+        "Dos ramas de efectos en paralelo con cruce A↔B, nivel, paneo y seco, y 4 macros que mueven parámetros de los efectos.",
+        { { "m1", "Macro 1", 0, 100, 0, "%", 0, nullptr, "Mueve los parámetros que le asignes (también al exportar)" },
+          { "m2", "Macro 2", 0, 100, 0, "%", 0, nullptr, "Mueve los parámetros que le asignes (también al exportar)" },
+          { "m3", "Macro 3", 0, 100, 0, "%", 0, nullptr, "Mueve los parámetros que le asignes (también al exportar)" },
+          { "m4", "Macro 4", 0, 100, 0, "%", 0, nullptr, "Mueve los parámetros que le asignes (también al exportar)" },
+          { "cross", "A ↔ B", 0, 100, 50, "%", 0, nullptr, "0 = solo la rama A, 50 = las dos enteras, 100 = solo la rama B" },
+          { "levelA", "Nivel A", -36, 12, 0, "dB", 0, nullptr, "Nivel de la rama A" },
+          { "levelB", "Nivel B", -36, 12, 0, "dB", 0, nullptr, "Nivel de la rama B" },
+          { "panA", "Pan A", -100, 100, 0, "%", 0, nullptr, "Paneo de la rama A" },
+          { "panB", "Pan B", -100, 100, 0, "%", 0, nullptr, "Paneo de la rama B" },
+          { "dry", "Seco", 0, 100, 0, "%", 0, nullptr, "Señal sin efectos sumada a las ramas" },
+          { "output", "Salida", -24, 12, 0, "dB", 0, nullptr, "Nivel final del FX Lab" } },
+        "rama A dB|rama B dB|compensación ms" };
+    return d;
+}
+inline const FxDesc& fxLabSplitDesc()
+{
+    static const FxDesc d { "fxlab_b", "AF-62", "FX Lab · Rama B", "Racks y cadenas",
+        "Separa las ramas del FX Lab: lo que va antes es la rama A; lo que va después, la rama B.", {}, "" };
+    return d;
+}
+inline const FxDesc& fxLabEndDesc()
+{
+    static const FxDesc d { "fxlab_end", "AF-62", "FX Lab · Fin", "Racks y cadenas",
+        "Cierra el FX Lab: mezcla las dos ramas y el seco.", {}, "" };
+    return d;
+}
+
+class FxLabPart : public FxBase
+{
+public:
+    using FxBase::FxBase;
+    std::atomic<FxLabBus*> bus { nullptr };     // lo pone el motor al enlazar el FX Lab
+protected:
+    FxLabBus* linkedBus() const
+    {
+        auto* b = bus.load (std::memory_order_acquire);
+        return b != nullptr && b->linked.load() ? b : nullptr;
+    }
+    static float panL (float p) { return p > 0.0f ? 1.0f - p : 1.0f; }
+    static float panR (float p) { return p < 0.0f ? 1.0f + p : 1.0f; }
+    FxLabBus* cur = nullptr;                    // el bus de este bloque (nullptr: pasa la señal tal cual)
+    int64_t idx = 0;
+};
+
+class FxLabFx : public FxLabPart
+{
+public:
+    FxLabFx (te::PluginCreationInfo i) : FxLabPart (i, fxLabDesc()) {}
+    AFO_FX_TYPE ("afoFxLab", fxLabDesc)
+    void applyToBuffer (const te::PluginRenderContext& fc) override
+    {
+        cur = linkedBus();
+        if (cur != nullptr)
+        {
+            cur->blockStart = cur->w; cur->blockN = fc.bufferNumSamples; cur->pending = true;
+            idx = cur->w;
+            cur->w += fc.bufferNumSamples;
+        }
+        FxBase::applyToBuffer (fc);
+    }
+    std::vector<float> extraMeters() override
+    {
+        auto* b = bus.load();
+        if (b == nullptr || ! b->linked.load()) return { -100.0f, -100.0f, 0.0f };
+        return { gainToDb (b->peakA.exchange (0.0f)), gainToDb (b->peakB.exchange (0.0f)),
+                 (float) (1000.0 * (b->latA.load() + b->latB.load()) / sampleRate) };
+    }
+protected:
+    void processFx (float* l, float* r, int n) override
+    {
+        if (cur == nullptr) return;
+        for (int k = 0; k < 4; ++k) cur->macro[(size_t) k].store (p (k) / 100.0f, std::memory_order_relaxed);
+        const float c = p (4) / 100.0f;
+        cur->gainA.store (juce::jmin (1.0f, 1.41421356f * (float) std::cos (c * 0.5 * pi)) * dbToGain (p (5)));
+        cur->gainB.store (juce::jmin (1.0f, 1.41421356f * (float) std::sin (c * 0.5 * pi)) * dbToGain (p (6)));
+        cur->panA.store (p (7) / 100.0f); cur->panB.store (p (8) / 100.0f);
+        cur->dryGain.store (p (9) / 100.0f); cur->outGain.store (dbToGain (p (10)));
+        for (int i = 0; i < n; ++i, ++idx)
+        {
+            const auto at = (size_t) (idx & FxLabBus::ringMask);
+            cur->dry[0][at] = l[i]; cur->dry[1][at] = r[i];
+        }
+    }
+};
+
+class FxLabSplitFx : public FxLabPart
+{
+public:
+    FxLabSplitFx (te::PluginCreationInfo i) : FxLabPart (i, fxLabSplitDesc()) {}
+    AFO_FX_TYPE ("afoFxLabB", fxLabSplitDesc)
+    void applyToBuffer (const te::PluginRenderContext& fc) override
+    {
+        cur = linkedBus();
+        if (cur != nullptr && (! cur->pending || cur->blockN != fc.bufferNumSamples)) cur = nullptr;
+        if (cur != nullptr) idx = cur->blockStart;
+        FxBase::applyToBuffer (fc);
+    }
+protected:
+    void processFx (float* l, float* r, int n) override
+    {
+        if (cur == nullptr) return;
+        const int la = cur->latA.load();
+        for (int i = 0; i < n; ++i, ++idx)
+        {
+            const auto at = (size_t) (idx & FxLabBus::ringMask), from = (size_t) ((idx - la) & FxLabBus::ringMask);
+            cur->a[0][at] = l[i]; cur->a[1][at] = r[i];          // salida de la rama A
+            l[i] = cur->dry[0][from]; r[i] = cur->dry[1][from];  // la rama B empieza con lo que entró
+        }
+    }
+};
+
+class FxLabEndFx : public FxLabPart
+{
+public:
+    FxLabEndFx (te::PluginCreationInfo i) : FxLabPart (i, fxLabEndDesc()) {}
+    AFO_FX_TYPE ("afoFxLabEnd", fxLabEndDesc)
+    void applyToBuffer (const te::PluginRenderContext& fc) override
+    {
+        cur = linkedBus();
+        if (cur != nullptr && (! cur->pending || cur->blockN != fc.bufferNumSamples)) cur = nullptr;
+        if (cur != nullptr) idx = cur->blockStart;
+        FxBase::applyToBuffer (fc);
+        if (cur != nullptr) cur->pending = false;
+    }
+protected:
+    void processFx (float* l, float* r, int n) override
+    {
+        if (cur == nullptr) return;
+        const int la = cur->latA.load(), lb = cur->latB.load();
+        const float gA = cur->gainA.load(), gB = cur->gainB.load(), pA = cur->panA.load(), pB = cur->panB.load();
+        const float dg = cur->dryGain.load(), og = cur->outGain.load();
+        float pkA = 0.0f, pkB = 0.0f;
+        for (int i = 0; i < n; ++i, ++idx)
+        {
+            const auto ai = (size_t) ((idx - lb) & FxLabBus::ringMask), di = (size_t) ((idx - la - lb) & FxLabBus::ringMask);
+            const float aL = cur->a[0][ai] * gA * panL (pA), aR = cur->a[1][ai] * gA * panR (pA);
+            const float bL = l[i] * gB * panL (pB), bR = r[i] * gB * panR (pB);
+            pkA = juce::jmax (pkA, std::abs (aL), std::abs (aR));
+            pkB = juce::jmax (pkB, std::abs (bL), std::abs (bR));
+            l[i] = og * (aL + bL + dg * cur->dry[0][di]);
+            r[i] = og * (aR + bR + dg * cur->dry[1][di]);
+        }
+        cur->peakA.store (juce::jmax (cur->peakA.load(), pkA));
+        cur->peakB.store (juce::jmax (cur->peakB.load(), pkB));
+    }
+};
+
+//==============================================================================
 // Registro y creación por clave
 struct FxType { const FxDesc& (*desc)(); const char* xml; };
 inline const std::vector<FxType>& fxTypes()
@@ -1847,7 +2069,8 @@ inline const std::vector<FxType>& fxTypes()
         { delayDesc, DelayFx::xmlTypeName }, { spaceDesc, SpaceFx::xmlTypeName }, { analyzerDesc, AnalyzerFx::xmlTypeName },
         { tuneDesc, TuneFx::xmlTypeName }, { multitapDesc, MultiTapFx::xmlTypeName }, { tranceDesc, TranceGateFx::xmlTypeName },
         { shimmerDesc, ShimmerFx::xmlTypeName }, { textureDesc, TextureVerbFx::xmlTypeName }, { infinityDesc, InfinityFx::xmlTypeName },
-        { granularDesc, GranularFx::xmlTypeName }, { spectralDesc, SpectralFx::xmlTypeName } };
+        { granularDesc, GranularFx::xmlTypeName }, { spectralDesc, SpectralFx::xmlTypeName },
+        { fxLabDesc, FxLabFx::xmlTypeName }, { fxLabSplitDesc, FxLabSplitFx::xmlTypeName }, { fxLabEndDesc, FxLabEndFx::xmlTypeName } };
     return t;
 }
 
@@ -1861,6 +2084,7 @@ inline void registerFx (te::PluginManager& pm)
     pm.createBuiltInType<MultiTapFx>(); pm.createBuiltInType<TranceGateFx>();
     pm.createBuiltInType<ShimmerFx>();  pm.createBuiltInType<TextureVerbFx>(); pm.createBuiltInType<InfinityFx>();
     pm.createBuiltInType<GranularFx>(); pm.createBuiltInType<SpectralFx>();
+    pm.createBuiltInType<FxLabFx>();    pm.createBuiltInType<FxLabSplitFx>(); pm.createBuiltInType<FxLabEndFx>();
 }
 
 inline const char* xmlTypeFor (const std::string& key)

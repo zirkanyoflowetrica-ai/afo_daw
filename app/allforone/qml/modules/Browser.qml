@@ -21,7 +21,8 @@ Column {
         ["Espacio", ["space", "shimmer", "textureverb", "infinity", "delay", "multitap"]],
         ["Utilidad", ["gain", "analyzer"]],
         ["Ritmo", ["trancegate"]],
-        ["Granular y espectral", ["granular", "spectral"]]]
+        ["Granular y espectral", ["granular", "spectral"]],
+        ["Racks y cadenas", ["fxlab"]]]
     readonly property var catalog: studio && studio.fxBody ? studio.fxBody.catalog : []
     property string filter: ""
     property string selKey: ""                  // efecto nativo elegido («vst3:<id>» para un plugin)
@@ -40,7 +41,8 @@ Column {
             }
             if (its.length) out.push([groups[g][0], its])
         }
-        var rest = catalog.filter(function (d) { return !used[d.key] && match(d.name + " " + d.af) })
+        // «Rama B» y «Fin» del FX Lab no se añaden solos: llegan con él
+        var rest = catalog.filter(function (d) { return !used[d.key] && d.key.indexOf("fxlab_") !== 0 && match(d.name + " " + d.af) })
         if (rest.length) out.push(["Otros", rest])
         return out
     }

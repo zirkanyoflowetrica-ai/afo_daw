@@ -105,7 +105,8 @@ Window {
         else if (what === "pick") { var pk = fxBody.chain.filter(function (e) { return e.key === a })[0]; if (pk) fxBody.sel = pk.id }
         else if (what === "ab") fxBody.abToggle(fxBody.cur)
         else if (what === "drop") fxBody.dropAt(fxBody.sel, a)
-        return { tuneEditor: fxBody.tuneShown, ab: fxBody.cur && fxBody.ab[fxBody.cur.id] ? fxBody.ab[fxBody.cur.id].side : "",
+        else if (what === "macro") fxBody.setMacro(a, b.fx, b.param, b.amount)
+        return { lab: fxBody.labInfo ? fxBody.labInfo.linked : null, macros: fxBody.labMacros.length, tuneEditor: fxBody.tuneShown, ab: fxBody.cur && fxBody.ab[fxBody.cur.id] ? fxBody.ab[fxBody.cur.id].side : "",
                  target: fxBody.target, chain: fxBody.chain.map(function (e) { return { id: e.id, key: e.key, enabled: e.enabled, values: e.values, automated: e.automated || [] } }),
                  sel: fxBody.sel, meters: fxBody.meters, spectrum: fxBody.spectrum, catalog: fxBody.catalog.length,
                  presets: fxBody.presets.length, autoPts: fxBody.autoPts }

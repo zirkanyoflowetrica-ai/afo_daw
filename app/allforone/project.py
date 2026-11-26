@@ -16,14 +16,18 @@ FORMAT = "allforone-project"
 VERSION = 1
 MASTER = 0                       # id del master en las cadenas de efectos del motor
 AUDIO_TYPES = ("audio", "voz")
+LAB_PARTS = ("fxlab", "fxlab_b", "fxlab_end")   # FX Lab (AF-62): inicio, «Rama B» y «Fin» en la cadena
 
 
 def chain_of(engine, catalog: list[dict], track_id: int, labels: dict | None = None, auto=()) -> list[dict]:
     """Cadena de efectos de una pista tal como se guarda (valores por id de parámetro).
     `labels`/`auto`: nombre y marca de los efectos que puso la mezcla automática."""
     labels = labels or {}
-    out = []
-    for e in engine.effects(track_id):
+    out, index_of, effects = [], {}, list(engine.effects(track_id))
+    for e in effects:                         # posición en la cadena guardada (los que no se guardan, fuera)
+        if e["key"] == "vst3" or any(d["key"] == e["key"] for d in catalog):
+            index_of[e["id"]] = len(index_of)
+    for e in effects:
         if e["key"] == "vst3":               # plugin externo: su id y su estado completo (base64)
             out.append({"key": "vst3", "plugin": e["plugin_id"], "name": e["name"], "enabled": bool(e["enabled"]),
                         "state": engine.effect_state(e["id"])})
@@ -39,6 +43,13 @@ def chain_of(engine, catalog: list[dict], track_id: int, labels: dict | None = N
             item["label"] = labels[e["id"]]
         if e["id"] in auto:
             item["auto"] = True
+        if e["key"] == "fxlab" and hasattr(engine, "effect_macros"):
+            # macros del FX Lab: el efecto destino por su posición en esta misma cadena guardada
+            macros = [{"target": index_of[m["effect_id"]], "param": m["param"], "macro": int(m["macro"]),
+                       "amount": round(float(m["amount"]), 4)}
+                      for m in engine.effect_macros(e["id"]) if m["effect_id"] in index_of]
+            if macros:
+                item["macros"] = macros
         out.append(item)
     return out
 
@@ -49,13 +60,16 @@ def restore_chain(engine, catalog: list[dict], track_id: int, chain: list[dict],
     warnings = []
     for e in engine.effects(track_id):
         engine.remove_effect(e["id"])
+    ids: list[int | None] = []                # id nuevo de cada efecto guardado (None: no se pudo crear)
     for fx in chain or []:
+        ids.append(None)
         if fx.get("key") == "vst3":
             try:
                 eid = engine.add_plugin_effect(track_id, fx.get("plugin", ""), -1, fx.get("state", ""))["id"]
             except Exception as exc:          # plugin desinstalado o que no carga: se avisa y se sigue
                 warnings.append(f"Plugin «{fx.get('name', '?')}» no disponible: {exc}")
                 continue
+            ids[-1] = eid
             engine.set_effect_enabled(eid, bool(fx.get("enabled", True)))
             if on_added:
                 on_added(eid, {**fx, "label": fx.get("label") or fx.get("name", "")})
@@ -65,6 +79,7 @@ def restore_chain(engine, catalog: list[dict], track_id: int, chain: list[dict],
             warnings.append(f"Efecto desconocido «{fx.get('key')}»: se omite")
             continue
         eid = engine.add_effect(track_id, desc["key"], -1)["id"]
+        ids[-1] = eid
         params = {p["id"]: p for p in desc["params"]}
         for pid, v in (fx.get("values") or {}).items():
             if pid in params:
@@ -75,6 +90,15 @@ def restore_chain(engine, catalog: list[dict], track_id: int, chain: list[dict],
         engine.set_effect_enabled(eid, bool(fx.get("enabled", True)))
         if on_added:
             on_added(eid, fx)
+    for fx, eid in zip(chain or [], ids):     # macros del FX Lab, ya con todos los efectos creados
+        if eid is None or fx.get("key") != "fxlab":
+            continue
+        for m in fx.get("macros") or []:
+            t = int(m.get("target", -1))
+            tgt = ids[t] if 0 <= t < len(ids) else None
+            if tgt is None or not engine.set_effect_macro(eid, int(m.get("macro", 1)), tgt, str(m.get("param", "")),
+                                                          float(m.get("amount", 0.0))):
+                warnings.append(f"FX Lab: una macro apuntaba a un efecto o parámetro que ya no existe; se omite")
     return warnings
 
 

@@ -130,7 +130,7 @@ def _native_fx_checks(rep, app, host, window, bridge, track_id: int) -> None:
         return v.toVariant() if hasattr(v, "toVariant") else v
 
     st = fx("target", track_id)
-    rep.check("Efectos: catálogo del motor (21 módulos)", st and st["catalog"] == 21, st and st["catalog"])
+    rep.check("Efectos: catálogo del motor (22 módulos y las 2 piezas del FX Lab)", st and st["catalog"] == 24, st and st["catalog"])
     fx("add", "eq")
     st = fx("add", "analyzer")
     rep.check("Efectos: insertar EQ y Analizador en la pista", [e["key"] for e in st["chain"]] == ["eq", "analyzer"],
@@ -143,12 +143,13 @@ def _native_fx_checks(rep, app, host, window, bridge, track_id: int) -> None:
         return v.toVariant() if hasattr(v, "toVariant") else v
     br = lay("browser")
     secs = dict((s[0], s[1]) for s in br["sections"])
-    rep.check("Navegador: efectos del motor por categoría (Dinámica, EQ y filtro, Tono y voz, Espacio, Utilidad, Ritmo, Granular y espectral)",
-              list(secs) == ["Dinámica", "EQ y filtro", "Tono y voz", "Espacio", "Utilidad", "Ritmo", "Granular y espectral"] and "tune" in secs["Tono y voz"]
+    rep.check("Navegador: efectos del motor por categoría (Dinámica, EQ y filtro, Tono y voz, Espacio, Utilidad, Ritmo, Granular y espectral, Racks y cadenas)",
+              list(secs) == ["Dinámica", "EQ y filtro", "Tono y voz", "Espacio", "Utilidad", "Ritmo", "Granular y espectral", "Racks y cadenas"]
+              and secs["Racks y cadenas"] == ["fxlab"] and "tune" in secs["Tono y voz"]
               and "glue" in secs["Dinámica"] and "transient" in secs["Dinámica"] and "multitap" in secs["Espacio"]
               and {"shimmer", "textureverb", "infinity"} <= set(secs["Espacio"])
               and secs["Ritmo"] == ["trancegate"] and secs["Granular y espectral"] == ["granular", "spectral"]
-              and sum(len(v) for v in secs.values()) == 21, secs)
+              and sum(len(v) for v in secs.values()) == 22, secs)
     lay("browser", "compressor")
     keys = [e["key"] for e in host.engine.effects(track_id)]
     rep.check("Navegador: doble clic en Compresor lo añade a la pista elegida", keys == ["eq", "analyzer", "compressor"], keys)
@@ -195,6 +196,21 @@ def _native_fx_checks(rep, app, host, window, bridge, track_id: int) -> None:
     fx("remove")
     st = fx("remove")
     rep.check("quitar los efectos vacía la cadena", not st["chain"] and not host.engine.effects(track_id))
+    # FX Lab (AF-62): llega con sus tres piezas, una macro se asigna desde su panel y se quita entero
+    st = fx("add", "fxlab")
+    rep.check("FX Lab: se añade con «Rama B» y «Fin», enlazado",
+              [e["key"] for e in st["chain"]] == ["fxlab", "fxlab_b", "fxlab_end"] and st["lab"] is True, [e["key"] for e in st["chain"]])
+    gain = fx("add", "gain")["sel"]
+    fx("pick", "fxlab")
+    st = fx("macro", 1, {"fx": gain, "param": "output", "amount": 0.5})
+    lab_id = next(e["id"] for e in st["chain"] if e["key"] == "fxlab")
+    rep.check("FX Lab: la macro 1 se asigna a un parámetro desde su panel",
+              st["macros"] == 1 and [m["param"] for m in host.engine.effect_macros(lab_id)] == ["output"], st["macros"])
+    fx("remove")
+    st = fx("pick", "gain")
+    rep.check("FX Lab: quitarlo quita sus tres piezas y deja los efectos", [e["key"] for e in st["chain"]] == ["gain"],
+              [e["key"] for e in st["chain"]])
+    st = fx("remove")
 
 
 def _native_daw_checks(rep, app, host, window, bridge, track_id) -> None:

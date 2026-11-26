@@ -58,7 +58,9 @@ Rectangle {
                     readonly property var picks: desc ? desc.params.filter(function (p) { return p.choices.length > 0 }) : []
                     readonly property int cols: Math.max(2, Math.ceil(knobs.length / 2))
                     readonly property bool isFolded: !!rk.folded[modelData.id]
-                    width: isFolded ? 36 : modelData.key === "vst3" ? 200 : Math.max(200, cols * 64 + 16)
+                    readonly property bool labPart: rk.isLabPart(modelData.key)
+                    readonly property var lab: modelData.lab || null   // FX Lab: start | A | split | B | end
+                    width: isFolded ? 36 : labPart ? 150 : modelData.key === "vst3" ? 200 : Math.max(200, cols * 64 + 16)
                     readonly property int needH: isFolded ? 0 : devHead.height + 6 + cardBody.implicitHeight + 10
                     onNeedHChanged: if (needH > rk.cardNeed) rk.cardNeed = needH
                     clip: true
@@ -128,14 +130,16 @@ Rectangle {
                             DevBtn { glyph: "▶"; tip: "Mover después"; visible: card.tools && card.index < rk.chain.length - 1; onClicked: rk.move(card.modelData.id, card.index + 1) }
                             DevBtn {
                                 readonly property var st: rk.ab[card.modelData.id]
-                                visible: card.tools && card.modelData.key !== "vst3"; width: 30
+                                visible: card.tools && card.modelData.key !== "vst3" && !card.labPart; width: 30
                                 glyph: st ? st.side : "A/B"; on: !!st && st.side === "B"
                                 tip: st ? "Escuchas " + st.side + ". Pulsa para pasar a " + (st.side === "A" ? "B" : "A") + " (los ajustes de cada uno se guardan aparte)"
                                         : "Comparar A/B: guarda los ajustes actuales como A; lo que cambies después es B"
                                 onClicked: rk.abToggle(card.modelData)
                             }
                             DevBtn { glyph: "≡"; tip: "Detalle: medidores, presets propios y automatización"; visible: card.tools; onClicked: rk.sel = card.modelData.id }
-                            DevBtn { glyph: "✕"; tip: "Quitar de la cadena"; onClicked: rk.remove(card.modelData.id) }
+                            DevBtn { glyph: "✕"
+                                     tip: card.labPart || card.modelData.key === "fxlab" ? "Quitar el FX Lab (sus tres piezas; los efectos de sus ramas se quedan, en serie)" : "Quitar de la cadena"
+                                     onClicked: rk.remove(card.modelData.id) }
                         }
                     }
                     Column {                         // plegado: activador y nombre en vertical
@@ -166,6 +170,22 @@ Rectangle {
                         visible: !card.isFolded
                         x: 8; y: devHead.height + 6; width: parent.width - 16; spacing: 6
                         opacity: card.modelData.enabled ? 1 : 0.55
+                        Rectangle {                  // FX Lab: a qué rama pertenece este efecto
+                            visible: !!card.lab && (card.lab.role === "A" || card.lab.role === "B")
+                            width: parent.width; height: visible ? 20 : 0; radius: 2
+                            color: Theme.chip; border.width: 1; border.color: Theme.line
+                            Text { anchors.centerIn: parent; text: card.lab ? "FX LAB · RAMA " + card.lab.role : ""
+                                   color: Theme.chipInk; font.family: Theme.font; font.pixelSize: 11; font.weight: 700 }
+                        }
+                        Text {                       // separadores del FX Lab: qué hacen
+                            visible: card.labPart
+                            width: parent.width; wrapMode: Text.Wrap
+                            text: !card.lab ? "Sin su FX Lab delante: no hace nada. Ponla después de un FX Lab o quítala."
+                                  : !card.lab.linked ? "El FX Lab no está enlazado: revisa el orden (FX Lab → A → Rama B → B → Fin)."
+                                  : card.modelData.key === "fxlab_b" ? "Antes: rama A. Después: rama B. Las dos reciben la misma señal."
+                                  : "Aquí se mezclan la rama A, la B y el seco, con los ajustes del FX Lab."
+                            color: Theme.deviceInk; font.family: Theme.font; font.pixelSize: 11; font.weight: 500
+                        }
                         Column {                     // plugin VST3: su propia ventana
                             visible: card.modelData.key === "vst3"
                             width: parent.width; spacing: 8
@@ -176,7 +196,7 @@ Rectangle {
                                    color: Theme.deviceInk; font.family: Theme.font; font.pixelSize: 11; font.weight: 500 }
                         }
                         Select {
-                            visible: card.modelData.key !== "vst3"
+                            visible: card.modelData.key !== "vst3" && !card.labPart
                             width: parent.width; fontSize: 10; padX: 4; padY: 2
                             fill: Theme.deviceHead; ink: Theme.deviceInk
                             options: [["", "Preset…"]].concat((rk.presetCache[card.modelData.key] || []).map(function (p) { return [p.name, p.name + (p.factory ? "" : " ★")] }))

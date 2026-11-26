@@ -433,20 +433,83 @@ class Bridge(QObject):
     def fxAdd(self, track_id: int, key: str, index: int) -> str:
         if (g := self._guard()):
             return g
+        if key in project.LAB_PARTS[1:]:
+            return _err("«Rama B» y «Fin» llegan con el FX Lab: añade el FX Lab")
         try:
-            return _ok(effect=self.host.engine.add_effect(track_id, key, index), chain=self._chain(track_id))
+            eng = self.host.engine
+            fx = eng.add_effect(track_id, key, index)
+            if key == "fxlab":                   # FX Lab: inicio, «Rama B» y «Fin» juntos; los efectos se arrastran dentro
+                at = -1 if index < 0 else index + 1
+                eng.add_effect(track_id, "fxlab_b", at)
+                eng.add_effect(track_id, "fxlab_end", -1 if index < 0 else index + 2)
+            return _ok(effect=fx, chain=self._chain(track_id))
         except Exception as exc:
             return _err(f"No se pudo insertar el efecto: {exc}")
 
     def _chain(self, track_id: int) -> list[dict]:
         auto = set(self._auto.get(track_id, []))
+        eng = self.host.engine
         out = []
-        for e in self.host.engine.effects(track_id):
+        for e in eng.effects(track_id):
             e = dict(e)
             e["label"] = self._fx_labels.get(e["id"], "") or e.get("name", "")
             e["auto"] = e["id"] in auto
             out.append(e)
+        # FX Lab: a qué parte pertenece cada efecto (inicio, rama A, «Rama B», rama B, «Fin»)
+        by_id = {e["id"]: e for e in out}
+        for e in out:
+            if e["key"] != "fxlab":
+                continue
+            info = eng.fx_lab_info(e["id"])
+            e["lab"] = {"role": "start", "lab": e["id"], "linked": bool(info["linked"]),
+                        "latency_ms": round(1000 * (info["latency_a"] + info["latency_b"]), 2)}
+            for role, ids in (("A", info["branch_a"]), ("B", info["branch_b"]),
+                              ("split", [info["split_id"]]), ("end", [info["end_id"]])):
+                for i in ids:
+                    if i in by_id and "lab" not in by_id[i]:
+                        by_id[i]["lab"] = {"role": role, "lab": e["id"], "linked": bool(info["linked"])}
         return out
+
+    def _lab_trio(self, track_id: int, effect_id: int) -> list[int]:
+        """Las tres piezas del FX Lab al que pertenece una pieza (o [] si no es una)."""
+        for e in self._chain(track_id):
+            lab = e.get("lab")
+            if e["id"] == effect_id and e["key"] in project.LAB_PARTS:
+                if lab is None:
+                    return [effect_id]           # pieza suelta (sin su FX Lab): se quita sola
+                info = self.host.engine.fx_lab_info(lab["lab"])
+                return [i for i in (lab["lab"], info["split_id"], info["end_id"]) if i > 0]
+        return []
+
+    @Slot(int, result=str)
+    @_safe
+    def fxLab(self, lab_id: int) -> str:
+        """FX Lab: ramas, latencia compensada y macros asignadas (con el nombre del efecto y del parámetro)."""
+        if (g := self._guard()):
+            return g
+        try:
+            eng = self.host.engine
+            info = dict(eng.fx_lab_info(lab_id))
+            cat = {d["key"]: d for d in self.host.effect_catalog()}
+            macros = []
+            for m in eng.effect_macros(lab_id):
+                fx = eng.effect_info(m["effect_id"])
+                p = next((q for q in cat.get(fx["key"], {}).get("params", []) if q["id"] == m["param"]), {})
+                macros.append({**m, "fx": self._fx_labels.get(fx["id"], "") or fx.get("name", ""),
+                               "name": p.get("name", m["param"])})
+            return _ok(lab=info, macros=macros)
+        except Exception as exc:
+            return _err(str(exc))
+
+    @Slot(int, int, int, str, float, int, result=str)
+    @_safe
+    def fxMacroSet(self, lab_id: int, macro: int, effect_id: int, param: str, amount: float, track_id: int) -> str:
+        """Asigna (amount −1..1) o quita (amount 0) la macro 1..4 del FX Lab a un parámetro de un efecto de la pista."""
+        if (g := self._guard()):
+            return g
+        if not self.host.engine.set_effect_macro(lab_id, macro, effect_id, param, max(-1.0, min(1.0, amount))):
+            return _err("Esa macro no se puede asignar: el efecto debe estar en la misma pista que el FX Lab")
+        return self.fxLab(lab_id)
 
     @Slot(int, result=str)
     @_safe
@@ -463,8 +526,10 @@ class Bridge(QObject):
     def fxRemove(self, effect_id: int, track_id: int) -> str:
         if (g := self._guard()):
             return g
-        self.host.engine.remove_effect(effect_id)
-        self._fx_labels.pop(effect_id, None)
+        # Una pieza del FX Lab se lleva las otras dos; los efectos de sus ramas se quedan, en serie
+        for eid in self._lab_trio(track_id, effect_id) or [effect_id]:
+            self.host.engine.remove_effect(eid)
+            self._fx_labels.pop(eid, None)
         return _ok(chain=self._chain(track_id))
 
     @Slot(int, int, int, result=str)
