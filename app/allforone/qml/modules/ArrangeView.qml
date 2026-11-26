@@ -513,9 +513,15 @@ Rectangle {
                                     MouseArea {              // cuerpo: elegir, mover o cortar
                                         anchors.fill: parent
                                         preventStealing: true
+                                        acceptedButtons: Qt.LeftButton | Qt.RightButton
                                         cursorShape: root.tool === "cut" ? Qt.IBeamCursor : pressed ? Qt.ClosedHandCursor : Qt.OpenHandCursor
                                         property real px0
                                         onPressed: function (m) {
+                                            if (m.button === Qt.RightButton) {     // clic derecho: elige el clip y abre su menú
+                                                root.pick(trk.t.uid, ac.modelData.id)
+                                                root.studio.openContext("clip", ac, m.x, m.y)
+                                                return
+                                            }
                                             if (root.tool === "cut") {
                                                 root.pick(trk.t.uid, ac.modelData.id)
                                                 root.splitAt(trk.t.uid, ac.modelData.id, root.snapT(ac.modelData.start + m.x / root.pps))
@@ -650,8 +656,11 @@ Rectangle {
                             color: Theme.deviceHead
                             border.width: 1; border.color: Theme.deviceBorder
                             Rectangle { width: 8; height: parent.height; color: trk.c }
-                            MouseArea { anchors.fill: parent; enabled: !trk.master
-                                        onClicked: { var i = root.studio.seq.indexOf(trk.t.uid); if (i >= 0) root.studio.seq.pick(i) } }
+                            MouseArea { anchors.fill: parent; enabled: !trk.master; acceptedButtons: Qt.LeftButton | Qt.RightButton
+                                        onClicked: function (m) {
+                                            var i = root.studio.seq.indexOf(trk.t.uid); if (i >= 0) root.studio.seq.pick(i)
+                                            if (m.button === Qt.RightButton) root.studio.openContext("track", parent, m.x, m.y)
+                                        } }
                             Column {
                                 x: 16; y: 6; width: parent.width - 16 - btns.width - 10; spacing: 1
                                 Text { width: parent.width; elide: Text.ElideRight; text: trk.t.name; color: Theme.deviceInk

@@ -82,7 +82,7 @@ C→X: siguen tuyas X2, X6, X7, X8, X9, en ese orden. No esperes respuesta para 
 ## Lote 26-11-2026 — flujo profesional (docs/FLUJO_PROFESIONAL.md)
 | ID | dueño | estado | archivos | hecho cuando |
 |---|---|---|---|---|
-| F1 | C | · | `actions.py`, `bridge.py`, `Main.qml`, `controls/` (menús, paleta) | Todas las órdenes en menú, paleta Ctrl+K y clic derecho con atajo; prueba recorre el registro |
+| F1 | C | ✓ | `actions.py`, `bridge.py`, `Main.qml`, `controls/` (menús, paleta) | Todas las órdenes en menú, paleta Ctrl+K y clic derecho con atajo; prueba recorre el registro |
 | F2 | C | · | `Main.qml`, `controls/Zone.qml` | Inspector izq., Navegador der., cabecera limpia, sin pestañas; selftest en 3 temas |
 | F3 | C | · | `Main.qml`, `modules/ArrangeView.qml`, `modules/TuneBody.qml`, editor nuevo | El editor de abajo sigue a la selección; el editor de tono sale del Afinador |
 | F4 | C | · | `modules/ArrangeView.qml`, `state/Sequencer.qml`, `bridge.py` | IA sobre el clip (separar, rehacer, versión, alinear) como tomas o carpeta; sin botones fijos |
@@ -92,6 +92,9 @@ C→X: siguen tuyas X2, X6, X7, X8, X9, en ese orden. No esperes respuesta para 
 | F8 | C | · | `scripts/`, `script_host.py` (nuevo) | Scripts de ejemplo corren sobre un proyecto completo y se deshacen con Ctrl+Z |
 | F9 | C | ✓ | `theme/Theme.qml`, `templates/*/theme.json`, QML con colores fijos | Temas Oscuro/Grafito/Claro de una familia; 0 colores fijos; contraste ≥ 4,5:1 en los tres |
 | F10 | C | · | `Main.qml`, `controls/Backdrop.qml` (nuevo), ajustes | Fondo imagen/parallax opcional, apagado de fábrica; contraste intacto con fondo |
+| F11 | C | · | `analysis.py`, `native/src/AfoEngine.*` (estirar y transponer clips), `actions.py`, `ArrangeView.qml` | Clic derecho en un audio: detectar tempo y tonalidad; audio → tempo/tono del proyecto (SoundTouch en el motor) o proyecto → tempo/tono del audio; prueba con proyectos de `song_factory` |
+| F12 | C | · | `Main.qml`, `controls/Zone.qml`, módulos | La ventana se reparte sin huecos a 1280×720, 1600×900, 1920×1080 y 2560×1440 (selftest mide los huecos) |
+| F13 | C | · | `controls/HelpButton.qml` (nuevo), módulos con textos largos | Botón «?» en cada panel y efecto con su explicación; fuera los párrafos fijos de ayuda |
 
 C→X: NUEVA PRIORIDAD (23-11, el usuario deja atrás lo modular): X14, X15, X12, X10, X11, X16, X17; X13 se hace dentro de X14–X17; luego X2…X9. Plan: docs/DISENO_DAW.md.
 C→X: PRIORIDAD anterior: X10, X11, X12, X13; luego X2…X9. Antes: X10 y luego X11 (las pidió el usuario) antes que X2…X9. Esos archivos son tuyos en este lote, `bridge.py` solo para los slots `library*`.

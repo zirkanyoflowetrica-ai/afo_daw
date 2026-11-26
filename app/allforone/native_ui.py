@@ -315,6 +315,29 @@ def _native_daw_checks(rep, app, host, window, bridge, track_id) -> None:
               s_tone["detail"] == "fx" and s_tone["rack"] == track_id and s_drum["detail"] == "drums",
               {"tono": s_tone, "batería": s_drum})
 
+    # Órdenes (F1, FLUJO_PROFESIONAL §4.2): un registro → barra de menús, clic derecho y paleta Ctrl+K
+    ac = lay("actions")
+    rep.check("órdenes: cada orden del registro hace algo en la interfaz y no hay órdenes fuera del registro",
+              ac["ids"] and not ac["missing"] and not ac["extra"], {"sin hacer": ac["missing"], "fuera": ac["extra"]})
+    rep.check("barra de menús Archivo · Editar · Pista · Clip · Mezcla · Ver",
+              ac["menus"] == ["Archivo", "Editar", "Pista", "Clip", "Mezcla", "Ver"], ac["menus"])
+    rep.check("clic derecho: la IA vive en el clip y en la pista (Rehacer, Versión, Alinear, Tono, Separar)",
+              {"clip.repaint", "clip.cover", "clip.align", "clip.pitch", "clip.stems"} <= set(ac["clip"])
+              and {"track.stems", "track.generate", "track.effects"} <= set(ac["track"]), {"clip": ac["clip"], "pista": ac["track"]})
+    m = lay("menu", "Editar")
+    pal = lay("menu", "palette", "separar")
+    lay("menu", "close")
+    s0 = lay("run", "edit.snap")
+    s1 = lay("run", "edit.snap")
+    rep.check("abrir un menú, buscar en la paleta y ejecutar una orden",
+              m["open"] and m["count"] >= 8 and pal["open"] and {"clip.stems", "track.stems"} <= set(pal["hits"])
+              and s0["ok"] and s1["ok"] and s0["checked"] != s1["checked"], {"menú": m, "paleta": pal, "rejilla": [s0, s1]})
+    cx = lay("menu", "ctx", "clip")
+    tx = lay("menu", "ctx", "track")
+    lay("menu", "close")
+    rep.check("menús de clic derecho con las órdenes del clip y de la pista",
+              cx["open"] and cx["count"] == len(ac["clip"]) and tx["open"] and tx["count"] == len(ac["track"]), {"clip": cx, "pista": tx})
+
     # Temas: familia Oscuro / Grafito / Claro (FLUJO_PROFESIONAL §6): solo cambia la luz
     looks = {}
     for name in ("Oscuro", "Grafito", "Claro"):

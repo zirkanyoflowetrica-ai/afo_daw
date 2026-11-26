@@ -18,7 +18,7 @@ from pathlib import Path
 from PySide6.QtCore import QCoreApplication, QObject, QTimer, Signal, Slot
 from PySide6.QtWidgets import QFileDialog, QWidget
 
-from . import audio_import, fx_presets, library, paths, project, themes
+from . import actions, audio_import, fx_presets, library, paths, project, themes
 from .engine_host import EngineHost, fader_to_db
 from .mixer_service import AUDIO_EXT, REF_LABEL, MixerService
 
@@ -830,6 +830,12 @@ class Bridge(QObject):
         from PySide6.QtGui import QDesktopServices
         QDesktopServices.openUrl(QUrl.fromLocalFile(str(themes.folder())))
         return _ok(folder=str(themes.folder()))
+
+    # --- órdenes (F1: menús, clic derecho y paleta Ctrl+K salen de actions.py) ----------
+    @Slot(result=str)
+    @_safe
+    def actionList(self) -> str:
+        return _ok(actions=actions.actions(), menus=list(actions.MENUS))
 
     # --- versiones de master (Rebobinado) ----------------------------------------------
     @Slot(bool, result=str)

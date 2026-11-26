@@ -119,6 +119,130 @@ Window {
     Lab { id: lb; studio: win; seq: sq }        // Instrumental Lab (lab.py): estado para su vista
     property var lab: lb
     Project { id: pj; studio: win }
+
+    // ---------------- órdenes (F1): un registro (actions.py) → menús, clic derecho y Ctrl+K ----------------
+    property var actionsReg: []
+    property var actionMenus: []
+    function loadActions() { var r = call("actionList"); if (r.ok) { actionsReg = r.actions; actionMenus = r.menus } }
+    function actionsOf(menu) { return actionsReg.filter(function (a) { return a.menu === menu }) }
+    function actionsCtx(ctx) { return actionsReg.filter(function (a) { return a.ctx.indexOf(ctx) >= 0 }) }
+    readonly property var selTrackObj: selected >= 0 && selected < tracks.length ? tracks[selected] : null
+    readonly property bool clipPicked: !!arrange.selInfo
+    function actionEnabled(id) {
+        var t = selTrackObj, a = arrange
+        switch (id) {
+        case "file.import": case "file.export": case "track.newAudio": return engineOk
+        case "edit.undo": return a.undoStack.length > 0
+        case "edit.redo": return a.redoStack.length > 0
+        case "edit.split": case "clip.split": return !!a.clipUid
+        case "edit.duplicate": case "edit.delete": case "clip.duplicate": case "clip.delete": case "clip.gainUp": case "clip.gainDown":
+        case "clip.normalize": case "clip.fadeIn": case "clip.fadeOut": case "clip.noFades": return clipPicked
+        case "clip.repaint": case "clip.cover": return clipPicked && !sq.generating
+        case "clip.align": return clipPicked && !!a.alignGuide && !sq.alignUid
+        case "clip.pitch": return clipPicked && !!a.selTrack && a.selTrack.id > 0 && !sq.pitchBusy
+        case "clip.stems": return clipPicked && !!a.selTrack && a.selTrack.type === "audio" && !sq.splitting
+        case "track.solo": case "track.mute": case "track.remove": return !!t
+        case "track.effects": return !!t && t.id > 0
+        case "track.stems": return !!t && t.type === "audio" && t.id >= 0 && !sq.splitting
+        case "track.newAux": return engineOk
+        case "mix.auto": case "mix.remix": return mx.items.length > 0 && !mx.busy
+        case "mix.abA": case "mix.abB": return engineOk
+        case "mix.master": return engineOk && !mx.mastering && !mx.busy
+        case "view.arrange": case "view.mixer": case "view.toggle": return !dualWindow || id === "view.mixer"
+        }
+        return actionHandlers[id] !== undefined
+    }
+    function actionChecked(id) {
+        var t = selTrackObj
+        switch (id) {
+        case "edit.snap": return arrange.snap
+        case "edit.toolMove": return arrange.tool === "move"
+        case "edit.toolCut": return arrange.tool === "cut"
+        case "track.solo": return !!t && !!t.solo
+        case "track.mute": return !!t && !!t.mute
+        case "mix.abA": return mx.abState === "A"
+        case "mix.abB": return mx.abState === "B"
+        case "view.arrange": return view === "arrange"
+        case "view.mixer": return view === "mixer"
+        case "view.lab": return view === "lab"
+        case "view.dual": return dualWindow
+        case "view.nav": return !navZ.folded
+        case "view.insp": return !inspZ.folded
+        case "view.detail": return !detZ.folded
+        }
+        if (id.indexOf("view.theme") === 0) return Theme.name === id.slice(10)
+        return false
+    }
+    // Qué hace cada orden: lo mismo que el botón o atajo que ya existía (nada nuevo ni decorativo)
+    readonly property var actionHandlers: ({
+        "file.home": function () { view = "home" },
+        "file.open": function () { pj.open("") },
+        "file.save": function () { pj.save(false) },
+        "file.saveAs": function () { pj.save(true) },
+        "file.import": function () { importAudio() },
+        "file.export": function () { exportMix() },
+        "file.audio": function () { openAudioSettings() },
+        "edit.undo": function () { arrange.undo() },
+        "edit.redo": function () { arrange.redo() },
+        "edit.split": function () { arrange.splitAt(arrange.clipUid, arrange.clipSel, posSec) },
+        "edit.duplicate": function () { arrange.dupSel() },
+        "edit.delete": function () { arrange.removeSel() },
+        "edit.snap": function () { arrange.snap = !arrange.snap },
+        "edit.toolMove": function () { arrange.tool = "move" },
+        "edit.toolCut": function () { arrange.tool = "cut" },
+        "track.newAudio": function () { importAudio(); view = dualWindow ? "mixer" : "arrange" },
+        "track.newInst": function () { addMore("piano") },
+        "track.newDrum": function () { addMore("drums") },
+        "track.newVoice": function () { addMore("cinta") },
+        "track.newAux": function () { arrange.addAux() },
+        "track.generate": function () { sq.addTrack("ia") },
+        "track.solo": function () { toggleTrackFlag(selTrackObj.uid, "solo") },
+        "track.mute": function () { toggleTrackFlag(selTrackObj.uid, "mute") },
+        "track.stems": function () { sq.splitStems(selTrackObj.id) },
+        "track.effects": function () { rackTrack = selTrackObj.id; goTo("fx") },
+        "track.remove": function () { var i = sq.indexOf(selTrackObj.uid); if (i >= 0) removeTrackAt(i) },
+        "clip.split": function () { arrange.splitAt(arrange.clipUid, arrange.clipSel, posSec) },
+        "clip.duplicate": function () { arrange.dupSel() },
+        "clip.delete": function () { arrange.removeSel() },
+        "clip.gainUp": function () { arrange.gainSel(1) },
+        "clip.gainDown": function () { arrange.gainSel(-1) },
+        "clip.normalize": function () { arrange.edit(arrange.clipUid, { op: "normalize", clip: arrange.clipSel, target: -1 }) },
+        "clip.fadeIn": function () { arrange.fadeSel("in", 0.25) },
+        "clip.fadeOut": function () { arrange.fadeSel("out", 0.25) },
+        "clip.noFades": function () { arrange.edit(arrange.clipUid, { op: "fades", clip: arrange.clipSel, "in": 0, out: 0 }) },
+        "clip.repaint": function () { sq.repaintClip(arrange.clipUid, arrange.selInfo, "") },
+        "clip.cover": function () { sq.coverClip(arrange.clipUid, arrange.selInfo) },
+        "clip.align": function () { sq.alignTrack(arrange.clipUid, arrange.alignGuide.uid) },
+        "clip.pitch": function () { var id = arrange.selTrack.id; tuneBody.trackId = id; goTo("afina"); sq.pitchAnalyze(id) },
+        "clip.stems": function () { sq.splitStems(arrange.selTrack.id) },
+        "mix.auto": function () { mx.mix(false) },
+        "mix.remix": function () { mx.mix(true) },
+        "mix.abA": function () { mx.bypass("A") },
+        "mix.abB": function () { mx.bypass("B") },
+        "mix.master": function () { mx.masterAuto(mx.masterSel) },
+        "mix.masterFx": function () { goTo("fxm") },
+        "view.arrange": function () { if (dualWindow) flowWin.raise(); else view = "arrange" },
+        "view.mixer": function () { view = "mixer" },
+        "view.toggle": function () { view = view === "mixer" ? "arrange" : "mixer" },
+        "view.lab": function () { view = "lab" },
+        "view.dual": function () { dualWindow = !dualWindow },
+        "view.nav": function () { navZ.folded = !navZ.folded },
+        "view.insp": function () { inspZ.folded = !inspZ.folded },
+        "view.detail": function () { detZ.folded = !detZ.folded },
+        "view.reset": function () { resetLayout() },
+        "view.themeOscuro": function () { setTheme("Oscuro") },
+        "view.themeGrafito": function () { setTheme("Grafito") },
+        "view.themeClaro": function () { setTheme("Claro") },
+        "view.palette": function () { palette.open() }
+    })
+    function runAction(id) {
+        var h = actionHandlers[id]
+        if (!h) { toast("Orden desconocida: " + id); return false }
+        if (!actionEnabled(id)) return false
+        h()
+        return true
+    }
+    Shortcut { sequence: "Ctrl+K"; onActivated: palette.open() }
     Shortcut { sequences: [StandardKey.Open]; onActivated: pj.open("") }
     Shortcut { sequences: [StandardKey.Save]; onActivated: pj.save(false) }
     Shortcut { sequence: "Ctrl+Shift+S"; onActivated: pj.save(true) }
@@ -227,12 +351,24 @@ Window {
     }
     // Para la autoprueba: zonas fijas, ir a una página, plegar, contraste, vistas y temas
     function zoneRects() {
-        var out = {}, z = { cabecera: header, navegador: navZ, principal: mainArea, inspector: inspZ, detalle: detZ, estado: statusBar }
+        var out = {}, z = { menus: menuBar, cabecera: header, navegador: navZ, principal: mainArea, inspector: inspZ, detalle: detZ, estado: statusBar }
         for (var k in z) { var it = z[k], p = it.mapToItem(null, 0, 0); out[k] = { x: Math.round(p.x), y: Math.round(p.y), w: Math.round(it.width), h: Math.round(it.height), visible: it.visible } }
         return out
     }
     function layoutCommand(what, a, b) {
         if (what === "zones") return zoneRects()
+        if (what === "actions") { loadActions()
+                                  return { ids: actionsReg.map(function (x) { return x.id }),
+                                           missing: actionsReg.filter(function (x) { return actionHandlers[x.id] === undefined }).map(function (x) { return x.id }),
+                                           extra: Object.keys(actionHandlers).filter(function (k) { return !actionsReg.some(function (x) { return x.id === k }) }),
+                                           menus: actionMenus, clip: actionsCtx("clip").map(function (x) { return x.id }),
+                                           track: actionsCtx("track").map(function (x) { return x.id }) } }
+        if (what === "run") return { ok: runAction(a), enabled: actionEnabled(a), checked: actionChecked(a) }
+        if (what === "menu") { if (a === "palette") { palette.open(); palette.query = b || ""; return { open: palette.visible, hits: palette.hits.map(function (x) { return x.id }) } }
+                               if (a === "close") { palette.close(); barMenu.close(); ctxMenu.close(); return true }
+                               if (a === "ctx") { openContext(b, menuBar, 40, 10); return { open: ctxMenu.visible, count: ctxMenu.count } }
+                               barMenu.menu = a; barMenu.items = actionsOf(a); barMenu.openAt(menuBar, 6, menuBar.height)
+                               return { open: barMenu.visible, count: barMenu.count } }
         if (what === "browser") { if (a) fxBrowser.add(a)
                                   return { sections: fxBrowser.sections.map(function (s) { return [s[0], s[1].map(function (d) { return d.key })] }),
                                            target: fxBrowser.targetName } }
@@ -556,9 +692,52 @@ Window {
     function toast(t) { toastText.text = t; toastBox.opacity = 1; toastTimer.restart() }
     Timer { id: toastTimer; interval: 2400; onTriggered: toastBox.opacity = 0 }
 
+    // ---------------- barra de menús (F1): Archivo · Editar · Pista · Clip · Mezcla · Ver ----------------
+    Rectangle {
+        id: menuBar
+        objectName: "menuBar"
+        z: 6
+        width: parent.width; height: 28
+        color: Theme.s0
+        Component.onCompleted: win.loadActions()
+        Rectangle { y: parent.height - 1; width: parent.width; height: 1; color: Theme.line }
+        Row {
+            x: 6; height: parent.height
+            Repeater {
+                model: win.actionMenus
+                Rectangle {
+                    id: mb
+                    required property string modelData
+                    readonly property bool open: barMenu.visible && barMenu.menu === modelData
+                    width: mt.implicitWidth + 20; height: menuBar.height - 1
+                    color: open || mma.containsMouse ? Theme.s3 : "transparent"
+                    Text { id: mt; anchors.centerIn: parent; text: mb.modelData; color: Theme.ink
+                           font.family: Theme.font; font.pixelSize: 13; font.weight: 600 }
+                    MouseArea {
+                        id: mma; anchors.fill: parent; hoverEnabled: true
+                        onClicked: { barMenu.menu = mb.modelData; barMenu.items = win.actionsOf(mb.modelData); barMenu.openAt(mb, 0, mb.height) }
+                        onContainsMouseChanged: if (containsMouse && barMenu.visible && barMenu.menu !== mb.modelData) {
+                            barMenu.menu = mb.modelData; barMenu.items = win.actionsOf(mb.modelData); barMenu.openAt(mb, 0, mb.height) }
+                    }
+                }
+            }
+        }
+        Text {
+            anchors.right: parent.right; anchors.rightMargin: 10; anchors.verticalCenter: parent.verticalCenter
+            text: "Ctrl+K: buscar una orden"; color: Theme.inkDim; font.family: Theme.font; font.pixelSize: 12
+            MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: palette.open() }
+        }
+    }
+    ActionMenu { id: barMenu; objectName: "barMenu"; studio: win; property string menu: "" }
+    ActionMenu { id: ctxMenu; objectName: "ctxMenu"; studio: win }
+    CommandPalette { id: palette; objectName: "palette"; studio: win }
+    // Clic derecho en el Arreglo: el clip (o la pista) ya está elegido; sale su menú donde está el ratón
+    function openContext(ctx, item, x, y) { ctxMenu.ctx = ctx; ctxMenu.items = actionsCtx(ctx); ctxMenu.openAt(item, x, y) }
+
     // ---------------- cabecera ----------------
     Rectangle {
         id: header
+        y: menuBar.height
         z: 5
         width: parent.width
         height: Math.round(leftGroup.y + leftGroup.height + 10 + 3)
@@ -878,7 +1057,7 @@ Window {
                 AutoMasterBox { mixer: mx; visible: fxMain.target === 0 }
             }
         }
-        ZonePage { zid: "afina"; tint: "afina"; minWidth: 620; TuneBody { mixer: mx } }
+        ZonePage { zid: "afina"; tint: "afina"; minWidth: 620; TuneBody { id: tuneBody; mixer: mx } }
     }
 
     // ---------------- ventana aparte: Arreglo (doble flujo) ----------------
