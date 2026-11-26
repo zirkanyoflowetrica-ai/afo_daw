@@ -90,6 +90,8 @@ C→X: siguen tuyas X2, X6, X7, X8, X9, en ese orden. No esperes respuesta para 
 | F6 | C | · | `modules/MixAiBody.qml`, `MasteringBody.qml`, `ReviewBody.qml`, `MixBody.qml` | Un solo mezclador: IA con los mismos controles y marca «IA»; Inspector sin Asistente IA |
 | F7 | C | · | `analysis.py` (nuevo), `bridge.py`, pista de acordes | Tonalidad, acordes y secciones correctos en 4 géneros de `song_factory` |
 | F8 | C | · | `scripts/`, `script_host.py` (nuevo) | Scripts de ejemplo corren sobre un proyecto completo y se deshacen con Ctrl+Z |
+| F9 | C | · | `theme/Theme.qml`, `templates/*/theme.json`, QML con colores fijos | Temas Oscuro/Grafito/Claro de una familia; 0 colores fijos; contraste ≥ 4,5:1 en los tres |
+| F10 | C | · | `Main.qml`, `controls/Backdrop.qml` (nuevo), ajustes | Fondo imagen/parallax opcional, apagado de fábrica; contraste intacto con fondo |
 
 C→X: NUEVA PRIORIDAD (23-11, el usuario deja atrás lo modular): X14, X15, X12, X10, X11, X16, X17; X13 se hace dentro de X14–X17; luego X2…X9. Plan: docs/DISENO_DAW.md.
 C→X: PRIORIDAD anterior: X10, X11, X12, X13; luego X2…X9. Antes: X10 y luego X11 (las pidió el usuario) antes que X2…X9. Esos archivos son tuyos en este lote, `bridge.py` solo para los slots `library*`.

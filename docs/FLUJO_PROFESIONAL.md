@@ -172,3 +172,88 @@ fuera del hilo de audio (AGENTS.md §2) y con deshacer:
 | F6 | Un solo mezclador (§3.1): Mezcla automática como orden del Mezclador, Master IA como efecto del master, A/B en la barra; fuera los estilos propios | Inspector sin Asistente IA; ningún control de IA con aspecto propio; proyectos completos siguen pasando |
 | F7 | Análisis Python: tempo, tonalidad, acordes, secciones → pista de acordes y marcadores | Con `song_factory`, acierta tonalidad y acordes en 4 géneros |
 | F8 | Scripts del usuario (`scripts/`, API `afo`, proceso aparte) + ejemplos | Los ejemplos corren sobre un proyecto completo y se deshacen con Ctrl+Z |
+
+## 6. Temas y colores (petición del usuario, 26-11-2026)
+
+«Los temas y los colores de los temas no tienen nada que ver». Diagnóstico:
+
+| Hoy | Problema |
+|---|---|
+| AllForOne (crema, marcos gruesos, pastel saturado), AllForOne Oscuro (morado con los marcos del claro), Professional (gris con acento azul-morado), Sobrio (carbón desaturado) | Cuatro identidades distintas: cambia la forma, el acento y el tono de cada color |
+| Colores «de módulo» (`piano`, `ia`, `mastia`…) distintos en cada tema | La IA es azul en uno y gris en otro; y los módulos ya no existen |
+| 176 colores fijos en los QML (`#120f0a`, `#e0c0a0`, `#000`…) | Se saltan el tema: por eso hay piezas que no pegan con nada |
+
+**Familia nueva:** los temas son tres niveles de luz de la misma identidad. Comparten matiz,
+acento, colores de pista, tipografía (Space Grotesk, de la plantilla) y forma: borde de 1 px,
+radio 3, sin sombras duras. Solo cambia la luz. Colores en OKLCH, contraste medido (WCAG):
+
+| Token | Oscuro (de fábrica) | Grafito | Claro (el crema de la plantilla) |
+|---|---|---|---|
+| Superficie 0 / 1 / 2 / 3 (fondo, zona, tarjeta, control) | `#181612` `#201e1a` `#282622` `#32302c` | `#3a3833` `#45423e` `#4f4d48` `#5a5853` | `#f8f5ef` `#eeebe5` `#e2dfda` `#d7d4ce` |
+| Texto / texto secundario | `#eae7e3` / `#a7a49f` | `#f4f1ed` / `#d4d0cb` | `#1c1a17` / `#4f4d48` |
+| Acento (selección, foco, reproducir): el ámbar de AllForOne | `#f0b135` | `#f0b135` | `#8e5400` |
+| Contraste peor caso (texto sec. sobre superficie 3) | 5,3:1 | 4,6:1 | 5,7:1 |
+
+**Colores con significado, iguales en los tres temas:**
+- grabar `#e6443d`;
+- IA (marca «IA» en efectos, tomas y clips generados) `#b699eb`;
+- medidores `#6ed274` → `#edcc48` → pico `#f9423d`.
+
+Fuera de esto no hay más color que el de las pistas.
+
+**12 colores de pista** (mismo brillo y croma, solo cambia el matiz; en Claro, una versión más
+oscura para que se lean sobre fondo claro, ≥ 3:1):
+- rojo `#e18881`, naranja `#da915f`, ámbar `#c49f4d`, lima `#a9ab54`;
+- verde `#77b779`, menta `#4abba1`, turquesa `#35b9c0`, azul `#57afe0`;
+- índigo `#83a3ea`, violeta `#a996e2`, magenta `#c88ccb`, rosa `#d887ae`.
+
+Con texto negro encima dan ≥ 7,2:1. El cuerpo del clip es el color de la pista mezclado con la
+superficie; el nombre va en el texto del tema.
+
+**Reglas:**
+1. Ningún QML lleva un color fijo: el selftest falla si encuentra `"#…"` fuera de `theme/`.
+2. `theme.json` solo da la luz (superficies, texto, acento) y, si quiere, la fuente. Los colores
+   con significado y los de pista no se cambian por tema.
+3. Los temas de usuario siguen funcionando (`templates/*/theme.json`). Lo que no digan sale de la
+   familia, nunca de la plantilla crema.
+4. Los temas de hoy (AllForOne, AllForOne Oscuro, Professional, Sobrio) se sustituyen por Oscuro,
+   Grafito y Claro. Sus carpetas no se borran sin preguntar al usuario.
+
+## 7. Fondo con parallax (opcional, apagado de fábrica)
+
+**Dónde se activa.** En Ver › Fondo… hay tres opciones: **Ninguno** (de fábrica), **Imagen** o
+**Parallax**.
+
+**Cómo se pone.**
+- Imagen: se elige un archivo.
+- Parallax: se elige una carpeta con capas PNG (`1.png` el fondo … `n.png` la de delante).
+- Se copian a la carpeta de usuario (`fondos/`); el programa no trae ni descarga imágenes.
+
+**Ajustes:** intensidad del movimiento (0 = quieto), oscurecer (0–80 %) y transparencia de las
+zonas (0–15 %).
+
+**Cómo se mueve.** Las capas se desplazan con el scroll horizontal y el zoom del Arreglo; la de
+atrás se mueve menos (de 0,05 a 0,3 según la profundidad). Es un movimiento suave, no sigue al
+ratón.
+
+**Dónde se ve.**
+- Detrás de la ventana y en los huecos.
+- La zona vacía bajo las pistas.
+- La pantalla de Inicio.
+
+Los clips, el editor, las tiras del mezclador y los textos siguen opacos sobre su superficie, así
+el contraste no depende de la imagen. El selftest lo mide con el fondo puesto, tomando el píxel más
+claro y el más oscuro de la imagen bajo cada zona.
+
+**Coste.**
+- Solo `Image` con traslación, nada de sombreadores ni desenfoque en vivo: el oscurecido y el
+  desenfoque se calculan una vez, al elegir la imagen.
+- Se para con la ventana en segundo plano y con «Reducir movimiento».
+- Nunca toca el hilo de audio.
+
+## 8. Etapas añadidas
+
+| Etapa | Qué | Hecho cuando |
+|---|---|---|
+| F9 | Familia de temas Oscuro / Grafito / Claro (§6); los 176 colores fijos pasan a tokens | El selftest no encuentra colores fijos; contraste ≥ 4,5:1 en los tres; capturas de los tres |
+| F10 | Fondo opcional: imagen o parallax por capas (§7) | Apagado de fábrica; con fondo puesto el contraste sigue ≥ 4,5:1; sin coste con la ventana en segundo plano |
