@@ -56,6 +56,12 @@ Rectangle {
                                          : "● IA descargando modelos " + Math.round(sq.dlProgress * 100) + " %"
             color: Theme.ink; font.family: Theme.font; font.pixelSize: 12; font.weight: 700
         }
+        Text {                                       // Vocal Align trabajando (motor C++ en otro hilo)
+            anchors.verticalCenter: parent.verticalCenter
+            visible: !!root.studio.seq && !!root.studio.seq.alignUid
+            text: visible ? "● " + root.studio.seq.alignMsg : ""
+            color: Theme.ink; font.family: Theme.font; font.pixelSize: 12; font.weight: 700
+        }
     }
     Text {                                           // ayuda corta de la vista
         anchors.verticalCenter: parent.verticalCenter

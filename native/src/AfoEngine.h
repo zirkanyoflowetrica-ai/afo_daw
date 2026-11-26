@@ -387,4 +387,18 @@ bool writeTestTone (const std::string& path, double frequency, double seconds, d
 // Mide pico y RMS (dBFS) de un archivo de audio usando los lectores de JUCE
 std::pair<float, float> measureFile (const std::string& path);
 
+// Vocal Align (AF-67): escribe en `outPath` la toma `dubPath` con su tiempo ajustado a la voz guía
+// `guidePath`. guideStart / dubStart: segundo del proyecto en que cae el principio de cada archivo.
+// La salida tiene la misma duración, canales y frecuencia que la toma (WAV de 32 bits en coma
+// flotante). strength 0–1; maxShiftMs: lo más que se mueve una sílaba. No usa el motor: puede ir en
+// otro hilo.
+struct AlignReport
+{
+    bool ok = false;
+    std::string error;
+    double meanShiftMs = 0.0, maxShiftMs = 0.0, seconds = 0.0;
+};
+AlignReport alignVoiceFiles (const std::string& guidePath, double guideStart, const std::string& dubPath, double dubStart,
+                             const std::string& outPath, float strength, float maxShiftMs);
+
 } // namespace afo

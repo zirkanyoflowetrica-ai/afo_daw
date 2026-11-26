@@ -125,6 +125,7 @@ class Bridge(QObject):
         self._live_plan: dict | None = None      # última decisión de la mezcla en vivo (bandas para el master)
         self._to_convert: list[str] = []    # audios que el motor no lee y hay que convertir
         self._converting: str | None = None
+        self._aligning: dict | None = None   # Vocal Align en marcha (su hilo escribe el archivo)
         from .automation_write import AutoWriter
         self._writer = AutoWriter(host.engine) if host.ok else None   # Read / Touch / Latch / Write
 
@@ -136,6 +137,9 @@ class Bridge(QObject):
                 return
             if ev.get("type") == "_converted":      # interno: la conversión terminó en su hilo
                 self._finish_import(ev)
+                continue
+            if ev.get("type") == "_aligned":        # interno: Vocal Align terminó en su hilo
+                self._finish_align(ev)
                 continue
             if str(ev.get("type", "")).startswith(("ai", "stems", "lab")):   # IA local (ai_music.py, stems.py, lab.py)
                 self.aiEvent.emit(_json(ev))
@@ -929,6 +933,75 @@ class Bridge(QObject):
         info["peaks"] = [round(v, 4) for v in eng.track_peaks(track_id, 600)]
         self.host.tracks[track_id] = {**self.host.tracks.get(track_id, {}), **info, "originalPath": path}
         return info
+
+    # --- Vocal Align (AF-67): la toma se ajusta en el tiempo a una voz guía ----------------
+    def _file_start(self, track_id: int) -> float:
+        """Segundo del proyecto en que cae el principio del archivo de la pista (por su primer clip)."""
+        clips = self.host.engine.clips(int(track_id))
+        if not clips:
+            raise ValueError("la pista no tiene clips")
+        c = min(clips, key=lambda x: x["start"])
+        return float(c["start"]) - float(c["offset"])
+
+    @Slot(int, int, str, result=str)
+    @_safe
+    def vocalAlign(self, track_id: int, guide_id: int, payload: str) -> str:
+        """Ajusta en el tiempo la pista `track_id` (doblaje, coro) a la voz de `guide_id`: fuerza
+        0–100 % y desplazamiento máximo en ms. El motor C++ escribe un archivo nuevo en otro hilo; al
+        terminar la pista pasa a usarlo con los mismos clips (`aiEvent` type «align»; Ctrl+Z vuelve)."""
+        if (g := self._guard()):
+            return g
+        if int(track_id) == int(guide_id):
+            return _err("Elige como guía otra pista")
+        if self._aligning:
+            return _err("Ya se está alineando una pista: espera a que termine")
+        src = (self.host.tracks.get(int(track_id)) or {}).get("originalPath") or ""
+        guide = (self.host.tracks.get(int(guide_id)) or {}).get("originalPath") or ""
+        if not src or not Path(src).is_file():
+            return _err("La pista a alinear no tiene audio")
+        if not guide or not Path(guide).is_file():
+            return _err("La pista guía no tiene audio")
+        opts = json.loads(payload or "{}")
+        strength = max(0.0, min(100.0, float(opts.get("strength", 100)))) / 100.0
+        max_ms = max(10.0, min(500.0, float(opts.get("maxShiftMs", 150))))
+        try:
+            d_start, g_start = self._file_start(track_id), self._file_start(guide_id)
+        except ValueError as exc:
+            return _err(f"No se puede alinear: {exc}")
+        folder = paths.user_data_dir() / "alineadas"
+        folder.mkdir(parents=True, exist_ok=True)
+        stem = Path(src).stem.split("__alineada")[0]
+        out = folder / f"{stem}__alineada_{datetime.now():%Y%m%d_%H%M%S_%f}.wav"
+        job = {"trackId": int(track_id), "guideId": int(guide_id), "out": str(out), "previous": src}
+        self._aligning = job
+
+        from .engine_host import afo_audio
+
+        def work():
+            try:
+                r = dict(afo_audio.align_voice(guide, g_start, src, d_start, str(out), strength, max_ms))
+            except Exception as exc:
+                r = {"ok": False, "error": str(exc)}
+            self._mixer_events.put({"type": "_aligned", **job, **r})
+
+        threading.Thread(target=work, name="afo-align", daemon=True).start()
+        return _ok(**job)
+
+    def _finish_align(self, ev: dict) -> None:
+        """Hilo principal: la pista pasa al archivo alineado conservando sus clips."""
+        self._aligning = None
+        out = {"type": "align", "trackId": ev["trackId"], "guideId": ev["guideId"], "ok": False}
+        if not ev.get("ok"):
+            out["error"] = f"No se pudo alinear: {ev.get('error') or 'error desconocido'}"
+        else:
+            try:
+                info = self._set_source(int(ev["trackId"]), ev["out"])
+                out.update(ok=True, path=ev["out"], previous=ev["previous"], track=info,
+                           clips=self.host.engine.clips(int(ev["trackId"])),
+                           meanShiftMs=round(float(ev["mean_shift_ms"]), 1), maxShiftMs=round(float(ev["max_shift_ms"]), 1))
+            except Exception as exc:
+                out["error"] = f"No se pudo poner el audio alineado: {exc}"
+        self.aiEvent.emit(_json(out))
 
     @Slot(int, str, result=str)
     @_safe

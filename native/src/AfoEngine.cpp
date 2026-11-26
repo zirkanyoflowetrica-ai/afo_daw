@@ -6,6 +6,7 @@
 #include "AfoPlugins.h"
 #include "AfoLoudness.h"
 #include "fx/FxPlugins.h"
+#include "fx/VocalAlign.h"
 
 #include <array>
 #include <cmath>
@@ -2191,6 +2192,63 @@ bool writeTestTone (const std::string& path, double frequency, double seconds, d
         return false;
     os.release();   // el writer es ahora el dueño del stream
     return writer->writeFromAudioSampleBuffer (buf, 0, numSamples);
+}
+
+AlignReport alignVoiceFiles (const std::string& guidePath, double guideStart, const std::string& dubPath, double dubStart,
+                             const std::string& outPath, float strength, float maxShiftMs)
+{
+    AlignReport rep;
+    juce::AudioFormatManager fm;
+    fm.registerBasicFormats();
+    std::unique_ptr<juce::AudioFormatReader> gr (fm.createReaderFor (toFile (guidePath)));
+    std::unique_ptr<juce::AudioFormatReader> dr (fm.createReaderFor (toFile (dubPath)));
+    if (gr == nullptr || gr->lengthInSamples <= 0) { rep.error = "No se puede leer la voz guía"; return rep; }
+    if (dr == nullptr || dr->lengthInSamples <= 0) { rep.error = "No se puede leer la toma"; return rep; }
+    if (dr->lengthInSamples > (juce::int64) (dr->sampleRate * 1200.0)) { rep.error = "La toma pasa de 20 minutos"; return rep; }
+    const double sr = dr->sampleRate, gsr = gr->sampleRate;
+    const int dch = (int) juce::jlimit (1u, 2u, dr->numChannels);
+    const int len = (int) dr->lengthInSamples;
+    juce::AudioBuffer<float> db (dch, len);
+    dr->read (&db, 0, len, 0, true, dch > 1);
+    std::vector<std::vector<float>> dub ((size_t) dch, std::vector<float> ((size_t) len));
+    for (int c = 0; c < dch; ++c) std::copy (db.getReadPointer (c), db.getReadPointer (c) + len, dub[(size_t) c].begin());
+
+    // La guía, en mono, llevada al tiempo de la toma: muestra n de la toma = segundo dubStart + n/sr
+    const int glen = (int) juce::jmin (gr->lengthInSamples, (juce::int64) (gsr * 1300.0));
+    juce::AudioBuffer<float> gb ((int) juce::jlimit (1u, 2u, gr->numChannels), glen);
+    gr->read (&gb, 0, glen, 0, true, gb.getNumChannels() > 1);
+    std::vector<float> g ((size_t) glen, 0.0f);
+    for (int c = 0; c < gb.getNumChannels(); ++c)
+        for (int i = 0; i < glen; ++i) g[(size_t) i] += gb.getSample (c, i) / (float) gb.getNumChannels();
+    std::vector<float> guide ((size_t) len, 0.0f);
+    bool overlap = false;
+    for (int n = 0; n < len; ++n)
+    {
+        const double pos = (dubStart - guideStart + n / sr) * gsr;
+        const auto i = (long long) std::floor (pos);
+        if (i < 0 || i + 1 >= glen) continue;
+        const double a = pos - (double) i;
+        guide[(size_t) n] = (float) ((1.0 - a) * g[(size_t) i] + a * g[(size_t) i + 1]);
+        overlap = true;
+    }
+    if (! overlap) { rep.error = "La voz guía y la toma no coinciden en el tiempo"; return rep; }
+
+    std::vector<std::vector<float>> out;
+    const auto st = fx::alignTake (guide, dub, sr, juce::jlimit (0.0f, 1.0f, strength), juce::jlimit (10.0f, 500.0f, maxShiftMs), out);
+    juce::AudioBuffer<float> ob (dch, len);
+    for (int c = 0; c < dch; ++c) std::copy (out[(size_t) c].begin(), out[(size_t) c].end(), ob.getWritePointer (c));
+
+    auto dst = toFile (outPath);
+    dst.deleteFile();
+    auto os = std::make_unique<juce::FileOutputStream> (dst);
+    if (! os->openedOk()) { rep.error = "No se puede escribir " + outPath; return rep; }
+    juce::WavAudioFormat wav;
+    std::unique_ptr<juce::AudioFormatWriter> writer (wav.createWriterFor (os.get(), sr, (unsigned) dch, 32, {}, 0));
+    if (writer == nullptr) { rep.error = "No se puede escribir el WAV"; return rep; }
+    os.release();
+    if (! writer->writeFromAudioSampleBuffer (ob, 0, len)) { rep.error = "No se pudo escribir el WAV"; return rep; }
+    rep.ok = true; rep.meanShiftMs = st.meanShiftMs; rep.maxShiftMs = st.maxShiftMs; rep.seconds = len / sr;
+    return rep;
 }
 
 std::pair<float, float> measureFile (const std::string& path)

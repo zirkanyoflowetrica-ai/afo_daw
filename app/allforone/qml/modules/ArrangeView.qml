@@ -65,6 +65,13 @@ Rectangle {
     property var undoStack: []
     property var redoStack: []
     readonly property var selTrack: clipUid && studio ? studio.seq.trackOf(clipUid) : null
+    // Vocal Align: pistas que pueden ser la guía (las de audio, menos la del clip elegido)
+    readonly property var alignGuides: (studio ? studio.tracks : []).filter(function (t) {
+        return (t.type === "audio" || t.type === "voz") && t.id > 0 && !t.lab && (!selTrack || t.uid !== selTrack.uid) })
+    readonly property var alignGuide: {
+        var g = alignGuides.filter(function (t) { return studio && t.uid === studio.seq.alignOpts.guide })
+        return g.length ? g[0] : (alignGuides.length ? alignGuides[0] : null)
+    }
     readonly property var selInfo: {
         var cs = selTrack ? selTrack.aclips || [] : []
         for (var i = 0; i < cs.length; i++) if (cs[i].id === clipSel) return cs[i]
@@ -321,6 +328,23 @@ Rectangle {
                      onPicked: function (v) { root.studio.seq.coverOpts = Object.assign({}, root.studio.seq.coverOpts, { style: v }) } }
             Tb { text: "Normalizar"; active: !!root.selInfo; tip: "Sube o baja el clip para que su pico quede en −1 dBFS"
                  onClicked: root.edit(root.clipUid, { op: "normalize", clip: root.clipSel, target: -1 }) }
+            Sep {}
+            Tb { objectName: "alignRun"; text: root.studio.seq.alignUid ? "Alineando…" : "Alinear voz"
+                 active: !!root.selInfo && !!root.alignGuide && !root.studio.seq.alignUid
+                 tip: "Vocal Align: ajusta el tiempo de la pista del clip elegido (doblaje, coro) a la pista guía, sin cambiar el tono. Ctrl+Z vuelve a la toma original"
+                 onClicked: root.studio.seq.alignTrack(root.clipUid, root.alignGuide ? root.alignGuide.uid : "") }
+            Select { objectName: "alignGuide"; width: 150; fontSize: 12; padY: 2
+                     options: root.alignGuides.length ? root.alignGuides.map(function (t) { return "con " + t.name }) : ["(falta otra pista de audio)"]
+                     current: root.alignGuide ? "con " + root.alignGuide.name : "(falta otra pista de audio)"
+                     tip: "Pista guía: la voz que lleva el tiempo bueno"
+                     onPicked: function (v) {
+                         var g = root.alignGuides.filter(function (t) { return "con " + t.name === v })
+                         if (g.length) root.studio.seq.alignOpts = Object.assign({}, root.studio.seq.alignOpts, { guide: g[0].uid })
+                     } }
+            Select { objectName: "alignStrength"; width: 74; fontSize: 12; padY: 2; options: ["100 %", "75 %", "50 %"]
+                     current: root.studio.seq.alignOpts.strength + " %"
+                     tip: "Fuerza: 100 % la deja en el tiempo de la guía; menos, la acerca y conserva algo de su soltura"
+                     onPicked: function (v) { root.studio.seq.alignOpts = Object.assign({}, root.studio.seq.alignOpts, { strength: parseInt(v) }) } }
             Sep {}
             Tb { text: "Vol −"; active: !!root.selInfo; tip: "Baja 1 dB el clip elegido (también se arrastra su etiqueta de dB)"; onClicked: root.gainSel(-1) }
             Tb { text: "Vol +"; active: !!root.selInfo; tip: "Sube 1 dB el clip elegido"; onClicked: root.gainSel(1) }

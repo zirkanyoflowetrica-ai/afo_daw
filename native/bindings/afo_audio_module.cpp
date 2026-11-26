@@ -134,6 +134,19 @@ PYBIND11_MODULE (afo_audio, m)
                auto [peak, rms] = afo::measureFile (p);
                py::dict d; d["peak_db"] = peak; d["rms_db"] = rms; return d;
            }, py::arg ("path"));
+    m.def ("align_voice", [] (const std::string& guide, double guideStart, const std::string& dub, double dubStart,
+                              const std::string& out, float strength, float maxShiftMs)
+           {
+               afo::AlignReport r;
+               {
+                   py::gil_scoped_release free;
+                   r = afo::alignVoiceFiles (guide, guideStart, dub, dubStart, out, strength, maxShiftMs);
+               }
+               py::dict d; d["ok"] = r.ok; d["error"] = r.error; d["mean_shift_ms"] = r.meanShiftMs;
+               d["max_shift_ms"] = r.maxShiftMs; d["seconds"] = r.seconds; return d;
+           }, py::arg ("guide"), py::arg ("guide_start"), py::arg ("dub"), py::arg ("dub_start"), py::arg ("out"),
+           py::arg ("strength") = 1.0f, py::arg ("max_shift_ms") = 150.0f,
+           "Vocal Align (AF-67): escribe `out` con la toma `dub` ajustada en el tiempo a la voz `guide` (sin el motor).");
     m.def ("pump_messages", &afo::Engine::pumpMessages, py::arg ("milliseconds") = 0,
            "Procesa mensajes pendientes de JUCE. En Windows lo hace el bucle de Qt; úsese en otras plataformas.");
 

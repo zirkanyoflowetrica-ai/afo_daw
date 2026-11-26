@@ -295,7 +295,7 @@ def _native_daw_checks(rep, app, host, window, bridge, track_id) -> None:
     un = lay("arrUndo", uid)
     un = lay("arrUndo", uid)
     eng_clips = json.loads(bridge.clipList(track_id))["clips"]
-    tools = [window.findChild(QObject, n) for n in ("arrSplit", "arrCut", "coverMode", "arrToMixer")]
+    tools = [window.findChild(QObject, n) for n in ("arrSplit", "arrCut", "coverMode", "alignRun", "alignGuide", "alignStrength", "arrToMixer")]
     rep.check("Arreglo: dividir, fundir y deshacer clips desde la vista (sin pestaña «Clips»)",
               len(sp["clips"]) == 2 and fd.get("ok") and abs(fd["clips"][-1]["fade_in"] - 0.5) < 1e-6
               and len(eng_clips) == 1 and un["redo"] == 2 and None not in tools,

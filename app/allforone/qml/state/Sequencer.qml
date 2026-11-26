@@ -375,6 +375,36 @@ QtObject {
         aiMsg = ev.message
         studio.toast("Zona " + ev.repaint.start.toFixed(1) + "–" + ev.repaint.end.toFixed(1) + " s rehecha en " + t.name + " · Ctrl+Z vuelve al original")
     }
+    // ---------------- Vocal Align (AF-67): una toma se ajusta en el tiempo a una voz guía ----------------
+    // El motor C++ escribe en otro hilo un archivo con la toma movida (sin cambiar el tono); al volver,
+    // la pista lo usa con los mismos clips y «Deshacer» vuelve a la toma original.
+    property string alignUid: ""
+    property var alignOpts: ({ guide: "", strength: 100, maxShiftMs: 150 })
+    property string alignMsg: ""
+    function alignTrack(uid, guideUid) {
+        var t = trackOf(uid), g = trackOf(guideUid)
+        if (!t) { studio.toast("Elige un clip de la toma que quieres alinear"); return false }
+        if (!g || g.uid === uid) { studio.toast("Elige en «Alinear con» la pista guía (otra pista de audio)"); return false }
+        if (alignUid) { studio.toast("Ya se está alineando una pista"); return false }
+        var r = studio.call("vocalAlign", t.id, g.id, JSON.stringify({ strength: alignOpts.strength, maxShiftMs: alignOpts.maxShiftMs }))
+        if (!r.ok) { studio.toast(r.error); return false }
+        alignUid = uid
+        alignMsg = "Alineando " + t.name + " con " + g.name + "…"
+        studio.toast(alignMsg)
+        return true
+    }
+    function applyAlign(ev) {
+        var uid = alignUid; alignUid = ""
+        if (!ev.ok) { alignMsg = ev.error; studio.toast(ev.error); return }
+        var t = trackOf(uid)
+        if (!t || t.id !== ev.trackId) { studio.toast("La pista ya no está; el audio alineado queda en " + ev.path); return }
+        var before = t.aclips || []
+        replace(uid, { aclips: ev.clips, peaks: ev.track.peaks || [], len: ev.track.length_seconds || t.len })
+        sourceReplaced(uid, ev.previous, before)
+        studio.markDirty()
+        alignMsg = t.name + " alineada: se movió " + ev.meanShiftMs + " ms de media (máx. " + ev.maxShiftMs + " ms)"
+        studio.toast(alignMsg + " · Ctrl+Z vuelve a la toma original")
+    }
     // ---------------- Otra versión con IA de un clip (C13, ACE-Step «cover») ----------------
     // El trozo del clip elegido se vuelve a tocar: «Parecida» guarda melodía y timbre, «Libre» solo la
     // forma. El resultado va a una pista nueva, en el mismo sitio del clip; el original no se toca.
@@ -524,6 +554,7 @@ QtObject {
         studio.toast("«" + (title || r.title) + "»: " + r.notes + " notas en " + n + " pistas")
     }
     function onAiEvent(ev) {
+        if (ev.type === "align") { applyAlign(ev); return }
         if (ev.type === "stemsDownload") {
             if (ev.phase === "progress") splitMsg = ev.message
             else studio.toast(ev.ok || ev.cancelled ? ev.message : ev.error)
