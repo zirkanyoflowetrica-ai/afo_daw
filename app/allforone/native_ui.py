@@ -346,6 +346,17 @@ def _native_daw_checks(rep, app, host, window, bridge, track_id) -> None:
     # la ventana no pasa del tamaño de la pantalla: se informa de los tamaños que se midieron de verdad
     rep.check("distribución sin huecos de 1280×720 hasta el tamaño de la pantalla (Arreglo y Mezclador)",
               not bad, bad or {"medidos": seen})
+    # F13: la ayuda va en un «?» (zona y cada efecto), no en párrafos fijos
+    helps = [o for o in window.findChildren(QObject) if o.objectName().startswith("zoneHelp_")]
+    shown = [o for o in helps if o.property("visible")]
+    opened = False
+    if shown:
+        QMetaObject.invokeMethod(shown[0], "show")
+        _wait(app, lambda: False, 0.2, host)
+        opened = bool(shown[0].property("opened")) and len(shown[0].property("text") or "") > 40
+        QMetaObject.invokeMethod(shown[0], "hide")
+    rep.check("ayuda «?»: cada zona explica su pestaña y se abre al pulsar",
+              len(shown) == 3 and opened, {"zonas": [o.objectName() for o in shown], "abre": opened})
     tracks = call("mixerSnapshot")["tracks"]
     i_drum = next((i for i, t in enumerate(tracks) if t["type"] == "drum"), -1)
     i_tone = next((i for i, t in enumerate(tracks) if t["id"] == track_id), -1)
@@ -678,6 +689,12 @@ def run_native_selftest(app, host, report_path: str | None, screenshot_path: str
               saved.get("theme") == "Oscuro" and saved.get("v") == 7 and set(saved.get("fold", {})) == {"nav", "insp", "detail"}, saved)
     QMetaObject.invokeMethod(window, "setDark", Q_ARG("QVariant", False))
 
+    # F13: cada efecto de la cadena lleva su «?» con lo que hace (resumen del catálogo del motor)
+    fv = QMetaObject.invokeMethod(window, "layoutCommand", Q_RETURN_ARG("QVariant"), Q_ARG("QVariant", "fxhelp"),
+                                  Q_ARG("QVariant", None), Q_ARG("QVariant", None))
+    fxh = (fv.toVariant() if hasattr(fv, "toVariant") else fv) or []
+    rep.check("ayuda «?» en cada efecto de la cadena con su explicación",
+              bool(fxh) and all(len(h[1] or "") > 20 for h in fxh), {h[0]: (h[1] or "")[:60] for h in fxh})
     shot = Path(screenshot_path) if screenshot_path else paths.logs_dir() / "selftest_nativo.png"
     _wait(app, lambda: False, 0.5, host)
     window.grabWindow().save(str(shot))

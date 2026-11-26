@@ -495,6 +495,7 @@ Window {
     function layoutCommand(what, a, b) {
         if (what === "zones") return zoneRects()
         if (what === "fit") return fitReport()
+        if (what === "fxhelp") return fxMain.helpTexts()
         if (what === "actions") { loadActions()
                                   return { ids: actionsReg.map(function (x) { return x.id }),
                                            missing: actionsReg.filter(function (x) { return actionHandlers[x.id] === undefined }).map(function (x) { return x.id }),
@@ -1074,6 +1075,13 @@ Window {
                ["recent", "Inicio", "Proyectos recientes y la biblioteca (F4)"]]
         current: "add"
         extra: srcToggle
+        help: ({
+            add: ["Añadir", "Cada fila crea su pista: instrumento (sintetizador del motor o VST3), batería, voz, audio o un plugin. Con «+» añades otra pista de ese tipo."],
+            fxlist: ["Efectos", "Efectos nativos por categoría y tus VST3. Clic: ves qué hace. Doble clic o «Añadir a…»: lo pone al final de la cadena de la pista elegida (o del master)."],
+            ia: ["IA", "Todo se genera en tu equipo, sin internet: una canción con o sin voz (ACE-Step), MIDI para una pista de instrumento o una parte nueva que encaja con lo que ya suena. Los modelos se descargan una sola vez desde aquí."],
+            audios: ["Archivos", "Cada audio crea su <b>pista</b> y su <b>tira en la consola</b>. Tipo y rol se deducen del nombre (_L, _R, _B…) y se corrigen aquí, en el Arreglo o en el Mezclador.<br><br>Quitar un audio de esta lista no borra nada de tu disco; si borras su pista, el audio sigue aquí y puedes volver a crearla."],
+            recent: ["Inicio", "Proyectos recientes y la biblioteca: artista → álbum o single → canción. Doble clic para abrir; F4 abre Inicio en grande."]
+        })
         onFoldedChanged: if (!win.loading) win.saveLayout()
         onPicked: if (!win.loading) win.saveLayout()
         SideMenu {
@@ -1104,6 +1112,12 @@ Window {
                ["cinta", "Grabar", "Grabador de voz: entrada, monitor y tomas de la pista de voz"]]
         current: "pista"
         extra: srcToggle
+        help: ({
+            pista: ["Pista", "Volumen, paneo, Solo y Mute, rol de voz para la Mezcla IA, envíos a los buses Aux y efectos de la pista elegida en el Arreglo o en el Mezclador."],
+            asist: ["Asistente IA", "<b>Mezcla IA</b> (V4.2) deja en cada canal su fader, paneo y cadena de efectos reales (se ven en Efectos); no masteriza ni genera WAV.<br><b>Master IA</b> ajusta el master hacia el objetivo elegido.<br><b>Antes / Después</b> compara las dos versiones."],
+            master: ["Versiones", "Versiones del master (Rebobinado). Clic en una versión: se carga en el master y suena al reproducir, para compararlas. Doble clic en el nombre: renombrarla. Se guardan con el proyecto."],
+            cinta: ["Grabar", "Grabador de voz: elige la entrada, escucha el monitor y graba tomas en la pista de voz."]
+        })
         onFoldedChanged: if (!win.loading) win.saveLayout()
         onPicked: if (!win.loading) win.saveLayout()
         ZonePage { id: pistaPage; zid: "pista"; tint: "mezcla"; minWidth: 306; Inspector { objectName: "inspector"; studio: win; mixer: mx; shown: pistaPage.shown } }
@@ -1181,6 +1195,13 @@ Window {
                ["afina", "Afinador", "Afinador AF-60 y afinación de las voces"]]
         current: "fx"
         extra: srcToggle
+        help: ({
+            piano: ["Piano roll", "Las notas MIDI de la pista de instrumento elegida; suenan con su instrumento (sintetizador del motor o VST3)."],
+            inst: ["Instrumento", "El instrumento se carga una sola vez y cada pista guarda solo su preset. Velocidad, Brillo y Reverb son del sintetizador interno; un VST3 se ajusta en su propio editor."],
+            drums: ["Batería", "Pads y patrón de 16 pasos de la pista de batería: cada paso encendido suena en ese tiempo del compás."],
+            fx: ["Efectos", "La cadena de efectos de la pista elegida o del master, en el orden de la señal. Arrastra una tarjeta para cambiar el orden; A/B compara dos ajustes; el «?» de cada efecto explica qué hace. Los efectos se añaden desde Navegador › Efectos."],
+            afina: ["Afinador", "Afinador AF-60: corrige la afinación de la voz mientras suena y al exportar.<br><b>Editor de tono (AF-64)</b>: las notas de la toma, una a una. Muévelas en semitonos o cents, enderézalas (quita vibrato y deriva) o llévalas a la escala; «Aplicar» escribe una copia que la pista usa con los mismos clips (Ctrl+Z vuelve). El tiempo no cambia."]
+        })
         onFoldedChanged: if (!win.loading) win.saveLayout()
         onPicked: if (!win.loading) win.saveLayout()
         Rectangle {                                 // asa para cambiar el alto (solo lo cambia el usuario)

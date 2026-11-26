@@ -212,6 +212,7 @@ Column {
         studio.toast("Escuchas " + m[e.id].side + " en «" + nameOf(e) + "»")
     }
     function dropAt(id, x) { return chainView.dropAt(id, x) }
+    function helpTexts() { return chainView.helpTexts() }
     readonly property bool tuneShown: tuneLoader.active && !!tuneLoader.item && !!tuneLoader.item.fx && tuneLoader.item.fx.id === sel
     function applyPresetTo(e, name) {
         var r = studio.call("fxApplyPreset", e.id, name)
@@ -346,13 +347,18 @@ Column {
                 Text { width: parent.width; wrapMode: Text.Wrap; text: root.labBranchText()
                        color: Theme.deviceInk
                        font.family: Theme.font; font.pixelSize: 12; font.weight: 700 }
-                Text { width: parent.width; wrapMode: Text.Wrap
-                       text: "Arrastra efectos entre «FX Lab» y «Rama B» (rama A) o entre «Rama B» y «Fin» (rama B). Las dos ramas suenan a la vez, alineadas aunque tengan latencias distintas."
-                       color: Theme.deviceInk; font.family: Theme.font; font.pixelSize: 11; font.weight: 500 }
-                Text { text: "Macros"; color: Theme.deviceInk; font.family: Theme.font; font.pixelSize: 13; font.weight: 700 }
-                Text { visible: root.labMacros.length === 0; width: parent.width; wrapMode: Text.Wrap
-                       text: "Sin asignar. Una macro mueve uno o varios parámetros de los efectos de esta pista: al girarla, al reproducir su automatización y al exportar."
-                       color: Theme.deviceInk; font.family: Theme.font; font.pixelSize: 11; font.weight: 500 }
+                Row {
+                    spacing: 8
+                    Text { anchors.verticalCenter: parent.verticalCenter; text: "Macros"
+                           color: Theme.deviceInk; font.family: Theme.font; font.pixelSize: 13; font.weight: 700 }
+                    HelpButton {
+                        anchors.verticalCenter: parent.verticalCenter
+                        title: "FX Lab: ramas y macros"
+                        text: "Arrastra efectos entre «FX Lab» y «Rama B» (rama A) o entre «Rama B» y «Fin» (rama B). Las dos ramas suenan a la vez, alineadas aunque tengan latencias distintas.<br><br>Una macro mueve uno o varios parámetros de los efectos de esta pista: al girarla, al reproducir su automatización y al exportar."
+                    }
+                }
+                Text { visible: root.labMacros.length === 0; text: "Sin macros asignadas"
+                       color: Theme.deviceInk; font.family: Theme.font; font.pixelSize: 12; font.weight: 500 }
                 Repeater {
                     model: root.labMacros
                     Row {

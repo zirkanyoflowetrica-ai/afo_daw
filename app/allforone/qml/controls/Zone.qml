@@ -13,6 +13,8 @@ Rectangle {
     property string foldTip: ""               // «Plegar el navegador (Ctrl+B)»…
     property bool vertical: false             // plegada, la zona queda como franja vertical (lados) u horizontal (abajo)
     property var extra: null                  // componente opcional a la derecha de la cabecera
+    property var help: ({})                   // F13: pestaña → [título, explicación] para el botón «?»
+    readonly property var curHelp: help[current] || null
     readonly property real headH: 34
     readonly property color titleInk: Theme.headInk(Theme.pc.pistas)   // par título/cabecera medido por el selftest
     default property alias pages: body.data
@@ -48,7 +50,8 @@ Rectangle {
                 for (var i = 0; i < tabRep.count; i++) { var it = tabRep.itemAt(i); if (it) s += it.nat + spacing }
                 return s
             }
-            readonly property real availW: head.width - 6 - (extraLd.item && extraLd.visible ? extraLd.width + 6 : 0) - 38
+            readonly property real availW: head.width - 6 - (extraLd.item && extraLd.visible ? extraLd.width + 6 : 0)
+                                           - (helpBtn.visible ? helpBtn.width + 6 : 0) - 38
             readonly property real k: natW > availW && natW > 0 ? Math.max(0.3, availW / natW) : 1
             Repeater {
                 id: tabRep
@@ -80,6 +83,15 @@ Rectangle {
             visible: !root.folded
             anchors { right: foldBtn.left; rightMargin: 6; verticalCenter: parent.verticalCenter }
             sourceComponent: root.extra
+        }
+        HelpButton {
+            id: helpBtn
+            objectName: "zoneHelp_" + root.current
+            visible: !root.folded && !!root.curHelp
+            anchors { right: extraLd.item && extraLd.item.visible ? extraLd.left : foldBtn.left; rightMargin: 6
+                      verticalCenter: parent.verticalCenter }
+            title: root.curHelp ? root.curHelp[0] : ""
+            text: root.curHelp ? root.curHelp[1] : ""
         }
         Rectangle {
             id: foldBtn

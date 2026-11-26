@@ -96,10 +96,6 @@ Column {
         tip: "WAV de toda la sesión con la versión elegida en el master"
         onClicked: root.mixer.versionSel >= 0 ? root.mixer.exportVersion(root.mixer.versionSel) : root.studio.exportMix()
     }
-    Note {
-        width: root.width
-        text: "Clic en una versión: se carga en el master y suena al reproducir (compáralas). Doble clic en el nombre para renombrarla. Las versiones se guardan con el proyecto."
-    }
 
     component Reel: Rectangle {
         property bool spinning: false

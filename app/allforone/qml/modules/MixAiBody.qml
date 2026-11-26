@@ -85,9 +85,5 @@ Column {
                     color: on ? Theme.pressedBg : Theme.button; textColor: on ? Theme.pressedInk : Theme.ink; pressedState: on
                     onClicked: root.mixer.bypass("B") }
     }
-    Text {
-        width: root.width; bottomPadding: 10; wrapMode: Text.Wrap; textFormat: Text.StyledText
-        text: "En vivo: el V4.2 deja en cada canal su <b>fader, paneo y cadena de efectos reales</b> (se ven en Efectos). No masteriza ni genera WAVs."
-        color: Theme.ink; font.family: Theme.font; font.pixelSize: 12; font.weight: 500
-    }
+    Item { width: 1; height: 10 }
 }

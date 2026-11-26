@@ -47,9 +47,11 @@ Rectangle {
             id: devRow
             height: chainFlick.height; spacing: 6
             Repeater {
+                id: cardRep
                 model: rk.chain
                 Rectangle {
                     id: card
+                    readonly property var help: [hbtn.title, hbtn.text]
                     required property var modelData
                     required property int index
                     readonly property var desc: rk.typeOf(modelData.key)
@@ -125,6 +127,17 @@ Rectangle {
                                        font.family: Theme.font; font.pixelSize: 11; font.weight: 700 }
                                 MouseArea { id: autoM; anchors.fill: parent; hoverEnabled: true }
                                 ToolTipLite { text: "Lo puso la mezcla automática; puedes cambiarlo"; show: autoM.containsMouse }
+                            }
+                            HelpButton {
+                                id: hbtn
+                                objectName: "fxHelp"
+                                anchors.verticalCenter: parent.verticalCenter
+                                readonly property var d: rk.typeOf(card.modelData.key)
+                                title: rk.nameOf(card.modelData)
+                                text: d && d.summary ? d.summary
+                                      : card.modelData.key === "vst3" ? "Plugin VST3 externo: se ajusta en su propia ventana (≡ o doble clic)."
+                                      : ""
+                                visible: text.length > 0
                             }
                             DevBtn { glyph: "◀"; tip: "Mover antes"; visible: card.tools && card.index > 0; onClicked: rk.move(card.modelData.id, card.index - 1) }
                             DevBtn { glyph: "▶"; tip: "Mover después"; visible: card.tools && card.index < rk.chain.length - 1; onClicked: rk.move(card.modelData.id, card.index + 1) }
@@ -290,6 +303,12 @@ Rectangle {
     }
 
     // Botón de la cabecera de un dispositivo (solo el símbolo)
+    // F13: título y explicación del «?» de cada tarjeta (la autoprueba los lee)
+    function helpTexts() {
+        var out = []
+        for (var i = 0; i < cardRep.count; i++) { var c = cardRep.itemAt(i); if (c) out.push(c.help) }
+        return out
+    }
     component DevBtn: Rectangle {
         id: db
         property string glyph

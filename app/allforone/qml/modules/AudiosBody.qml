@@ -19,11 +19,9 @@ Column {
         bottomPadding: 10
         Lcd { id: count; text: (root.mixer.items.length < 10 ? "0" : "") + root.mixer.items.length + "/30"; anchors.verticalCenter: parent.verticalCenter }
         Text {
-            width: root.width - count.width - 10
             anchors.verticalCenter: parent.verticalCenter
-            wrapMode: Text.Wrap; textFormat: Text.StyledText
-            text: "Cada audio crea su <b>pista</b> y, con ella, su <b>tira en la consola</b>. Tipo y rol se deducen del nombre (_L, _R, _B…) y se pueden corregir aquí, en el Arreglo o en el Mezclador."
-            color: Theme.ink; font.family: Theme.font; font.pixelSize: 13; font.weight: 500; lineHeight: 1.2
+            text: "audios · cada uno con su pista"
+            color: Theme.ink; font.family: Theme.font; font.pixelSize: 13; font.weight: 600
         }
     }
 
@@ -139,12 +137,6 @@ Column {
         }
     }
 
-    Text {                                      // .hint
-        width: root.width; topPadding: 8 + 10
-        wrapMode: Text.Wrap
-        text: "Quitar un audio de esta lista no borra nada de tu disco. Si borras su pista, el audio sigue aquí y puedes volver a crearla."
-        color: Theme.ink; font.family: Theme.font; font.pixelSize: 13; font.weight: 500
-    }
 
     property var studio
     function trackNumber(id) {

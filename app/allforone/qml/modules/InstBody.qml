@@ -18,9 +18,9 @@ Column {
     Row {                                       // .vst
         width: root.width; spacing: 10; bottomPadding: 10
         Lcd { id: one; text: "1 instancia"; anchors.verticalCenter: parent.verticalCenter }
-        Text { width: root.width - one.width - 10; anchors.verticalCenter: parent.verticalCenter; wrapMode: Text.Wrap
-               text: "El instrumento se carga una sola vez. Cada pista guarda solo su preset."
-               color: Theme.ink; font.family: Theme.font; font.pixelSize: 13; font.weight: 500 }
+        Text { anchors.verticalCenter: parent.verticalCenter
+               text: "cada pista guarda su preset"
+               color: Theme.ink; font.family: Theme.font; font.pixelSize: 13; font.weight: 600 }
     }
     TrackTabs { seq: root.seq; type: "inst" }
     DashedBox { visible: !root.t; width: root.width; height: visible ? implicitHeight : 0

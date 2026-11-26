@@ -413,9 +413,16 @@ Column {
         Column {
             id: peCol
             x: 10; y: 8; width: parent.width - 20; spacing: 6
-            Text { width: parent.width; wrapMode: Text.Wrap; textFormat: Text.StyledText
-                   text: "<b>Editor de tono (AF-64)</b>: las notas de la toma, una a una. Muévelas en semitonos o cents, enderézalas (quita vibrato y deriva) o llévalas a la escala; «Aplicar» escribe una copia que la pista usa con los mismos clips (Ctrl+Z vuelve). El tiempo no cambia."
-                   color: Theme.deviceInk; font.family: Theme.font; font.pixelSize: 13 }
+            Row {
+                spacing: 8
+                Text { anchors.verticalCenter: parent.verticalCenter; text: "Editor de tono (AF-64)"
+                       color: Theme.deviceInk; font.family: Theme.font; font.pixelSize: 13; font.weight: 700 }
+                HelpButton {
+                    anchors.verticalCenter: parent.verticalCenter
+                    title: "Editor de tono (AF-64)"
+                    text: "Las notas de la toma, una a una. Muévelas en semitonos o cents, enderézalas (quita vibrato y deriva) o llévalas a la escala; «Aplicar» escribe una copia que la pista usa con los mismos clips (Ctrl+Z vuelve). El tiempo no cambia.<br><br>Clic: elegir nota · Mayús+clic: varias · arrastrar arriba/abajo: semitonos · ↑/↓: ±1 st · Mayús+↑/↓: ±10 cents · ←/→: nota anterior/siguiente · Ctrl+A: todas · Esc: ninguna · rueda: avanzar · Ctrl+rueda: zoom"
+                }
+            }
             Row {
                 id: peTop
                 spacing: 6
