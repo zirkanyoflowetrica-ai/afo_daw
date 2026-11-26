@@ -324,7 +324,8 @@ struct GrainShifter
     DelayLine d;
     float phase = 0.0f, win = 2400.0f;
 
-    void prepare (double sr) { win = (float) (0.05 * sr); d.prepare ((int) (win + 8)); reset(); }
+    // Ventana de `seconds` (50 ms de fábrica): el retardo medio es media ventana
+    void prepare (double sr, double seconds = 0.05) { win = (float) (seconds * sr); d.prepare ((int) (win + 8)); reset(); }
     void reset() { d.clear(); phase = 0.0f; }
     float process (float x, float ratio) noexcept
     {

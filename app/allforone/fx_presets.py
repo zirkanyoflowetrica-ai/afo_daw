@@ -82,6 +82,19 @@ FACTORY: dict[str, dict[str, dict[str, float]]] = {
         "Voz aguda suave": {"speed": 60, "humanize": 40, "amount": 85, "range": 0},
         "Voz grave suave": {"speed": 60, "humanize": 40, "amount": 85, "range": 2},
     },
+    "harmonizer": {
+        "Terceras arriba": {"voice1": 1, "level1": -4, "pan1": 0, "voice2": 0},
+        "Coro 3ª y 5ª": {"voice1": 1, "level1": -5, "pan1": -40, "voice2": 5, "level2": -7, "pan2": 40},
+        "Octava abajo (grave)": {"voice1": 10, "level1": -6, "pan1": 0, "voice2": 0, "glide": 10},
+        "Quintas paralelas": {"mode": 1, "voice1": 5, "level1": -6, "pan1": -25, "voice2": 6, "level2": -8, "pan2": 25},
+        "Solo la armonía": {"voice1": 1, "level1": 0, "pan1": 0, "voice2": 0, "dry": 0},
+    },
+    "doubler": {
+        "Doble natural": {"voices": 1, "separation": 22, "variation": 45, "detune": 6, "spread": 70, "mix": 55},
+        "Estribillo ancho": {"voices": 2, "separation": 18, "variation": 50, "detune": 10, "spread": 100, "mix": 60},
+        "Coro de cuatro": {"voices": 4, "separation": 25, "variation": 60, "detune": 14, "spread": 90, "mix": 55},
+        "Sutil (verso)": {"voices": 2, "separation": 12, "variation": 30, "detune": 4, "spread": 50, "mix": 30},
+    },
     "saturator": {
         "Tubo cálido": {"drive": 9, "character": 0, "tone": -10, "mix": 100},
         "Cinta": {"drive": 12, "character": 1, "tone": -20, "bias": 10, "mix": 100},

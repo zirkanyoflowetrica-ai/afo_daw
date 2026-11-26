@@ -235,6 +235,44 @@ function draw(ctx, w, h, fx, d, live) {
         ctx.strokeStyle = "#5ee0b0"; ctx.lineWidth = 2; ctx.stroke()
         return
     }
+    if (key === "harmonizer") {
+        // Dónde suena cada voz respecto a la nota cantada (raya central), ±12 semitonos. En la escala, con
+        // la voz sonando, usa la nota real que elige el motor; si no, el intervalo nominal (3ª = 4 st)
+        var semis = [0, 4, -4, 5, -5, 7, -7, 9, -9, 12, -12]
+        frame(ctx, w, h, [], [h / 2])
+        var det = live && live.length > 4 ? live[2] : 0
+        ctx.font = "11px sans-serif"
+        for (var hv = 0; hv < 2; hv++) {
+            var ivx = Math.round(v(fx, d, hv ? "voice2" : "voice1"))
+            if (!ivx) continue
+            var tg = live && live.length > 4 ? live[3 + hv] : 0
+            var st = det > 0 && tg > 0 ? tg - det : semis[ivx]
+            var hy = h / 2 - (h / 2 - 6) * Math.max(-1, Math.min(1, st / 12))
+            var lvlH = Math.pow(10, v(fx, d, hv ? "level2" : "level1") / 20)
+            var hx = w / 2 + (w / 2 - 30) * v(fx, d, hv ? "pan2" : "pan1") / 100
+            ctx.fillStyle = hv ? pal.soft : pal.lcd
+            ctx.fillRect(hx - 14, hy - 3, 28 * Math.min(1.5, lvlH) + 2, 6)
+            ctx.fillText(String(hv + 1), hx - 24, hy + 4)
+        }
+        ctx.fillStyle = pal.lcd; ctx.globalAlpha = v(fx, d, "dry") / 100 * 0.8 + 0.2
+        ctx.fillRect(w / 2 - 14, h / 2 - 1, 28, 3); ctx.globalAlpha = 1
+        return
+    }
+    if (key === "doubler") {
+        // Retardo de cada copia (0–120 ms) con el margen que recorre por la variación; a la altura de su lado
+        var nvD = Math.round(v(fx, d, "voices")), sep = v(fx, d, "separation"), varD = v(fx, d, "variation") / 100
+        var spr = v(fx, d, "spread") / 100
+        frame(ctx, w, h, [w * 25 / 120, w * 50 / 120, w * 75 / 120, w * 100 / 120], [h / 2])
+        ctx.fillStyle = pal.lcd; ctx.fillRect(0, h / 2 - 2, 3, 4)
+        for (var dk = 0; dk < nvD; dk++) {
+            var base = sep * (1 + 0.45 * dk), span2 = (base - 10) * 0.35 * varD
+            var side = (dk % 2 ? 1 : -1) * (1 - 0.35 * Math.floor(dk / 2)) * spr
+            var dy = h / 2 + side * (h / 2 - 8)
+            ctx.fillStyle = pal.soft; ctx.fillRect(w * (base - span2) / 120, dy - 3, Math.max(2, w * 2 * span2 / 120), 6)
+            ctx.fillStyle = pal.lcd; ctx.fillRect(w * base / 120 - 1, dy - 5, 3, 10)
+        }
+        return
+    }
     if (key === "fxlab") {
         // Cuánto suena cada rama (cruce A↔B por igual potencia, nivel) y el seco, en barras
         var c = v(fx, d, "cross") / 100

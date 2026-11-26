@@ -17,7 +17,7 @@ Column {
     readonly property var groups: [
         ["Dinámica", ["compressor", "glue", "transient", "gate", "limiter", "deesser"]],
         ["EQ y filtro", ["eq", "strip"]],
-        ["Tono y voz", ["tune", "saturator"]],
+        ["Tono y voz", ["tune", "harmonizer", "doubler", "saturator"]],
         ["Espacio", ["space", "shimmer", "textureverb", "infinity", "delay", "multitap"]],
         ["Utilidad", ["gain", "analyzer"]],
         ["Ritmo", ["trancegate"]],

@@ -641,6 +641,41 @@ inline const FxDesc& tuneDesc()
     return d;
 }
 
+inline const FxDesc& harmonizerDesc()
+{
+    static const char* iv = "Apagada|3ª arriba|3ª abajo|4ª arriba|4ª abajo|5ª arriba|5ª abajo|6ª arriba|6ª abajo|Octava arriba|Octava abajo";
+    static const FxDesc d { "harmonizer", "AF-65", "Harmonizer", "Voz profesional",
+        "Hasta dos voces de armonía sacadas de la voz: en la escala de la canción (siguen la nota que se canta y salen afinadas aunque la voz no lo esté) o a un intervalo fijo.",
+        { { "key", "Tónica", 0, 11, 0, "", 0, "Do|Do#|Re|Re#|Mi|Fa|Fa#|Sol|Sol#|La|La#|Si", "Nota base de la escala de la canción" },
+          { "scale", "Escala", 0, 5, 1, "", 0, "Cromática|Mayor|Menor|Menor armónica|Pentatónica mayor|Pentatónica menor", "Notas de la escala (con Cromática los intervalos son fijos)" },
+          { "mode", "Modo", 0, 1, 0, "", 0, "En la escala|Fijo (paralelo)", "En la escala: la 3ª es mayor o menor según la nota, sin salirse de la escala. Fijo: siempre los mismos semitonos" },
+          { "voice1", "Voz 1", 0, 10, 1, "", 0, iv, "Intervalo de la primera voz de armonía" },
+          { "level1", "Nivel 1", -36, 6, -4, "dB", 0, nullptr, "Volumen de la voz 1" },
+          { "pan1", "Pan 1", -100, 100, -35, "%", 0, nullptr, "Posición de la voz 1" },
+          { "voice2", "Voz 2", 0, 10, 0, "", 0, iv, "Intervalo de la segunda voz (Apagada = solo una)" },
+          { "level2", "Nivel 2", -36, 6, -4, "dB", 0, nullptr, "Volumen de la voz 2" },
+          { "pan2", "Pan 2", -100, 100, 35, "%", 0, nullptr, "Posición de la voz 2" },
+          { "glide", "Deslizamiento", 0, 200, 25, "ms", 40, nullptr, "Cuánto tarda la armonía en llegar a la nota nueva" },
+          { "range", "Voz", 0, 2, 1, "", 0, "Aguda (soprano / alto)|Media (tenor)|Grave (barítono / bajo)", "Rango en el que busca la nota (evita errores de octava)" },
+          { "dry", "Voz original", 0, 100, 100, "%", 0, nullptr, "Cuánto de la voz original se oye junto a la armonía" } },
+        "nota|voz 1|voz 2" };
+    return d;
+}
+
+inline const FxDesc& doublerDesc()
+{
+    static const FxDesc d { "doubler", "AF-66", "Doubler", "Voz profesional",
+        "Dobla la voz como si se hubiera grabado otra toma: copias algo retrasadas, que se adelantan y atrasan solas, un poco desafinadas y abiertas a los lados.",
+        { { "voices", "Copias", 1, 4, 2, "", 0, nullptr, "Cuántas tomas imitadas se suman" },
+          { "separation", "Separación", 8, 60, 22, "ms", 0, nullptr, "Retraso medio de las copias (más = más separadas)" },
+          { "variation", "Variación", 0, 100, 40, "%", 0, nullptr, "Cuánto se adelantan y atrasan con el tiempo, como un cantante real" },
+          { "detune", "Desafinación", 0, 30, 8, "cents", 0, nullptr, "Cada copia un poco más alta o más baja (alternando)" },
+          { "spread", "Apertura", 0, 100, 80, "%", 0, nullptr, "Cuánto se abren las copias a izquierda y derecha" },
+          { "mix", "Mezcla", 0, 100, 50, "%", 0, nullptr, "Nivel de las copias sumadas a la voz (0 = solo la voz)" } },
+        "copias" };
+    return d;
+}
+
 //==============================================================================
 class GainFx : public FxBase
 {
@@ -1729,6 +1764,96 @@ private:
 };
 
 //==============================================================================
+// Detector de tono compartido (Tune, Harmonizer): YIN sobre la señal mono pasada a ~24 kHz, cada
+// ~5 ms. `push` devuelve true cuando hay lectura nueva en `midi` (<= 0 = sin tono); en el arranque de
+// una nota no la hay: la ventana aún empieza en silencio y la lectura saldría torcida.
+struct PitchTracker
+{
+    void prepare (double sr)
+    {
+        dec = juce::jmax (1, (int) std::round (sr / 24000.0));
+        dsr = sr / dec;
+        aa.set (Biquad::Type::lowpass, juce::jmin (5000.0, 0.4 * dsr), 0.7071, 0, sr);
+        reset();
+    }
+    void reset()
+    {
+        aa.reset(); std::fill (ring.begin(), ring.end(), 0.0f);
+        rw = 0; decCount = 0; hopCount = 0; midi = 0.0f;
+    }
+    bool push (float mono, float fLo, float fHi)
+    {
+        const float m = aa.process (mono, 0);
+        if (++decCount < dec) return false;
+        decCount = 0;
+        ring[(size_t) rw] = m; rw = (rw + 1) & (ringSize - 1);
+        if (++hopCount < hop) return false;
+        hopCount = 0;
+        return analyse (fLo, fHi);
+    }
+    float midi = 0.0f;
+
+private:
+    bool analyse (float fLo, float fHi)
+    {
+        const int tauMin = juce::jmax (2, (int) std::floor (dsr / fHi)), tauMax = juce::jmin (maxTau, (int) std::ceil (dsr / fLo));
+        const int w = yinWin;
+        std::array<float, yinWin + maxTau + 2> x {};
+        const int len = w + tauMax + 1;
+        double energy = 0.0;
+        for (int j = 0; j < len; ++j)
+        {
+            x[(size_t) j] = ring[(size_t) ((rw - len + j + 4 * ringSize) & (ringSize - 1))];
+            if (j < w) energy += (double) x[(size_t) j] * x[(size_t) j];
+        }
+        const float rmsDb = gainToDb ((float) std::sqrt (energy / w) * 1.41421356f);
+        // Arranque de una nota (lo más antiguo 6 dB por debajo de lo más nuevo): se espera a que la
+        // ventana entera tenga la nota; con la histéresis una nota equivocada se quedaría fija
+        double eOld = 0.0, eNew = 0.0;
+        for (int j = 0; j < w / 4; ++j)
+        {
+            eOld += (double) x[(size_t) j] * x[(size_t) j];
+            eNew += (double) x[(size_t) (len - 1 - j)] * x[(size_t) (len - 1 - j)];
+        }
+        if (rmsDb > -45.0f && eOld < 0.25 * eNew)
+            return false;
+        float tauF = -1.0f;
+        if (rmsDb > -45.0f)
+        {
+            std::array<float, maxTau + 2> d {};
+            double run = 0.0;
+            for (int tau = 1; tau <= tauMax; ++tau)
+            {
+                double s = 0.0;
+                for (int j = 0; j < w; ++j) { const float e = x[(size_t) j] - x[(size_t) (j + tau)]; s += (double) e * e; }
+                run += s;
+                d[(size_t) tau] = run > 0.0 ? (float) (s * tau / run) : 1.0f;     // diferencia normalizada acumulada
+            }
+            for (int tau = tauMin; tau < tauMax; ++tau)
+                if (d[(size_t) tau] < 0.15f)
+                {
+                    while (tau + 1 < tauMax && d[(size_t) (tau + 1)] < d[(size_t) tau]) ++tau;
+                    const float a = d[(size_t) (tau - 1)], b = d[(size_t) tau], c = d[(size_t) (tau + 1)];
+                    const float den = a - 2.0f * b + c;
+                    tauF = (float) tau + (std::abs (den) > 1e-9f ? 0.5f * (a - c) / den : 0.0f);
+                    break;
+                }
+        }
+        midi = tauF > 0.0f ? 69.0f + 12.0f * std::log2 ((float) dsr / tauF / 440.0f) : 0.0f;
+        return true;
+    }
+
+    static constexpr int ringSize = 2048, yinWin = 512, maxTau = 420, hop = 128;
+    Biquad aa;
+    std::array<float, ringSize> ring {};
+    int dec = 2, rw = 0, decCount = 0, hopCount = 0;
+    double dsr = 24000.0;
+};
+
+// Rango de búsqueda según la voz (Aguda, Media, Grave)
+static constexpr float voiceLoHz[3] = { 140.0f, 85.0f, 60.0f }, voiceHiHz[3] = { 1100.0f, 700.0f, 420.0f };
+
+//==============================================================================
 // Afinador en tiempo real. Detección: YIN sobre la señal mono pasada a ~24 kHz, cada ~5 ms.
 // Corrección: desplazador de tono de dos lecturas con ventanas sin² (sumadas = 1) sobre una línea de
 // retardo de 30 ms; la desviación hasta la nota de la escala se alcanza con la constante de tiempo
@@ -1763,16 +1888,13 @@ protected:
     {
         win = juce::jmax (256, (int) std::round (0.030 * sr));
         line[0].prepare (win + 8); line[1].prepare (win + 8);
-        dec = juce::jmax (1, (int) std::round (sr / 24000.0));
-        dsr = sr / dec;
-        aa.set (Biquad::Type::lowpass, juce::jmin (5000.0, 0.4 * dsr), 0.7071, 0, sr);
+        tracker.prepare (sr);
         resetFx();
     }
     void resetFx() override
     {
-        line[0].clear(); line[1].clear(); aa.reset();
-        std::fill (ring.begin(), ring.end(), 0.0f);
-        rw = 0; decCount = 0; hopCount = 0; phase = 0.5f; shift = 0.0f; want = 0.0f;
+        line[0].clear(); line[1].clear(); tracker.reset();
+        phase = 0.5f; shift = 0.0f; want = 0.0f;
         curNote = -1; held = 0; voiced = false;
         detMidi.store (0.0f); tgtMidi.store (0.0f); shiftCents.store (0.0f);
     }
@@ -1781,18 +1903,12 @@ protected:
     {
         const int key = choice (0), scale = choice (1), range = choice (5);
         const float speed = p (2), human = p (3) / 100.0f, amount = p (4) / 100.0f, mix = p (6) / 100.0f;
-        static constexpr float fLo[3] = { 140.0f, 85.0f, 60.0f }, fHi[3] = { 1100.0f, 700.0f, 420.0f };
         const int rg = juce::jlimit (0, 2, range);
         for (int i = 0; i < n; ++i)
         {
             // --- detección (mono, diezmada) ---
-            const float m = aa.process (0.5f * (l[i] + r[i]), 0);
-            if (++decCount >= dec)
-            {
-                decCount = 0;
-                ring[(size_t) rw] = m; rw = (rw + 1) & (ringSize - 1);
-                if (++hopCount >= hop) { hopCount = 0; detect (fLo[rg], fHi[rg], key, scale, amount); }
-            }
+            if (tracker.push (0.5f * (l[i] + r[i]), voiceLoHz[rg], voiceHiHz[rg]))
+                detect (tracker.midi, key, scale, amount);
             // --- corrección: la desviación sigue a la deseada con la constante de tiempo elegida ---
             float tc = voiced ? speed * (held > holdSamples ? 1.0f + 3.0f * human : 1.0f) : 30.0f;
             const float c = tc <= 0.5f ? 1.0f : onePole (tc, sampleRate);
@@ -1823,60 +1939,14 @@ protected:
     }
 
 private:
-    void detect (float fLo, float fHi, int key, int scale, float amount)
+    void detect (float midi, int key, int scale, float amount)
     {
-        const int tauMin = juce::jmax (2, (int) std::floor (dsr / fHi)), tauMax = juce::jmin (maxTau, (int) std::ceil (dsr / fLo));
-        const int w = yinWin;
-        std::array<float, yinWin + maxTau + 2> x {};
-        const int len = w + tauMax + 1;
-        double energy = 0.0;
-        for (int j = 0; j < len; ++j)
-        {
-            x[(size_t) j] = ring[(size_t) ((rw - len + j + 4 * ringSize) & (ringSize - 1))];
-            if (j < w) energy += (double) x[(size_t) j] * x[(size_t) j];
-        }
-        const float rmsDb = gainToDb ((float) std::sqrt (energy / w) * 1.41421356f);
-        // Arranque de una nota: la ventana aún empieza en silencio (lo más antiguo 6 dB por debajo de lo
-        // más nuevo) y la lectura sale torcida; con la histéresis esa nota equivocada se quedaría fija.
-        // Se espera a que la ventana entera tenga la nota
-        double eOld = 0.0, eNew = 0.0;
-        for (int j = 0; j < w / 4; ++j)
-        {
-            eOld += (double) x[(size_t) j] * x[(size_t) j];
-            eNew += (double) x[(size_t) (len - 1 - j)] * x[(size_t) (len - 1 - j)];
-        }
-        if (rmsDb > -45.0f && eOld < 0.25 * eNew)
-            return;
-        float tauF = -1.0f;
-        if (rmsDb > -45.0f)
-        {
-            std::array<float, maxTau + 2> d {};
-            double run = 0.0;
-            for (int tau = 1; tau <= tauMax; ++tau)
-            {
-                double s = 0.0;
-                for (int j = 0; j < w; ++j) { const float e = x[(size_t) j] - x[(size_t) (j + tau)]; s += (double) e * e; }
-                run += s;
-                d[(size_t) tau] = run > 0.0 ? (float) (s * tau / run) : 1.0f;     // diferencia normalizada acumulada
-            }
-            for (int tau = tauMin; tau < tauMax; ++tau)
-                if (d[(size_t) tau] < 0.15f)
-                {
-                    while (tau + 1 < tauMax && d[(size_t) (tau + 1)] < d[(size_t) tau]) ++tau;
-                    const float a = d[(size_t) (tau - 1)], b = d[(size_t) tau], c = d[(size_t) (tau + 1)];
-                    const float den = a - 2.0f * b + c;
-                    tauF = (float) tau + (std::abs (den) > 1e-9f ? 0.5f * (a - c) / den : 0.0f);
-                    break;
-                }
-        }
-        if (tauF <= 0.0f)
+        if (midi <= 0.0f)
         {
             voiced = false; want = 0.0f; curNote = -1;
             detMidi.store (0.0f); tgtMidi.store (0.0f);
             return;
         }
-        const float f = (float) dsr / tauF;
-        const float midi = 69.0f + 12.0f * std::log2 (f / 440.0f);
         int note = nearestInScale (midi, key, scale);
         if (curNote >= 0 && std::abs (midi - (float) curNote) < 0.65f && nearestInScale ((float) curNote, key, scale) == curNote)
             note = curNote;                        // histéresis: no salta de nota en la frontera
@@ -1886,17 +1956,247 @@ private:
         detMidi.store (midi); tgtMidi.store ((float) note);
     }
 
-    static constexpr int ringSize = 2048, yinWin = 512, maxTau = 420, hop = 128;
     std::array<DelayLine, 2> line;
-    Biquad aa;
-    std::array<float, ringSize> ring {};
-    int win = 1440, dec = 2, rw = 0, decCount = 0, hopCount = 0, curNote = -1;
+    PitchTracker tracker;
+    int win = 1440, curNote = -1;
     int64_t held = 0;
-    double dsr = 24000.0;
     float phase = 0.5f, shift = 0.0f, want = 0.0f;
     bool voiced = false;
     static constexpr int64_t holdSamples = 6000;   // ~125 ms: a partir de aquí es una nota larga
     std::atomic<float> detMidi { 0.0f }, tgtMidi { 0.0f }, shiftCents { 0.0f };
+};
+
+//==============================================================================
+// Harmonizer (AF-65): una o dos voces de armonía desplazadas de tono a partir de la voz en mono, con
+// un desplazador de dos lecturas sincronizado con el tono: la separación entre lecturas (media
+// ventana, ~25 ms) es un número entero de periodos de la nota detectada, así que las dos se suman en
+// fase y no hay filtro peine (con una ventana fija, una 8ª daba picos a 40–77 cents de la nota). En la escala: se detecta la nota que se canta (el mismo
+// YIN que el afinador), se toma la nota de la escala más cercana y se sube o baja N grados de la
+// escala; la voz de armonía va a esa nota exacta, así que sale afinada aunque la voz principal no lo
+// esté. Fijo: semitonos constantes, sin detección. Latencia fija de media ventana (la voz original se
+// retrasa lo mismo y Tracktion compensa el total).
+class HarmonizerFx : public FxBase
+{
+public:
+    HarmonizerFx (te::PluginCreationInfo i) : FxBase (i, harmonizerDesc()) {}
+    AFO_FX_TYPE ("afoFxHarmonizer", harmonizerDesc)
+    double getLatencySeconds() override { return 0.5 * (double) win / sampleRate; }
+    std::vector<float> extraMeters() override { return { detMidi.load(), tgt[0].load(), tgt[1].load() }; }
+
+    // Desplazador de dos lecturas (ventanas sin², sumadas = 1) cuya ventana se acerca poco a poco
+    // (como mucho 0,03 muestras por muestra: la voz apenas se dobla al cambiar) a la pedida
+    struct SyncShifter
+    {
+        DelayLine d;
+        float phase = 0.0f, win = 2400.0f, want = 2400.0f;
+        void prepare (double sr) { d.prepare ((int) (0.09 * sr) + 8); win = want = (float) (0.05 * sr); reset(); }
+        void reset() { d.clear(); phase = 0.0f; win = want; }
+        float process (float x, float ratio) noexcept
+        {
+            win += juce::jlimit (-0.03f, 0.03f, want - win);
+            d.push (x);
+            phase += (1.0f - ratio) / win;
+            phase -= std::floor (phase);
+            float p2 = phase + 0.5f;
+            if (p2 >= 1.0f) p2 -= 1.0f;
+            const float w1 = std::sin (juce::MathConstants<float>::pi * phase), g1 = w1 * w1;
+            return g1 * d.read (1.0f + win * phase) + (1.0f - g1) * d.read (1.0f + win * p2);
+        }
+    };
+
+    // Grados de la escala (positivos arriba) y semitonos fijos de cada intervalo de la lista
+    static constexpr int ivSteps[11] = { 0, 2, -2, 3, -3, 4, -4, 5, -5, 7, -7 };
+    static constexpr int ivSemis[11] = { 0, 4, -4, 5, -5, 7, -7, 9, -9, 12, -12 };
+
+    // Nota de la escala `steps` grados por encima (o debajo) de `note`, que ya está en la escala
+    static int stepInScale (int note, int steps, int key, int scale)
+    {
+        static constexpr int masks[6] = { 0xFFF, 0xAB5, 0x5AD, 0x9AD, 0x295, 0x4A9 };
+        const int mask = masks[juce::jlimit (0, 5, scale)];
+        const int dir = steps > 0 ? 1 : -1;
+        for (int k = 0; k != steps; k += dir)
+        {
+            do note += dir; while (! (mask >> (((note - key) % 12 + 12) % 12) & 1));
+        }
+        return note;
+    }
+
+protected:
+    void prepareFx (double sr) override
+    {
+        for (auto& v : voice) v.prepare (sr);
+        win = 2 * (int) std::round (0.025 * sr);         // par: la latencia es un número entero de muestras
+        for (auto& d : dry) d.prepare (win + 8);
+        tracker.prepare (sr);
+        resetFx();
+    }
+    void resetFx() override
+    {
+        for (auto& v : voice) v.reset();
+        for (auto& d : dry) d.clear();
+        tracker.reset();
+        curNote = -1;
+        shift = { 0.0f, 0.0f }; want = { 0.0f, 0.0f };
+        detMidi.store (0.0f); tgt[0].store (0.0f); tgt[1].store (0.0f);
+    }
+
+    void processFx (float* l, float* r, int n) override
+    {
+        const int key = choice (0), scale = choice (1), rg = juce::jlimit (0, 2, choice (10));
+        const bool inScale = choice (2) == 0 && scale != 0;          // Cromática: intervalos fijos
+        const int iv[2] = { juce::jlimit (0, 10, choice (3)), juce::jlimit (0, 10, choice (6)) };
+        const float lev[2] = { dbToGain (p (4)), dbToGain (p (7)) };
+        const float pan[2] = { p (5) / 100.0f, p (8) / 100.0f };
+        const float c = onePole (p (9), sampleRate), dryG = p (11) / 100.0f;
+        float gl[2], gr[2];
+        for (int v = 0; v < 2; ++v)
+        {
+            const float a = (pan[v] + 1.0f) * 0.25f * juce::MathConstants<float>::pi;   // igual potencia
+            gl[v] = std::cos (a) * lev[v];
+            gr[v] = std::sin (a) * lev[v];
+        }
+        for (int v = 0; v < 2; ++v)
+            if (! inScale) want[(size_t) v] = (float) ivSemis[iv[v]];
+        const float dd = 1.0f + 0.5f * (float) win;
+        for (int i = 0; i < n; ++i)
+        {
+            const float mono = 0.5f * (l[i] + r[i]);
+            if (tracker.push (mono, voiceLoHz[rg], voiceHiHz[rg]))
+            {
+                if (tracker.midi > 0.0f)
+                {
+                    // media ventana = el número entero de periodos más cercano a 25 ms
+                    const float period = (float) sampleRate / (440.0f * std::exp2 ((tracker.midi - 69.0f) / 12.0f));
+                    const float half = juce::jmax (1.0f, std::round (0.5f * (float) win / period)) * period;
+                    for (auto& v : voice) v.want = 2.0f * half;
+                }
+                if (inScale) retarget (tracker.midi, key, scale, iv);
+            }
+            float hl = 0.0f, hr = 0.0f;
+            for (int v = 0; v < 2; ++v)
+            {
+                auto& s = shift[(size_t) v];
+                s += c * (want[(size_t) v] - s);
+                const float y = voice[(size_t) v].process (mono, std::exp2 (s / 12.0f));
+                if (iv[v] == 0) continue;
+                hl += gl[v] * y; hr += gr[v] * y;
+            }
+            dry[0].push (l[i]); dry[1].push (r[i]);
+            l[i] = dryG * dry[0].read (dd) + hl;
+            r[i] = dryG * dry[1].read (dd) + hr;
+        }
+    }
+
+private:
+    // Nota nueva: cada voz va a su grado de la escala; sin tono (consonantes, silencio) se queda donde estaba
+    void retarget (float midi, int key, int scale, const int* iv)
+    {
+        detMidi.store (juce::jmax (0.0f, midi));
+        if (midi <= 0.0f) { curNote = -1; return; }
+        int note = TuneFx::nearestInScale (midi, key, scale);
+        if (curNote >= 0 && std::abs (midi - (float) curNote) < 0.65f)
+            note = curNote;                         // histéresis: no salta de grado en la frontera
+        curNote = note;
+        for (int v = 0; v < 2; ++v)
+        {
+            const int t = iv[v] >= 9 ? note + ivSemis[iv[v]] : stepInScale (note, ivSteps[iv[v]], key, scale);
+            want[(size_t) v] = juce::jlimit (-24.0f, 24.0f, (float) t - midi);
+            tgt[(size_t) v].store (iv[v] == 0 ? 0.0f : (float) t);
+        }
+    }
+
+    std::array<SyncShifter, 2> voice;
+    std::array<DelayLine, 2> dry;
+    PitchTracker tracker;
+    int win = 2400, curNote = -1;
+    std::array<float, 2> shift {}, want {};
+    std::atomic<float> detMidi { 0.0f };
+    std::array<std::atomic<float>, 2> tgt;
+};
+
+//==============================================================================
+// Doubler (AF-66): imita una segunda toma. Cada copia sale de la voz en mono por un retardo que se
+// mueve despacio (seno lento más un recorrido aleatorio suavizado, distinto por copia) y un
+// desplazador de tono de ventana corta (20 ms, cents alternando arriba y abajo); se reparten a
+// izquierda y derecha con paneo de igual potencia. La voz original pasa sin retraso (latencia 0).
+class DoublerFx : public FxBase
+{
+public:
+    DoublerFx (te::PluginCreationInfo i) : FxBase (i, doublerDesc()) {}
+    AFO_FX_TYPE ("afoFxDoubler", doublerDesc)
+    std::vector<float> extraMeters() override { return { (float) active.load() }; }
+
+protected:
+    void prepareFx (double sr) override
+    {
+        for (auto& v : copies)
+        {
+            v.line.prepare ((int) (0.12 * sr) + 8);
+            v.pitch.prepare (sr, 0.02);
+        }
+        resetFx();
+    }
+    void resetFx() override
+    {
+        rng.setSeed (66);
+        for (size_t k = 0; k < copies.size(); ++k)
+        {
+            auto& v = copies[k];
+            v.line.clear(); v.pitch.reset();
+            v.lfo = 0.31f * (float) k; v.drift = 0.0f; v.target = 0.0f; v.count = 0;
+        }
+    }
+
+    void processFx (float* l, float* r, int n) override
+    {
+        const int nv = juce::jlimit (1, 4, juce::roundToInt (p (0)));
+        active.store (nv);
+        const float sepMs = p (1), var = p (2) / 100.0f, cents = p (3), spread = p (4) / 100.0f, mix = p (5) / 100.0f;
+        const float shifterMs = 10.0f;                       // retardo medio del desplazador (media ventana)
+        const float norm = mix / std::sqrt ((float) nv);
+        const float smooth = onePole (120.0f, sampleRate);
+        const int every = juce::jmax (1, (int) (0.18 * sampleRate));
+        for (int k = 0; k < nv; ++k)
+        {
+            auto& v = copies[(size_t) k];
+            const float side = (k % 2 == 0 ? -1.0f : 1.0f) * (1.0f - 0.35f * (float) (k / 2));
+            const float a = (side * spread + 1.0f) * 0.25f * juce::MathConstants<float>::pi;
+            v.gl = std::cos (a) * norm; v.gr = std::sin (a) * norm;
+            v.ratio = std::exp2 ((k % 2 == 0 ? cents : -cents) * (1.0f + 0.25f * (float) (k / 2)) / 1200.0f);
+            v.base = sepMs * (1.0f + 0.45f * (float) k) - shifterMs;
+            v.rate = (0.23f + 0.11f * (float) k) / (float) sampleRate;
+        }
+        for (int i = 0; i < n; ++i)
+        {
+            const float mono = 0.5f * (l[i] + r[i]);
+            float wl = 0.0f, wr = 0.0f;
+            for (int k = 0; k < nv; ++k)
+            {
+                auto& v = copies[(size_t) k];
+                if (--v.count <= 0) { v.count = every; v.target = rng.nextFloat() * 2.0f - 1.0f; }
+                v.drift += smooth * (v.target - v.drift);
+                v.lfo += v.rate; v.lfo -= std::floor (v.lfo);
+                const float mod = 0.5f * std::sin (juce::MathConstants<float>::twoPi * v.lfo) + 0.5f * v.drift;
+                const float ms = juce::jmax (1.0f, v.base * (1.0f + 0.35f * var * mod));
+                v.line.push (mono);
+                const float y = v.pitch.process (v.line.read (1.0f + ms * 0.001f * (float) sampleRate), v.ratio);
+                wl += v.gl * y; wr += v.gr * y;
+            }
+            l[i] += wl; r[i] += wr;
+        }
+    }
+
+private:
+    struct Copy
+    {
+        DelayLine line;
+        GrainShifter pitch;
+        float lfo = 0.0f, rate = 0.0f, drift = 0.0f, target = 0.0f, base = 10.0f, ratio = 1.0f, gl = 0.0f, gr = 0.0f;
+        int count = 0;
+    };
+    std::array<Copy, 4> copies;
+    juce::Random rng { 66 };
+    std::atomic<int> active { 0 };
 };
 
 //==============================================================================
@@ -2070,6 +2370,7 @@ inline const std::vector<FxType>& fxTypes()
         { tuneDesc, TuneFx::xmlTypeName }, { multitapDesc, MultiTapFx::xmlTypeName }, { tranceDesc, TranceGateFx::xmlTypeName },
         { shimmerDesc, ShimmerFx::xmlTypeName }, { textureDesc, TextureVerbFx::xmlTypeName }, { infinityDesc, InfinityFx::xmlTypeName },
         { granularDesc, GranularFx::xmlTypeName }, { spectralDesc, SpectralFx::xmlTypeName },
+        { harmonizerDesc, HarmonizerFx::xmlTypeName }, { doublerDesc, DoublerFx::xmlTypeName },
         { fxLabDesc, FxLabFx::xmlTypeName }, { fxLabSplitDesc, FxLabSplitFx::xmlTypeName }, { fxLabEndDesc, FxLabEndFx::xmlTypeName } };
     return t;
 }
@@ -2084,6 +2385,7 @@ inline void registerFx (te::PluginManager& pm)
     pm.createBuiltInType<MultiTapFx>(); pm.createBuiltInType<TranceGateFx>();
     pm.createBuiltInType<ShimmerFx>();  pm.createBuiltInType<TextureVerbFx>(); pm.createBuiltInType<InfinityFx>();
     pm.createBuiltInType<GranularFx>(); pm.createBuiltInType<SpectralFx>();
+    pm.createBuiltInType<HarmonizerFx>(); pm.createBuiltInType<DoublerFx>();
     pm.createBuiltInType<FxLabFx>();    pm.createBuiltInType<FxLabSplitFx>(); pm.createBuiltInType<FxLabEndFx>();
 }
 
