@@ -14,6 +14,36 @@ function v(fx, desc, id) {
     return 0
 }
 
+// Respuesta compleja [re, im] de un paso banda / bajo / alto RBJ (para el Dynamic EQ: x + (g − 1)·banda)
+function biquadC(type, freq, q) {
+    freq = Math.min(Math.max(freq, 5), SR * 0.49); q = Math.max(0.025, q)
+    var w = 2 * Math.PI * freq / SR, c = Math.cos(w), s = Math.sin(w), al = s / (2 * q)
+    var n0, n1, n2, d0 = 1 + al, d1 = -2 * c, d2 = 1 - al
+    if (type === "lp") { n0 = (1 - c) / 2; n1 = 1 - c; n2 = n0 }
+    else if (type === "hp") { n0 = (1 + c) / 2; n1 = -(1 + c); n2 = n0 }
+    else { n0 = al; n1 = 0; n2 = -al }
+    return function (f) {
+        var ww = 2 * Math.PI * f / SR, c1 = Math.cos(ww), s1 = Math.sin(ww), c2 = Math.cos(2 * ww), s2 = Math.sin(2 * ww)
+        var nr = n0 + n1 * c1 + n2 * c2, ni = -(n1 * s1 + n2 * s2), dr = d0 + d1 * c1 + d2 * c2, di = -(d1 * s1 + d2 * s2)
+        var den = dr * dr + di * di
+        return [(nr * dr + ni * di) / den, (ni * dr - nr * di) / den]
+    }
+}
+
+// Curva del Dynamic EQ con la ganancia g (dB) de cada banda
+function dynEqCurve(fx, d, gains) {
+    var kinds = ["", "bp", "lp", "hp"], parts = []
+    for (var b = 1; b <= 3; b++) {
+        var t = Math.round(v(fx, d, "type" + b))
+        if (t > 0) parts.push([biquadC(kinds[t], v(fx, d, "freq" + b), t === 1 ? v(fx, d, "q" + b) : 0.7071), Math.pow(10, gains[b - 1] / 20) - 1])
+    }
+    return function (f) {
+        var re = 1, im = 0
+        for (var i = 0; i < parts.length; i++) { var h = parts[i][0](f); re += parts[i][1] * h[0]; im += parts[i][1] * h[1] }
+        return 10 * Math.log(re * re + im * im) / Math.LN10
+    }
+}
+
 // Coeficientes RBJ como FxDsp.h → magnitud en dB a la frecuencia f
 function biquad(type, freq, q, gainDb) {
     freq = Math.min(Math.max(freq, 5), SR * 0.49); q = Math.max(0.025, q)
@@ -233,6 +263,36 @@ function draw(ctx, w, h, fx, d, live) {
         ctx.lineTo(w, h); ctx.closePath()
         ctx.fillStyle = "rgba(94,224,176,0.35)"; ctx.fill()
         ctx.strokeStyle = "#5ee0b0"; ctx.lineWidth = 2; ctx.stroke()
+        return
+    }
+    if (key === "dyneq") {
+        // Claro: la curva con cada banda en su rango (lo más que hará); fuerte: lo que hace ahora (lecturas del motor)
+        var full = [v(fx, d, "range1"), v(fx, d, "range2"), v(fx, d, "range3")]
+        var now = live && live.length > 4 ? [live[2], live[3], live[4]] : [0, 0, 0]
+        frame(ctx, w, h, [100, 1000, 10000].map(function (f) { return logX(f, w) }), [h / 2])
+        var curves = [[dynEqCurve(fx, d, full), pal.soft], [dynEqCurve(fx, d, now), pal.lcd]]
+        for (var ci = 0; ci < 2; ci++) {
+            ctx.beginPath()
+            for (var ex = 0; ex <= w; ex += 2) {
+                var ey = h / 2 - (h / 2 - 3) * Math.max(-1, Math.min(1, curves[ci][0](20 * Math.pow(1000, ex / w)) / 24))
+                if (ex) ctx.lineTo(ex, ey); else ctx.moveTo(ex, ey)
+            }
+            ctx.strokeStyle = curves[ci][1]; ctx.lineWidth = 2; ctx.stroke()
+        }
+        return
+    }
+    if (key === "denoise") {
+        // Ganancia frente al nivel sobre el suelo de ruido: por debajo de la sensibilidad baja hasta la reducción
+        var red = v(fx, d, "reduction"), sens = v(fx, d, "sensitivity"), kk = Math.pow(10, sens / 10), gmin = Math.pow(10, -red / 20)
+        frame(ctx, w, h, [w / 2], [h / 2])
+        ctx.beginPath()
+        for (var nx = 0; nx <= w; nx += 2) {
+            var over = -10 + 50 * nx / w, gg = Math.max(gmin, 1 - kk / Math.pow(10, over / 10))
+            var ny = h - 2 - (h - 4) * (1 + Math.max(-40, 20 * Math.log(gg) / Math.LN10) / 40)
+            if (nx) ctx.lineTo(nx, ny); else ctx.moveTo(nx, ny)
+        }
+        ctx.strokeStyle = pal.lcd; ctx.lineWidth = 2; ctx.stroke()
+        if (live && live.length > 3) { ctx.fillStyle = pal.soft; ctx.fillRect(0, h - 6, w * Math.min(1, -live[3] / 40), 4) }
         return
     }
     if (key === "harmonizer") {

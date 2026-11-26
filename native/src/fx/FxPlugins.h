@@ -676,6 +676,46 @@ inline const FxDesc& doublerDesc()
     return d;
 }
 
+inline const FxDesc& dynEqDesc()
+{
+    static const char* ty = "Apagada|Campana|Graves|Agudos";
+    static const FxDesc d { "dyneq", "AF-08", "Dynamic EQ", "Voz profesional",
+        "Ecualizador que solo actúa cuando hace falta: cada banda baja (o sube) su zona cuando esa zona pasa del umbral y la deja tal cual el resto del tiempo.",
+        { { "type1", "Banda 1", 0, 3, 1, "", 0, ty, "Forma de la banda (Apagada = no actúa)" },
+          { "freq1", "Frec. 1", 40, 16000, 300, "Hz", 1000, nullptr, "Centro (campana) o corte (graves, agudos)" },
+          { "q1", "Q 1", 0.3f, 8, 1.2f, "", 1.5f, nullptr, "Anchura de la campana (alto = estrecha)" },
+          { "thr1", "Umbral 1", -60, 0, -30, "dB", 0, nullptr, "Nivel de la zona a partir del que actúa" },
+          { "range1", "Rango 1", -24, 12, -6, "dB", 0, nullptr, "Cuánto baja (negativo) o sube (positivo) como mucho" },
+          { "type2", "Banda 2", 0, 3, 1, "", 0, ty, "Forma de la banda (Apagada = no actúa)" },
+          { "freq2", "Frec. 2", 40, 16000, 3000, "Hz", 1000, nullptr, "Centro (campana) o corte (graves, agudos)" },
+          { "q2", "Q 2", 0.3f, 8, 2.0f, "", 1.5f, nullptr, "Anchura de la campana (alto = estrecha)" },
+          { "thr2", "Umbral 2", -60, 0, -30, "dB", 0, nullptr, "Nivel de la zona a partir del que actúa" },
+          { "range2", "Rango 2", -24, 12, -6, "dB", 0, nullptr, "Cuánto baja (negativo) o sube (positivo) como mucho" },
+          { "type3", "Banda 3", 0, 3, 0, "", 0, ty, "Forma de la banda (Apagada = no actúa)" },
+          { "freq3", "Frec. 3", 40, 16000, 7000, "Hz", 1000, nullptr, "Centro (campana) o corte (graves, agudos)" },
+          { "q3", "Q 3", 0.3f, 8, 3.0f, "", 1.5f, nullptr, "Anchura de la campana (alto = estrecha)" },
+          { "thr3", "Umbral 3", -60, 0, -35, "dB", 0, nullptr, "Nivel de la zona a partir del que actúa" },
+          { "range3", "Rango 3", -24, 12, -6, "dB", 0, nullptr, "Cuánto baja (negativo) o sube (positivo) como mucho" },
+          { "attack", "Ataque", 0.1f, 50, 5, "ms", 5, nullptr, "Lo rápido que empieza a actuar" },
+          { "release", "Liberación", 10, 500, 120, "ms", 100, nullptr, "Lo rápido que vuelve a dejar la zona tal cual" },
+          { "listen", "Escuchar", 0, 3, 0, "", 0, "Normal|Zona 1|Zona 2|Zona 3", "Oír solo lo que vigila una banda, para ajustarla" } },
+        "banda 1 dB|banda 2 dB|banda 3 dB" };
+    return d;
+}
+
+inline const FxDesc& denoiseDesc()
+{
+    static const FxDesc d { "denoise", "AF-68", "Noise Reducer", "Voz profesional",
+        "Quita el ruido de fondo constante (soplido, sala, ventilador): mide solo el suelo de ruido de cada frecuencia y baja lo que no sobresale de él.",
+        { { "reduction", "Reducción", 0, 40, 15, "dB", 0, nullptr, "Cuánto se baja el ruido como mucho (de más puede sonar a agua)" },
+          { "sensitivity", "Sensibilidad", -6, 18, 6, "dB", 0, nullptr, "Cuánto por encima del suelo de ruido se trata aún como ruido" },
+          { "smooth", "Suavizado", 0, 100, 50, "%", 0, nullptr, "Suaviza la reducción en el tiempo y entre frecuencias (menos «pitidos»)" },
+          { "listen", "Escuchar", 0, 1, 0, "", 0, "Resultado|Lo que quita", "Oír solo lo que se elimina, para no quitar voz" },
+          { "mix", "Mezcla", 0, 100, 100, "%", 0, nullptr, "Limpio frente a original (el original va retrasado lo mismo)" } },
+        "suelo dB|reducción dB" };
+    return d;
+}
+
 //==============================================================================
 class GainFx : public FxBase
 {
@@ -2200,6 +2240,241 @@ private:
 };
 
 //==============================================================================
+// Dynamic EQ (AF-08): hasta 3 bandas en paralelo con la señal, como el De-Esser en modo Banda. Cada
+// una filtra la entrada (campana = paso banda de pico 0 dB; graves = paso bajo; agudos = paso alto,
+// de 2.º orden) y sigue su nivel; por cada dB que pasa del umbral cambia 2/3 dB (3:1), hasta el
+// rango: salida = entrada + (g − 1)·banda, que es una campana o un estante de ganancia g. Sin pasar
+// del umbral g = 1 y la señal sale intacta. Latencia 0.
+class DynEqFx : public FxBase
+{
+public:
+    DynEqFx (te::PluginCreationInfo i) : FxBase (i, dynEqDesc()) {}
+    AFO_FX_TYPE ("afoFxDynEq", dynEqDesc)
+    std::vector<float> extraMeters() override { return { peak[0].exchange (0.0f), peak[1].exchange (0.0f), peak[2].exchange (0.0f) }; }
+
+protected:
+    void prepareFx (double) override { for (auto& b : bands) b.last = -1.0f; resetFx(); }
+    void resetFx() override
+    {
+        for (auto& b : bands) { b.filt.reset(); b.env = 0.0f; b.g = 0.0f; }
+        for (auto& pk : peak) pk.store (0.0f);
+    }
+
+    void processFx (float* l, float* r, int n) override
+    {
+        const float ca = att.get (p (15), sampleRate), cr = rel.get (p (16), sampleRate);
+        const int listen = juce::jlimit (0, 3, choice (17));
+        int type[3]; float thr[3], range[3];
+        for (int b = 0; b < 3; ++b)
+        {
+            auto& B = bands[(size_t) b];
+            type[b] = juce::jlimit (0, 3, choice (5 * b));
+            const float f = p (5 * b + 1), q = p (5 * b + 2);
+            thr[b] = p (5 * b + 3); range[b] = p (5 * b + 4);
+            const float key = (float) type[b] * 1.0e6f + f + q * 1.0e-3f;
+            if (type[b] != 0 && key != B.last)
+            {
+                Biquad t;
+                if (type[b] == 1) t.set (Biquad::Type::bandpass, f, q, 0, sampleRate);
+                else t.set (type[b] == 2 ? Biquad::Type::lowpass : Biquad::Type::highpass, f, 0.7071, 0, sampleRate);
+                B.filt.b0 = t.b0; B.filt.b1 = t.b1; B.filt.b2 = t.b2; B.filt.a1 = t.a1; B.filt.a2 = t.a2;
+                if (B.last < 0.0f || (int) (B.last / 1.0e6f) != type[b]) B.filt.reset();
+                B.last = key;
+            }
+        }
+        float pk[3] = { 0.0f, 0.0f, 0.0f };
+        for (int i = 0; i < n; ++i)
+        {
+            const float xl = l[i], xr = r[i];
+            float ol = xl, or_ = xr, sl = 0.0f, sr = 0.0f;
+            for (int b = 0; b < 3; ++b)
+            {
+                if (type[b] == 0) continue;
+                auto& B = bands[(size_t) b];
+                const float bl = B.filt.process (xl, 0), br = B.filt.process (xr, 1);
+                const float level = std::max (std::abs (bl), std::abs (br));
+                B.env += (level > B.env ? ca : cr) * (level - B.env);
+                const float over = gainToDb (B.env) - thr[b];
+                const float amt = over > 0.0f ? std::min (std::abs (range[b]), over * (2.0f / 3.0f)) : 0.0f;
+                const float target = range[b] < 0.0f ? -amt : amt;
+                B.g += (std::abs (target) > std::abs (B.g) ? ca : cr) * (target - B.g);
+                const float g = dbToGain (B.g) - 1.0f;
+                ol += g * bl; or_ += g * br;
+                if (listen == b + 1) { sl = bl; sr = br; }
+                if (std::abs (B.g) > std::abs (pk[b])) pk[b] = B.g;
+            }
+            l[i] = listen ? sl : ol;
+            r[i] = listen ? sr : or_;
+        }
+        for (int b = 0; b < 3; ++b)
+            if (std::abs (pk[b]) > std::abs (peak[(size_t) b].load())) peak[(size_t) b].store (pk[b]);
+    }
+
+private:
+    struct Band { Biquad filt; float env = 0.0f, g = 0.0f, last = -1.0f; };
+    std::array<Band, 3> bands;
+    Coef att, rel;
+    std::array<std::atomic<float>, 3> peak;
+};
+
+//==============================================================================
+// Noise Reducer (AF-68): STFT de N = 2048 (Hann en análisis y síntesis, salto N/4) sobre los dos
+// canales con una sola ganancia por frecuencia (no mueve la imagen estéreo). Suelo de ruido por
+// franja con estadística de mínimos: el mínimo en los últimos 3 s (6 tramos de 0,5 s) de la potencia
+// suavizada en el tiempo (~100 ms) y entre 9 franjas vecinas, × 1,3 (el mínimo de un ruido queda ~1 dB
+// bajo su media), sin contar lo que esté por debajo de −120 dBFS ni las 4 primeras ventanas tras un
+// silencio (el render empieza con 1 s de silencio; un suelo casi a 0 no dejaría reducir nada en 3 s). Así sigue al ruido aunque cambie y una nota tenida no se toma por
+// ruido salvo que dure más de 3 s. Ganancia = 1 − k·suelo/potencia (k = sensibilidad), nunca por
+// debajo de −reducción, suavizada entre franjas vecinas y en el tiempo (cierra despacio, abre al
+// momento). Hasta tener una pausa o un tramo de ruido mide el suelo con lo que haya. Latencia N.
+class DenoiseFx : public FxBase
+{
+public:
+    DenoiseFx (te::PluginCreationInfo i) : FxBase (i, denoiseDesc()) {}
+    AFO_FX_TYPE ("afoFxDenoise", denoiseDesc)
+    double getLatencySeconds() override { return N / sampleRate; }
+    double getTailLength() const override { return 0.1; }
+    std::vector<float> extraMeters() override { return { floorDb.load(), redDb.load() }; }
+    static constexpr int order = 11, N = 1 << order, hop = N / 4, bins = N / 2 + 1;
+
+protected:
+    void prepareFx (double sr) override
+    {
+        fft = std::make_unique<juce::dsp::FFT> (order);
+        win.resize (N);
+        for (int i = 0; i < N; ++i) win[(size_t) i] = 0.5f - 0.5f * std::cos (2.0f * (float) pi * (float) i / (float) N);
+        for (auto& f : frame) f.assign (2 * N, 0.0f);
+        auto& t = frame[0];
+        t[0] = 1.0f;                                     // escala de ida y vuelta de la FFT de JUCE, medida
+        fft->performRealOnlyForwardTransform (t.data());
+        fft->performRealOnlyInverseTransform (t.data());
+        scale = 1.0f / (t[0] * 1.5f);
+        for (auto& c : ch) { c.in.assign (N, 0.0f); c.out.assign (N, 0.0f); c.dry.assign (N, 0.0f); }
+        blockFrames = juce::jmax (1, (int) std::round (0.5 * sr / hop));
+        resetFx();
+    }
+    void resetFx() override
+    {
+        for (auto& c : ch)
+        {
+            std::fill (c.in.begin(), c.in.end(), 0.0f); std::fill (c.out.begin(), c.out.end(), 0.0f);
+            std::fill (c.dry.begin(), c.dry.end(), 0.0f);
+        }
+        ps.fill (0.0f); pf.fill (0.0f); gs.fill (1.0f); cur.fill (none); alive.fill (0);
+        for (auto& b : blocks) b.fill (none);
+        w = 0; count = 0; frames = 0; block = 0; started = false;
+        floorDb.store (-100.0f); redDb.store (0.0f);
+    }
+
+    void processFx (float* l, float* r, int n) override
+    {
+        const float mix = p (4) / 100.0f;
+        const bool listen = choice (3) == 1;
+        float* io[2] = { l, r };
+        for (int i = 0; i < n; ++i)
+        {
+            for (int c = 0; c < 2; ++c)
+            {
+                auto& s = ch[(size_t) c];
+                const float x = io[c][i];
+                const float wet = s.out[(size_t) w], dry = s.dry[(size_t) w];
+                s.out[(size_t) w] = 0.0f;
+                s.in[(size_t) w] = x; s.dry[(size_t) w] = x;
+                const float y = listen ? dry - wet : wet;
+                io[c][i] = dry + mix * (y - dry);
+            }
+            if (++w >= N) w = 0;
+            if (++count >= hop) { count = 0; doFrame(); }
+        }
+    }
+
+private:
+    struct Chan { std::vector<float> in, out, dry; };
+    void doFrame()
+    {
+        const float gmin = dbToGain (-p (0)), kk = std::pow (10.0f, p (1) / 10.0f), sm = p (2) / 100.0f;
+        std::array<std::array<float, 2>*, 2> bin;
+        for (int c = 0; c < 2; ++c)
+        {
+            auto& f = frame[(size_t) c];
+            for (int i = 0; i < N; ++i) f[(size_t) i] = ch[(size_t) c].in[(size_t) ((w + i) % N)] * win[(size_t) i];
+            std::fill (f.begin() + N, f.end(), 0.0f);
+            fft->performRealOnlyForwardTransform (f.data());
+            bin[(size_t) c] = reinterpret_cast<std::array<float, 2>*> (f.data());
+        }
+        double noiseSum = 0.0, redSum = 0.0;
+        for (int k = 0; k < bins; ++k)
+        {
+            const auto& a = bin[0][k]; const auto& b = bin[1][k];
+            pw[(size_t) k] = 0.5f * (a[0] * a[0] + a[1] * a[1] + b[0] * b[0] + b[1] * b[1]);
+        }
+        // −120 dBFS de ruido blanco por franja: σ² · Σw² (Σw² = 3N/8)
+        const float quiet = 1.0e-12f * 0.375f * (float) N;
+        for (int k = 0; k < bins; ++k)
+        {
+            const int lo = juce::jmax (0, k - 4), hi = juce::jmin (bins - 1, k + 4);
+            float nb = 0.0f;
+            for (int j = lo; j <= hi; ++j) nb += pw[(size_t) j];
+            nb /= (float) (hi - lo + 1);
+            auto& s = ps[(size_t) k]; auto& sf = pf[(size_t) k];
+            // Tras un silencio la ventana tarda 4 saltos en llenarse: hasta entonces la potencia sube y no
+            // vale como suelo (el mínimo se quedaría con el principio de la entrada)
+            auto& on = alive[(size_t) k];
+            on = nb > quiet ? juce::jmin (on + 1, 1000) : 0;
+            s = started && on > 4 ? 0.6f * s + 0.4f * pw[(size_t) k] : pw[(size_t) k];
+            sf = on > 4 ? 0.9f * sf + 0.1f * nb : nb;
+            if (on >= 4) cur[(size_t) k] = juce::jmin (cur[(size_t) k], sf);
+            float nz = cur[(size_t) k];
+            for (auto& b : blocks) nz = juce::jmin (nz, b[(size_t) k]);
+            if (nz < none) nz *= 1.3f;
+            graw[(size_t) k] = nz < none && s > quiet ? juce::jmax (gmin, 1.0f - kk * nz / s) : 1.0f;
+            if (nz < none) noiseSum += nz;
+        }
+        started = true;
+        if (++frames >= blockFrames)
+        {
+            frames = 0;
+            blocks[(size_t) block] = cur; block = (block + 1) % (int) blocks.size();
+            cur.fill (none);
+        }
+        const float side = 0.25f * sm, a = 0.85f * sm;
+        for (int k = 0; k < bins; ++k)
+        {
+            const float lo = graw[(size_t) juce::jmax (0, k - 1)], hi = graw[(size_t) juce::jmin (bins - 1, k + 1)];
+            const float g = (1.0f - 2.0f * side) * graw[(size_t) k] + side * (lo + hi);
+            auto& t = gs[(size_t) k];
+            t = g >= t ? g : a * t + (1.0f - a) * g;
+            redSum += gainToDb (t);
+            for (int c = 0; c < 2; ++c) { bin[(size_t) c][k][0] *= t; bin[(size_t) c][k][1] *= t; }
+        }
+        for (int c = 0; c < 2; ++c)
+        {
+            auto* bn = bin[(size_t) c];
+            bn[0][1] = 0.0f; bn[bins - 1][1] = 0.0f;
+            for (int k = 1; k < N / 2; ++k) { bn[N - k][0] = bn[k][0]; bn[N - k][1] = -bn[k][1]; }
+            auto& f = frame[(size_t) c];
+            fft->performRealOnlyInverseTransform (f.data());
+            for (int i = 0; i < N; ++i) ch[(size_t) c].out[(size_t) ((w + i) % N)] += f[(size_t) i] * win[(size_t) i] * scale;
+        }
+        // Suelo en dBFS de un ruido blanco de esa potencia (Parseval con la ventana de Hann: Σw² = 3N/8)
+        floorDb.store ((float) (10.0 * std::log10 (2.0 * noiseSum / ((double) N * 0.375 * N) + 1.0e-12)));
+        redDb.store ((float) (redSum / bins));
+    }
+    std::unique_ptr<juce::dsp::FFT> fft;
+    std::vector<float> win;
+    std::array<std::vector<float>, 2> frame;
+    std::array<Chan, 2> ch;
+    static constexpr float none = 1.0e30f;
+    std::array<float, bins> ps {}, pf {}, pw {}, gs {}, graw {}, cur {};
+    std::array<int, bins> alive {};
+    std::array<std::array<float, bins>, 6> blocks {};
+    float scale = 1.0f;
+    int w = 0, count = 0, frames = 0, block = 0, blockFrames = 47;
+    bool started = false;
+    std::atomic<float> floorDb { -100.0f }, redDb { 0.0f };
+};
+
+//==============================================================================
 // FX Lab (AF-62): dos ramas en paralelo dentro de la cadena de la pista.
 //   «FX Lab» → efectos de la rama A → «Rama B» → efectos de la rama B → «Fin»
 // «FX Lab» guarda lo que entra y deja pasar la señal a la rama A; «Rama B» guarda la salida de A y
@@ -2371,6 +2646,7 @@ inline const std::vector<FxType>& fxTypes()
         { shimmerDesc, ShimmerFx::xmlTypeName }, { textureDesc, TextureVerbFx::xmlTypeName }, { infinityDesc, InfinityFx::xmlTypeName },
         { granularDesc, GranularFx::xmlTypeName }, { spectralDesc, SpectralFx::xmlTypeName },
         { harmonizerDesc, HarmonizerFx::xmlTypeName }, { doublerDesc, DoublerFx::xmlTypeName },
+        { dynEqDesc, DynEqFx::xmlTypeName }, { denoiseDesc, DenoiseFx::xmlTypeName },
         { fxLabDesc, FxLabFx::xmlTypeName }, { fxLabSplitDesc, FxLabSplitFx::xmlTypeName }, { fxLabEndDesc, FxLabEndFx::xmlTypeName } };
     return t;
 }
@@ -2386,6 +2662,7 @@ inline void registerFx (te::PluginManager& pm)
     pm.createBuiltInType<ShimmerFx>();  pm.createBuiltInType<TextureVerbFx>(); pm.createBuiltInType<InfinityFx>();
     pm.createBuiltInType<GranularFx>(); pm.createBuiltInType<SpectralFx>();
     pm.createBuiltInType<HarmonizerFx>(); pm.createBuiltInType<DoublerFx>();
+    pm.createBuiltInType<DynEqFx>();    pm.createBuiltInType<DenoiseFx>();
     pm.createBuiltInType<FxLabFx>();    pm.createBuiltInType<FxLabSplitFx>(); pm.createBuiltInType<FxLabEndFx>();
 }
 

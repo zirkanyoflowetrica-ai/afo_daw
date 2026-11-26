@@ -1,10 +1,13 @@
-"""Voz profesional (Hito 4) en el motor C++: Harmonizer (AF-65) y Doubler (AF-66).
+"""Voz profesional (Hito 4) en el motor C++: Harmonizer (AF-65), Doubler (AF-66), Dynamic EQ (AF-08)
+y Noise Reducer (AF-68).
 
 Se mide el render real. Harmonizer: cada intervalo cae en la nota que toca de la escala (o a semitonos
 fijos), sigue una melodía grado a grado, sale afinado aunque la voz no lo esté y con las voces
 apagadas deja la voz igual que sin efecto (su latencia la compensa Tracktion). Doubler: con la mezcla
 a 0 no cambia nada, la copia sale a la separación pedida y desafinada los cents pedidos, y abre el
-estéreo. Al final, una balada entera con la voz armonizada y los coros doblados.
+estéreo. Dynamic EQ: solo corta lo que pasa del umbral en su banda. Noise Reducer: baja el ruido de
+fondo y deja el tono. Con proyectos enteros: una balada con la voz armonizada y los coros doblados, y
+la misma voz con soplido limpiada y ecualizada.
 """
 from pathlib import Path
 
@@ -213,4 +216,125 @@ def test_balada_con_armonia_y_coros_doblados(host, tmp_path):
         eng.set_track_mute(t, False)
     mix = _render(eng, tmp_path, "mix.wav")
     print(f"balada: mezcla con armonía y coros doblados, pico {np.abs(mix).max():.2f}")
+    assert np.isfinite(mix).all() and 0.05 < np.abs(mix).max() <= 1.0
+
+
+# ---------------------------------------------------------------- Dynamic EQ (AF-08)
+_DYN = {"type1": 0, "type2": 1, "freq2": 3000, "q2": 2, "thr2": -30, "range2": -12, "type3": 0}
+
+
+@pytest.mark.parametrize("amp_db,hz,lo,hi", [
+    (-12, 3000, -12.5, -10.5),   # fuerte en la banda: hasta el rango
+    (-24, 3000, -5.0, -2.0),     # 6 dB sobre el umbral: 2/3 dB por dB
+    (-40, 3000, -0.2, 0.2),      # bajo el umbral: nada
+    (-12, 300, -0.2, 0.2),       # fuera de la banda: nada
+    (-12, 1000, -0.3, 0.2),
+])
+def test_dyneq_corta_solo_lo_fuerte_en_su_banda(host, tmp_path, amp_db, hz, lo, hi):
+    y = _sine(hz, amp=10 ** (amp_db / 20))
+    tid = _track(host, tmp_path, y, "t")
+    _fx(host.engine, tid, "dyneq", **_DYN)
+    z = _render(host.engine, tmp_path, "o.wav")[:, 0]
+    d = db(rms(z[SR:2 * SR])) - db(rms(y[SR:]))
+    print(f"dyneq {amp_db} dBFS {hz} Hz: {d:+.2f} dB")
+    assert lo < d < hi
+
+
+def test_dyneq_apagado_deja_la_senal_igual(host, tmp_path):
+    rng = np.random.default_rng(3)
+    y = 0.1 * rng.standard_normal(2 * SR)
+    tid = _track(host, tmp_path, y, "t")
+    ref = _render(host.engine, tmp_path, "ref.wav")
+    _fx(host.engine, tid, "dyneq", type1=0, type2=0, type3=0)
+    z = _render(host.engine, tmp_path, "o.wav")
+    assert db(rms(z - ref)) < -120
+
+
+# ---------------------------------------------------------------- Noise Reducer (AF-68)
+def _ruido_y_tono():
+    rng = np.random.default_rng(1)
+    y = 10 ** (-50 / 20) * rng.standard_normal(4 * SR)
+    y[SR:] += 10 ** (-20 / 20) * np.sin(2 * np.pi * 440 * np.arange(3 * SR) / SR)
+    return y
+
+
+def _banda(x, f0=2000, f1=8000):
+    from scipy.signal import butter, sosfilt
+    return sosfilt(butter(4, [f0, f1], "band", fs=SR, output="sos"), x)
+
+
+def test_denoise_quita_el_ruido_y_deja_el_tono(host, tmp_path):
+    """Soplido a −50 dBFS y un La a −20: en la pausa el ruido baja ≥ 15 dB, con el tono el ruido de
+    2–8 kHz también, y el tono no cambia (±0,2 dB)."""
+    y = _ruido_y_tono()
+    tid = _track(host, tmp_path, y, "t")
+    ref = _render(host.engine, tmp_path, "ref.wav")[:, 0]
+    _fx(host.engine, tid, "denoise", reduction=24)
+    z = _render(host.engine, tmp_path, "o.wav")[:, 0]
+    seg, pausa = slice(2 * SR, 4 * SR - SR // 4), slice(SR // 2, SR)
+    d_pausa = db(rms(z[pausa])) - db(rms(ref[pausa]))
+    d_banda = db(rms(_banda(z)[seg])) - db(rms(_banda(ref)[seg]))
+    d_tono = db(rms(z[seg])) - db(rms(ref[seg]))
+    print(f"denoise: pausa {d_pausa:+.1f} dB, ruido 2–8 kHz con tono {d_banda:+.1f} dB, tono {d_tono:+.2f} dB")
+    assert d_pausa < -15 and d_banda < -12 and abs(d_tono) < 0.2
+
+
+def test_denoise_escuchar_lo_que_quita(host, tmp_path):
+    """En «Lo que quita» sale el ruido (casi al mismo nivel en la pausa) y el tono no."""
+    y = _ruido_y_tono()
+    tid = _track(host, tmp_path, y, "t")
+    _fx(host.engine, tid, "denoise", reduction=24, listen=1)
+    z = _render(host.engine, tmp_path, "o.wav")[:, 0]
+    pausa = db(rms(z[SR // 2:SR])) - (-50)
+    tono = db(rms(z[2 * SR:3 * SR])) - (-23)
+    print(f"denoise escuchar: ruido {pausa:+.1f} dB, tono {tono:+.1f} dB")
+    assert abs(pausa) < 1.5 and tono < -15
+
+
+def test_denoise_mezcla_cero_no_cambia_nada(host, tmp_path):
+    y = _ruido_y_tono()
+    tid = _track(host, tmp_path, y, "t")
+    ref = _render(host.engine, tmp_path, "ref.wav")
+    _fx(host.engine, tid, "denoise", mix=0)
+    z = _render(host.engine, tmp_path, "o.wav")
+    assert db(rms(z - ref)) < -100
+
+
+def test_balada_con_soplido_limpia_y_ecualizada(host, tmp_path):
+    """La voz de la balada con un soplido de −55 dBFS: el Noise Reducer baja el ruido de las pausas
+    ≥ 10 dB y deja la voz cantada a ±1 dB; con el Dynamic EQ en la voz la mezcla entera sale limpia."""
+    from song_factory import write_song
+    song = write_song("balada", tmp_path / "balada")
+    eng = host.engine
+    eng.set_tempo(song["genre"].bpm)
+    paths = {Path(p).stem.split("_", 1)[1]: p for p in song["paths"]}
+    voz, vsr = sf.read(paths["Voz_Lead"], always_2d=True)
+    rng = np.random.default_rng(7)
+    sucia = voz + 10 ** (-55 / 20) * rng.standard_normal(voz.shape)
+    p = tmp_path / "voz_sucia.wav"
+    sf.write(str(p), sucia, vsr, subtype="FLOAT")
+    tid = eng.add_audio_track(str(p), "Voz sucia")["id"]
+    ref = _render(eng, tmp_path, "ref.wav")[:, 0]
+    _fx(eng, tid, "denoise", reduction=20)
+    z = _render(eng, tmp_path, "limpia.wav")[:, 0]
+    # tramos de 0,1 s: la voz limpia (a su frecuencia) dice si es pausa o canto; el render va a SR
+    secs = min(len(ref), len(z)) / SR
+    tramos = [(k, rms(voz[int(k * 0.1 * vsr):int((k + 1) * 0.1 * vsr), 0])) for k in range(int(secs / 0.1) - 1)]
+    pausas = [k for k, r in tramos if r < 1e-4]
+    canto = [k for k, r in tramos if r > 0.03]
+    assert len(pausas) > 20 and len(canto) > 20
+    hop = SR // 10
+    sel = lambda x, idx: np.concatenate([x[k * hop:(k + 1) * hop] for k in idx])
+    d_pausa = db(rms(sel(z, pausas))) - db(rms(sel(ref, pausas)))
+    d_canto = db(rms(sel(z, canto))) - db(rms(sel(ref, canto)))
+    print(f"balada con soplido: pausas {d_pausa:+.1f} dB, voz {d_canto:+.2f} dB")
+    assert d_pausa < -10 and abs(d_canto) < 1.0
+
+    _fx(eng, tid, "dyneq", type1=1, freq1=350, q1=1.2, thr1=-28, range1=-5,
+        type2=1, freq2=3200, q2=2.0, thr2=-30, range2=-6, type3=0)
+    for k, path in paths.items():
+        if k != "Voz_Lead":
+            eng.add_audio_track(path, k)
+    mix = _render(eng, tmp_path, "mix.wav")
+    print(f"balada limpia y ecualizada: pico de la mezcla {np.abs(mix).max():.2f}")
     assert np.isfinite(mix).all() and 0.05 < np.abs(mix).max() <= 1.0

@@ -95,6 +95,21 @@ FACTORY: dict[str, dict[str, dict[str, float]]] = {
         "Coro de cuatro": {"voices": 4, "separation": 25, "variation": 60, "detune": 14, "spread": 90, "mix": 55},
         "Sutil (verso)": {"voices": 2, "separation": 12, "variation": 30, "detune": 4, "spread": 50, "mix": 30},
     },
+    "dyneq": {
+        "Voz: caja y dureza": {"type1": 1, "freq1": 350, "q1": 1.2, "thr1": -28, "range1": -5,
+                               "type2": 1, "freq2": 3200, "q2": 2.0, "thr2": -30, "range2": -6, "type3": 0},
+        "Voz: sibilancia suave": {"type1": 0, "type2": 0, "type3": 1, "freq3": 7000, "q3": 3.0, "thr3": -35, "range3": -8,
+                                  "attack": 1, "release": 60},
+        "Bajo: graves controlados": {"type1": 2, "freq1": 120, "thr1": -18, "range1": -6, "type2": 0, "type3": 0,
+                                     "attack": 10, "release": 200},
+        "Mezcla: brillo cuando falta": {"type1": 0, "type2": 0, "type3": 3, "freq3": 8000, "thr3": -50, "range3": 3},
+    },
+    "denoise": {
+        "Soplido suave": {"reduction": 10, "sensitivity": 4, "smooth": 50},
+        "Voz con ruido de sala": {"reduction": 18, "sensitivity": 6, "smooth": 60},
+        "Limpieza fuerte": {"reduction": 30, "sensitivity": 10, "smooth": 75},
+        "Escuchar lo que quita": {"reduction": 15, "sensitivity": 6, "smooth": 50, "listen": 1},
+    },
     "saturator": {
         "Tubo cálido": {"drive": 9, "character": 0, "tone": -10, "mix": 100},
         "Cinta": {"drive": 12, "character": 1, "tone": -20, "bias": 10, "mix": 100},
