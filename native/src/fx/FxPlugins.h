@@ -1772,6 +1772,17 @@ private:
             if (j < w) energy += (double) x[(size_t) j] * x[(size_t) j];
         }
         const float rmsDb = gainToDb ((float) std::sqrt (energy / w) * 1.41421356f);
+        // Arranque de una nota: la ventana aún empieza en silencio (lo más antiguo 6 dB por debajo de lo
+        // más nuevo) y la lectura sale torcida; con la histéresis esa nota equivocada se quedaría fija.
+        // Se espera a que la ventana entera tenga la nota
+        double eOld = 0.0, eNew = 0.0;
+        for (int j = 0; j < w / 4; ++j)
+        {
+            eOld += (double) x[(size_t) j] * x[(size_t) j];
+            eNew += (double) x[(size_t) (len - 1 - j)] * x[(size_t) (len - 1 - j)];
+        }
+        if (rmsDb > -45.0f && eOld < 0.25 * eNew)
+            return;
         float tauF = -1.0f;
         if (rmsDb > -45.0f)
         {

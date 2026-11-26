@@ -18,6 +18,26 @@ namespace afo
 
 namespace
 {
+    constexpr double renderPadSeconds = 1.0;     // silencio previo de cada render (se recorta)
+
+    // Copia `src` (WAV) en `dst` sin sus primeras `skip` muestras, a 24 bits como el render de Tracktion
+    bool trimWavStart (const juce::File& src, const juce::File& dst, int skip)
+    {
+        juce::WavAudioFormat wav;
+        std::unique_ptr<juce::AudioFormatReader> reader (wav.createReaderFor (new juce::FileInputStream (src), true));
+        if (reader == nullptr || reader->lengthInSamples <= skip)
+            return false;
+        auto os = std::make_unique<juce::FileOutputStream> (dst);
+        if (! os->openedOk())
+            return false;
+        std::unique_ptr<juce::AudioFormatWriter> writer (wav.createWriterFor (os.get(), reader->sampleRate, reader->numChannels,
+                                                                             24, reader->metadataValues, 0));
+        if (writer == nullptr)
+            return false;
+        os.release();
+        return writer->writeFromAudioReader (*reader, skip, reader->lengthInSamples - skip);
+    }
+
     synth::Params toParams (const SynthSettings& s)
     {
         synth::Params p;
@@ -1451,7 +1471,8 @@ MixMeasure Engine::measureMix()
         p.audioFormat = impl->engine->getAudioFileFormatManager().getDefaultFormat();
         p.blockSizeForAudio = 512;
         p.sampleRateForAudio = sr;
-        p.time = { te::TimePosition(), edit.getLength() };
+        // Empieza antes, en silencio, como el export (renderToWav): el primer bloque no sale corrido
+        p.time = te::TimeRange (te::TimePosition() - te::TimeDuration::fromSeconds (renderPadSeconds), te::TimePosition() + edit.getLength());
         p.tracksToDo = audible;
         p.usePlugins = true;
         p.useMasterPlugins = true;
@@ -1489,9 +1510,20 @@ bool Engine::renderToWav (const std::string& path)
         return false;
     if (edit.getTransport().isPlaying())
         edit.getTransport().stop (false, false);
-    return te::Renderer::renderToFile ("AllForOne", file, edit, { te::TimePosition(), edit.getLength() },
-                                       audible, true, true, {}, false)
-           && file.existsAsFile();
+
+    // Tracktion arranca el render con un salto del cabezal: el primer bloque sale corrido (64 muestras
+    // sin efectos, y con latencia se desplaza o se pierde lo que suena en él). Se empieza un segundo
+    // antes, en silencio, y se recorta ese segundo: la canción entera sale en su sitio
+    const double sr = impl->engine->getDeviceManager().getSampleRate();
+    const int padSamples = juce::roundToInt (sr * renderPadSeconds);
+    const auto pad = te::TimeDuration::fromSamples (padSamples, sr);
+    auto raw = file.getSiblingFile (file.getFileNameWithoutExtension() + ".afo-render.wav");
+    raw.deleteFile();
+    const bool ok = te::Renderer::renderToFile ("AllForOne", raw, edit, te::TimeRange (te::TimePosition() - pad, te::TimePosition() + edit.getLength()),
+                                                audible, true, true, {}, false)
+                    && raw.existsAsFile() && trimWavStart (raw, file, padSamples);
+    raw.deleteFile();
+    return ok && file.existsAsFile();
 }
 
 //==============================================================================

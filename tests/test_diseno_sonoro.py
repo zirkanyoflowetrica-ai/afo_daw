@@ -471,11 +471,8 @@ def test_lofi_completo_con_granular_y_spectral(host, tmp_path):
     dry = _render(eng, tmp_path, "drums0.wav")[:, 0]
     sp = _fx(eng, ids["Drums"], "spectral", mode=0, amount=0, mix=100)
     neutral = _render(eng, tmp_path, "drums1.wav")[:, 0]
-    # Desde 0,5 s: el primer bloque de un render con latencia no se compensa bien con bloques que no
-    # dividen la latencia (pasa igual con Limiter, Saturator y Tune; pendiente en docs/TAREAS.md)
     n = min(len(dry), len(neutral))
-    seg = slice(int(0.5 * SR), n)
-    res = db(rms(neutral[seg] - dry[seg])) - db(rms(dry[seg]))
+    res = db(rms(neutral[:n] - dry[:n])) - db(rms(dry[:n]))
     eng.set_effect_param(sp, "amount", 95)
     blur = _render(eng, tmp_path, "drums2.wav")[:, 0]
     crest = lambda x: db(np.abs(x).max()) - db(rms(x))                  # noqa: E731
