@@ -147,6 +147,41 @@ PYBIND11_MODULE (afo_audio, m)
            }, py::arg ("guide"), py::arg ("guide_start"), py::arg ("dub"), py::arg ("dub_start"), py::arg ("out"),
            py::arg ("strength") = 1.0f, py::arg ("max_shift_ms") = 150.0f,
            "Vocal Align (AF-67): escribe `out` con la toma `dub` ajustada en el tiempo a la voz `guide` (sin el motor).");
+    m.def ("pitch_analyze", [] (const std::string& path)
+           {
+               afo::PitchAnalysis a;
+               {
+                   py::gil_scoped_release free;
+                   a = afo::analyzePitchFile (path);
+               }
+               py::dict d; d["ok"] = a.ok; d["error"] = a.error; d["hop"] = a.hop; d["seconds"] = a.seconds;
+               d["curve"] = a.curve;
+               py::list notes;
+               for (auto& n : a.notes)
+               {
+                   py::dict x; x["start"] = n.start; x["end"] = n.end; x["midi"] = n.midi; x["shift"] = n.shift; x["flatten"] = n.flatten;
+                   notes.append (x);
+               }
+               d["notes"] = notes;
+               return d;
+           }, py::arg ("path"),
+           "Pitch Editor (AF-64): tono cada 10 ms (MIDI, 0 = sin voz) y notas {start, end, midi, shift, flatten}.");
+    m.def ("pitch_edit", [] (const std::string& path, const std::string& out, const py::list& notes)
+           {
+               std::vector<afo::PitchNoteInfo> v;
+               for (auto item : notes)
+               {
+                   auto d = item.cast<py::dict>();
+                   afo::PitchNoteInfo n;
+                   n.start = d["start"].cast<double>(); n.end = d["end"].cast<double>(); n.midi = d["midi"].cast<float>();
+                   n.shift = d.contains ("shift") ? d["shift"].cast<float>() : 0.0f;
+                   n.flatten = d.contains ("flatten") ? d["flatten"].cast<float>() : 0.0f;
+                   v.push_back (n);
+               }
+               py::gil_scoped_release free;
+               return afo::pitchEditFile (path, out, v);
+           }, py::arg ("path"), py::arg ("out"), py::arg ("notes"),
+           "Pitch Editor (AF-64): escribe `out` con cada nota movida `shift` semitonos y enderezada `flatten`; \"\" si va bien.");
     m.def ("pump_messages", &afo::Engine::pumpMessages, py::arg ("milliseconds") = 0,
            "Procesa mensajes pendientes de JUCE. En Windows lo hace el bucle de Qt; úsese en otras plataformas.");
 

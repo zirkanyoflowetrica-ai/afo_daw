@@ -401,4 +401,23 @@ struct AlignReport
 AlignReport alignVoiceFiles (const std::string& guidePath, double guideStart, const std::string& dubPath, double dubStart,
                              const std::string& outPath, float strength, float maxShiftMs);
 
+// Pitch Editor (AF-64): notas de una voz (tono cada 10 ms y notas con su mediana) y una copia con
+// cada nota movida `shift` semitonos y enderezada `flatten` (0–1), sin cambiar el tiempo (TD-PSOLA).
+// No usan el motor: pueden ir en otro hilo.
+struct PitchNoteInfo
+{
+    double start = 0.0, end = 0.0;
+    float midi = 0.0f, shift = 0.0f, flatten = 0.0f;
+};
+struct PitchAnalysis
+{
+    bool ok = false;
+    std::string error;
+    double hop = 0.01, seconds = 0.0;
+    std::vector<float> curve;                 // MIDI cada `hop` s; 0 = sin voz
+    std::vector<PitchNoteInfo> notes;
+};
+PitchAnalysis analyzePitchFile (const std::string& path);
+std::string pitchEditFile (const std::string& path, const std::string& outPath, const std::vector<PitchNoteInfo>& notes);
+
 } // namespace afo

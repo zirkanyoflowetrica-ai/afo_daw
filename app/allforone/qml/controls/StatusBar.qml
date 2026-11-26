@@ -62,6 +62,12 @@ Rectangle {
             text: visible ? "● " + root.studio.seq.alignMsg : ""
             color: Theme.ink; font.family: Theme.font; font.pixelSize: 12; font.weight: 700
         }
+        Text {                                       // Pitch Editor trabajando (motor C++ en otro hilo)
+            anchors.verticalCenter: parent.verticalCenter
+            visible: !!root.studio.seq && !!root.studio.seq.pitchBusy
+            text: visible ? "● " + root.studio.seq.pitchMsg : ""
+            color: Theme.ink; font.family: Theme.font; font.pixelSize: 12; font.weight: 700
+        }
     }
     Text {                                           // ayuda corta de la vista
         anchors.verticalCenter: parent.verticalCenter

@@ -7,6 +7,7 @@
 #include "AfoLoudness.h"
 #include "fx/FxPlugins.h"
 #include "fx/VocalAlign.h"
+#include "fx/PitchEdit.h"
 
 #include <array>
 #include <cmath>
@@ -2249,6 +2250,77 @@ AlignReport alignVoiceFiles (const std::string& guidePath, double guideStart, co
     if (! writer->writeFromAudioSampleBuffer (ob, 0, len)) { rep.error = "No se pudo escribir el WAV"; return rep; }
     rep.ok = true; rep.meanShiftMs = st.meanShiftMs; rep.maxShiftMs = st.maxShiftMs; rep.seconds = len / sr;
     return rep;
+}
+
+namespace
+{
+    // Lee un archivo de audio entero (1–2 canales); "" si va bien
+    std::string readAudio (const std::string& path, std::vector<std::vector<float>>& ch, double& sr, double maxSeconds = 1200.0)
+    {
+        juce::AudioFormatManager fm;
+        fm.registerBasicFormats();
+        std::unique_ptr<juce::AudioFormatReader> r (fm.createReaderFor (toFile (path)));
+        if (r == nullptr || r->lengthInSamples <= 0) return "No se puede leer " + toFile (path).getFileName().toStdString();
+        if (r->lengthInSamples > (juce::int64) (r->sampleRate * maxSeconds)) return "El audio pasa de 20 minutos";
+        sr = r->sampleRate;
+        const int n = (int) r->lengthInSamples, c = (int) juce::jlimit (1u, 2u, r->numChannels);
+        juce::AudioBuffer<float> b (c, n);
+        r->read (&b, 0, n, 0, true, c > 1);
+        ch.assign ((size_t) c, std::vector<float> ((size_t) n));
+        for (int k = 0; k < c; ++k) std::copy (b.getReadPointer (k), b.getReadPointer (k) + n, ch[(size_t) k].begin());
+        return {};
+    }
+
+    std::string writeFloatWav (const std::string& path, const std::vector<std::vector<float>>& ch, double sr)
+    {
+        const int c = (int) ch.size(), n = c ? (int) ch[0].size() : 0;
+        juce::AudioBuffer<float> b (juce::jmax (1, c), n);
+        for (int k = 0; k < c; ++k) std::copy (ch[(size_t) k].begin(), ch[(size_t) k].end(), b.getWritePointer (k));
+        auto dst = toFile (path);
+        dst.deleteFile();
+        auto os = std::make_unique<juce::FileOutputStream> (dst);
+        if (! os->openedOk()) return "No se puede escribir " + path;
+        juce::WavAudioFormat wav;
+        std::unique_ptr<juce::AudioFormatWriter> w (wav.createWriterFor (os.get(), sr, (unsigned) juce::jmax (1, c), 32, {}, 0));
+        if (w == nullptr) return "No se puede escribir el WAV";
+        os.release();
+        return w->writeFromAudioSampleBuffer (b, 0, n) ? std::string() : std::string ("No se pudo escribir el WAV");
+    }
+
+    std::vector<float> monoOf (const std::vector<std::vector<float>>& ch)
+    {
+        std::vector<float> m (ch.empty() ? 0 : ch[0].size(), 0.0f);
+        for (auto& c : ch)
+            for (size_t i = 0; i < m.size(); ++i) m[i] += c[i] / (float) ch.size();
+        return m;
+    }
+}
+
+PitchAnalysis analyzePitchFile (const std::string& path)
+{
+    PitchAnalysis a;
+    std::vector<std::vector<float>> ch; double sr = 0.0;
+    a.error = readAudio (path, ch, sr);
+    if (! a.error.empty()) return a;
+    const auto pc = fx::analyzePitch (monoOf (ch), sr);
+    a.hop = pc.hop; a.curve = pc.midi; a.seconds = ch[0].size() / sr;
+    for (const auto& n : fx::segmentNotes (pc)) a.notes.push_back ({ n.start, n.end, n.midi, 0.0f, 0.0f });
+    a.ok = true;
+    return a;
+}
+
+std::string pitchEditFile (const std::string& path, const std::string& outPath, const std::vector<PitchNoteInfo>& notes)
+{
+    std::vector<std::vector<float>> ch; double sr = 0.0;
+    auto err = readAudio (path, ch, sr);
+    if (! err.empty()) return err;
+    const auto pc = fx::analyzePitch (monoOf (ch), sr);
+    std::vector<fx::PitchNote> edits;
+    for (const auto& n : notes)
+        edits.push_back ({ n.start, n.end, n.midi, juce::jlimit (-24.0f, 24.0f, n.shift), juce::jlimit (0.0f, 1.0f, n.flatten) });
+    std::vector<std::vector<float>> out;
+    fx::applyPitchEdits (ch, sr, pc, edits, out);
+    return writeFloatWav (outPath, out, sr);
 }
 
 std::pair<float, float> measureFile (const std::string& path)

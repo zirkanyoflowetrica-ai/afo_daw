@@ -126,6 +126,7 @@ class Bridge(QObject):
         self._to_convert: list[str] = []    # audios que el motor no lee y hay que convertir
         self._converting: str | None = None
         self._aligning: dict | None = None   # Vocal Align en marcha (su hilo escribe el archivo)
+        self._pitching: dict | None = None   # Pitch Editor en marcha (análisis o edición en su hilo)
         from .automation_write import AutoWriter
         self._writer = AutoWriter(host.engine) if host.ok else None   # Read / Touch / Latch / Write
 
@@ -140,6 +141,9 @@ class Bridge(QObject):
                 continue
             if ev.get("type") == "_aligned":        # interno: Vocal Align terminó en su hilo
                 self._finish_align(ev)
+                continue
+            if ev.get("type") == "_pitched":        # interno: Pitch Editor terminó en su hilo
+                self._finish_pitch(ev)
                 continue
             if str(ev.get("type", "")).startswith(("ai", "stems", "lab")):   # IA local (ai_music.py, stems.py, lab.py)
                 self.aiEvent.emit(_json(ev))
@@ -934,6 +938,15 @@ class Bridge(QObject):
         self.host.tracks[track_id] = {**self.host.tracks.get(track_id, {}), **info, "originalPath": path}
         return info
 
+    def _playing_path(self, track_id: int) -> str:
+        """Archivo que el motor reproduce en la pista: el convertido si el original no lo lee
+        (64 bits, MP3…); los procesos sin conexión (alinear, editar el tono) parten de este."""
+        t = self.host.tracks.get(int(track_id)) or {}
+        for p in (t.get("source_path"), t.get("originalPath")):
+            if p and Path(p).is_file():
+                return str(p)
+        return ""
+
     # --- Vocal Align (AF-67): la toma se ajusta en el tiempo a una voz guía ----------------
     def _file_start(self, track_id: int) -> float:
         """Segundo del proyecto en que cae el principio del archivo de la pista (por su primer clip)."""
@@ -955,8 +968,7 @@ class Bridge(QObject):
             return _err("Elige como guía otra pista")
         if self._aligning:
             return _err("Ya se está alineando una pista: espera a que termine")
-        src = (self.host.tracks.get(int(track_id)) or {}).get("originalPath") or ""
-        guide = (self.host.tracks.get(int(guide_id)) or {}).get("originalPath") or ""
+        src, guide = self._playing_path(track_id), self._playing_path(guide_id)
         if not src or not Path(src).is_file():
             return _err("La pista a alinear no tiene audio")
         if not guide or not Path(guide).is_file():
@@ -1001,6 +1013,111 @@ class Bridge(QObject):
                            meanShiftMs=round(float(ev["mean_shift_ms"]), 1), maxShiftMs=round(float(ev["max_shift_ms"]), 1))
             except Exception as exc:
                 out["error"] = f"No se pudo poner el audio alineado: {exc}"
+        self.aiEvent.emit(_json(out))
+
+    # --- Pitch Editor (AF-64): ver las notas de una voz y moverlas una a una -----------------
+    @Slot(int, result=str)
+    @_safe
+    def pitchAnalyze(self, track_id: int) -> str:
+        """Notas y tono (cada 10 ms) del audio de la pista, en otro hilo (`aiEvent` type «pitchNotes»).
+        Los tiempos son del archivo; `fileStart` dice dónde cae su principio en el proyecto."""
+        if (g := self._guard()):
+            return g
+        if self._pitching:
+            return _err("El editor de tono ya está trabajando: espera a que termine")
+        src = self._playing_path(track_id)
+        if not src:
+            return _err("La pista no tiene audio que analizar")
+        try:
+            start = self._file_start(track_id)
+        except ValueError as exc:
+            return _err(f"No se puede analizar: {exc}")
+        job = {"mode": "analyze", "trackId": int(track_id), "source": src, "fileStart": start}
+        self._pitching = job
+
+        from .engine_host import afo_audio
+
+        def work():
+            try:
+                r = dict(afo_audio.pitch_analyze(src))
+            except Exception as exc:
+                r = {"ok": False, "error": str(exc)}
+            self._mixer_events.put({"type": "_pitched", **job, **r})
+
+        threading.Thread(target=work, name="afo-pitch", daemon=True).start()
+        return _ok(**job)
+
+    @Slot(int, str, result=str)
+    @_safe
+    def pitchApply(self, track_id: int, payload: str) -> str:
+        """Escribe una copia de `source` (la toma analizada) con cada nota movida `shift` semitonos y
+        enderezada `flatten` (0–1); la pista pasa a usarla con los mismos clips (`aiEvent` type
+        «pitchEdit»; Ctrl+Z vuelve). Siempre parte de la toma analizada: aplicar varias veces no
+        acumula pérdidas. Sin cambios, la pista vuelve a esa toma."""
+        if (g := self._guard()):
+            return g
+        if self._pitching:
+            return _err("El editor de tono ya está trabajando: espera a que termine")
+        opts = json.loads(payload or "{}")
+        src = str(opts.get("source") or "")
+        if not src or not Path(src).is_file():
+            return _err("No se encuentra la toma analizada: vuelve a «Analizar notas»")
+        notes = []
+        for n in opts.get("notes") or []:
+            notes.append({"start": float(n["start"]), "end": float(n["end"]), "midi": float(n["midi"]),
+                          "shift": max(-24.0, min(24.0, float(n.get("shift", 0)))),
+                          "flatten": max(0.0, min(1.0, float(n.get("flatten", 0))))})
+        edited = sum(1 for n in notes if abs(n["shift"]) > 1e-4 or n["flatten"] > 0)
+        prev = self._playing_path(track_id)         # lo que suena ahora: «Deshacer» vuelve a esto
+        job = {"mode": "apply", "trackId": int(track_id), "source": src, "previous": prev, "edited": edited}
+        if not edited:
+            self._mixer_events.put({"type": "_pitched", **job, "ok": True, "error": "", "out": src})
+            return _ok(**job)
+        folder = paths.user_data_dir() / "afinadas"
+        folder.mkdir(parents=True, exist_ok=True)
+        stem = Path(src).stem.split("__afinada")[0]
+        out = folder / f"{stem}__afinada_{datetime.now():%Y%m%d_%H%M%S_%f}.wav"
+        job["out"] = str(out)
+        self._pitching = job
+
+        from .engine_host import afo_audio
+
+        def work():
+            try:
+                err = afo_audio.pitch_edit(src, str(out), notes)
+                r = {"ok": not err, "error": err}
+            except Exception as exc:
+                r = {"ok": False, "error": str(exc)}
+            self._mixer_events.put({"type": "_pitched", **job, **r})
+
+        threading.Thread(target=work, name="afo-pitch", daemon=True).start()
+        return _ok(**job)
+
+    def _finish_pitch(self, ev: dict) -> None:
+        """Hilo principal: entrega las notas o pone en la pista la copia editada."""
+        self._pitching = None
+        tid = int(ev["trackId"])
+        if ev["mode"] == "analyze":
+            out = {"type": "pitchNotes", "trackId": tid, "ok": bool(ev.get("ok")), "source": ev["source"],
+                   "fileStart": ev["fileStart"]}
+            if not ev.get("ok"):
+                out["error"] = f"No se pudo analizar: {ev.get('error') or 'error desconocido'}"
+            else:
+                out.update(hop=ev["hop"], seconds=ev["seconds"], curve=[round(float(v), 2) for v in ev["curve"]],
+                           notes=[{k: round(float(n[k]), 3) for k in ("start", "end", "midi", "shift", "flatten")}
+                                  for n in ev["notes"]])
+            self.aiEvent.emit(_json(out))
+            return
+        out = {"type": "pitchEdit", "trackId": tid, "ok": False, "edited": ev["edited"]}
+        if not ev.get("ok"):
+            out["error"] = f"No se pudo editar el tono: {ev.get('error') or 'error desconocido'}"
+        else:
+            try:
+                info = self._set_source(tid, ev["out"])
+                out.update(ok=True, path=ev["out"], previous=ev["previous"], track=info,
+                           clips=self.host.engine.clips(tid))
+            except Exception as exc:
+                out["error"] = f"No se pudo poner el audio editado: {exc}"
         self.aiEvent.emit(_json(out))
 
     @Slot(int, str, result=str)

@@ -405,6 +405,54 @@ QtObject {
         alignMsg = t.name + " alineada: se movió " + ev.meanShiftMs + " ms de media (máx. " + ev.maxShiftMs + " ms)"
         studio.toast(alignMsg + " · Ctrl+Z vuelve a la toma original")
     }
+    // ---------------- Pitch Editor (AF-64): las notas de una voz, movidas una a una ----------------
+    // «Analizar» da las notas y el tono (motor C++, otro hilo); los cambios (semitonos, cents,
+    // enderezar) se guardan aquí y «Aplicar» escribe una copia desde la toma analizada que la pista
+    // usa con los mismos clips. Ctrl+Z vuelve al audio anterior.
+    property var pitch: ({ trackId: -1, source: "", fileStart: 0, seconds: 0, hop: 0.01, curve: [], notes: [] })
+    property string pitchBusy: ""             // "analyze" | "apply" | ""
+    property string pitchMsg: ""
+    function uidOfId(id) { for (var i = 0; i < studio.tracks.length; i++) if (studio.tracks[i].id === id) return studio.tracks[i].uid; return "" }
+    function nameOfId(id) { var t = trackOf(uidOfId(id)); return t ? t.name : "" }
+    function pitchAnalyze(trackId) {
+        if (pitchBusy) { studio.toast("El editor de tono ya está trabajando"); return false }
+        var r = studio.call("pitchAnalyze", trackId)
+        if (!r.ok) { studio.toast(r.error); return false }
+        pitchBusy = "analyze"
+        pitchMsg = "Analizando las notas de " + nameOfId(trackId) + "…"
+        return true
+    }
+    function pitchSetNotes(notes) { pitch = Object.assign({}, pitch, { notes: notes }) }
+    function pitchApply() {
+        if (pitchBusy) { studio.toast("El editor de tono ya está trabajando"); return false }
+        if (!pitch.source) { studio.toast("Primero «Analizar notas»"); return false }
+        var r = studio.call("pitchApply", pitch.trackId, JSON.stringify({ source: pitch.source, notes: pitch.notes }))
+        if (!r.ok) { studio.toast(r.error); return false }
+        pitchBusy = "apply"
+        pitchMsg = r.edited ? "Aplicando " + r.edited + (r.edited === 1 ? " nota editada" : " notas editadas") + " en " + nameOfId(pitch.trackId) + "…"
+                            : "Volviendo a la toma analizada…"
+        return true
+    }
+    function applyPitch(ev) {
+        pitchBusy = ""
+        if (!ev.ok) { pitchMsg = ev.error; studio.toast(ev.error); return }
+        if (ev.type === "pitchNotes") {
+            pitch = { trackId: ev.trackId, source: ev.source, fileStart: ev.fileStart, seconds: ev.seconds,
+                      hop: ev.hop, curve: ev.curve, notes: ev.notes }
+            pitchMsg = ev.notes.length + " notas en " + nameOfId(ev.trackId)
+            studio.toast(pitchMsg + ": elige una y muévela")
+            return
+        }
+        var uid = uidOfId(ev.trackId), t = trackOf(uid)
+        if (!t) { studio.toast("La pista ya no está; el audio editado queda en " + ev.path); return }
+        var before = t.aclips || []
+        replace(uid, { aclips: ev.clips, peaks: ev.track.peaks || [], len: ev.track.length_seconds || t.len })
+        if (ev.previous !== ev.path) sourceReplaced(uid, ev.previous, before)
+        studio.markDirty()
+        pitchMsg = ev.edited ? t.name + ": " + ev.edited + (ev.edited === 1 ? " nota editada" : " notas editadas")
+                             : t.name + ": de vuelta a la toma analizada"
+        studio.toast(pitchMsg + " · Ctrl+Z vuelve al audio anterior")
+    }
     // ---------------- Otra versión con IA de un clip (C13, ACE-Step «cover») ----------------
     // El trozo del clip elegido se vuelve a tocar: «Parecida» guarda melodía y timbre, «Libre» solo la
     // forma. El resultado va a una pista nueva, en el mismo sitio del clip; el original no se toca.
@@ -555,6 +603,7 @@ QtObject {
     }
     function onAiEvent(ev) {
         if (ev.type === "align") { applyAlign(ev); return }
+        if (ev.type === "pitchNotes" || ev.type === "pitchEdit") { applyPitch(ev); return }
         if (ev.type === "stemsDownload") {
             if (ev.phase === "progress") splitMsg = ev.message
             else studio.toast(ev.ok || ev.cancelled ? ev.message : ev.error)

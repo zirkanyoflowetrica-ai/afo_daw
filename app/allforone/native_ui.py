@@ -803,6 +803,32 @@ def _native_mixer_checks(rep, app, host, window, bridge, prop) -> None:
     rep.check("Afinador en tiempo real: se inserta el primero en la voz, cambia la tónica y se quita",
               tfx is not None and tvals is not None and round(tvals[0]) == 9 and "tune" not in left,
               {"módulo": tb is not None, "efecto": tfx and tfx["key"], "valores": tvals, "queda": left})
+    # Editor de tono (AF-64) en el mismo módulo: analizar la voz, subir una nota, aplicar y volver a la toma
+    pe_ok, pe_info = False, {"módulo": tb is not None}
+    if tb is not None:
+        seq = tb.property("seq")
+        ctrls = [window.findChild(QObject, n) for n in ("pitchAnalyze", "pitchApply", "pitchRoll", "pitchFlatten", "pitchToScale")]
+        QMetaObject.invokeMethod(seq, "pitchAnalyze", Q_ARG("QVariant", voz))
+        here = _wait(app, lambda: bool(tb.property("peHere")), 30, host)
+        pe = tb.property("pe") or {}
+        pe = pe.toVariant() if hasattr(pe, "toVariant") else pe
+        nn = len(pe.get("notes", [])) if here else 0
+        src0 = pe.get("source") if here else None          # el archivo que suena (convertido si hizo falta)
+        edited, back = None, None
+        if nn:
+            tb.setProperty("sel", [0])
+            QMetaObject.invokeMethod(tb, "peNudge", Q_ARG("QVariant", 1))
+            QMetaObject.invokeMethod(seq, "pitchApply")
+            _wait(app, lambda: "afinadas" in str(host.tracks.get(voz, {}).get("originalPath")) and not seq.property("pitchBusy"), 30, host)
+            edited = host.tracks.get(voz, {}).get("originalPath")
+            QMetaObject.invokeMethod(tb, "peReset")
+            QMetaObject.invokeMethod(seq, "pitchApply")
+            _wait(app, lambda: host.tracks.get(voz, {}).get("originalPath") == src0 and not seq.property("pitchBusy"), 30, host)
+            back = host.tracks.get(voz, {}).get("originalPath")
+        pe_ok = None not in ctrls and nn > 0 and edited not in (None, src0) and "afinadas" in str(edited) and back == src0
+        pe_info = {"controles": [c is not None for c in ctrls], "notas": nn, "copia": edited and Path(edited).name,
+                   "vuelve": back == src0}
+    rep.check("Editor de tono: analiza la voz, aplica una nota subida como copia y vuelve a la toma", pe_ok, pe_info)
     # Panel de detalle de efectos (X15): elegir la voz y en su cadena el AF-60 → sale el editor del Afinador
     def fxc(what, a=None, b=None):
         v = QMetaObject.invokeMethod(window, "fxCommand", Q_RETURN_ARG("QVariant"),
