@@ -58,9 +58,9 @@ B.ComboBox {
         highlighted: root.highlightedIndex === index
         contentItem: Text {
             text: parent.modelData; font: root.font; elide: Text.ElideRight
-            color: parent.highlighted ? "#fff" : Theme.ink; verticalAlignment: Text.AlignVCenter
+            color: parent.highlighted ? Theme.inkOnAccent : Theme.ink; verticalAlignment: Text.AlignVCenter
         }
-        background: Rectangle { color: parent.highlighted ? Theme.focus : Theme.input }
+        background: Rectangle { color: parent.highlighted ? Theme.accent : Theme.input }
     }
     popup.background: Rectangle { color: Theme.input; border.width: 1; border.color: Theme.line }
     HoverHandler { id: hov }

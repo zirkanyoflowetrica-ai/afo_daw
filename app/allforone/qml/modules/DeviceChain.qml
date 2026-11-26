@@ -121,7 +121,7 @@ Rectangle {
                                 width: autoTxt.implicitWidth + 8; height: 18; radius: 2
                                 anchors.verticalCenter: parent.verticalCenter
                                 color: Theme.knobArc
-                                Text { id: autoTxt; anchors.centerIn: parent; text: "AUTO"; color: "#000"
+                                Text { id: autoTxt; anchors.centerIn: parent; text: "AUTO"; color: Theme.inkOnColor
                                        font.family: Theme.font; font.pixelSize: 11; font.weight: 700 }
                                 MouseArea { id: autoM; anchors.fill: parent; hoverEnabled: true }
                                 ToolTipLite { text: "Lo puso la mezcla automática; puedes cambiarlo"; show: autoM.containsMouse }
@@ -212,7 +212,7 @@ Rectangle {
                             onFxChanged: requestPaint()
                             onLiveChanged: requestPaint()
                             onWidthChanged: requestPaint()
-                            onPaint: { FG.setPalette(Theme.lcd, Theme.lcdSoft); if (card.desc) FG.draw(getContext("2d"), width, height, fx, card.desc, live) }
+                            onPaint: { FG.setPalette(Theme.lcd, Theme.lcdSoft, Theme.screen, Theme.meterOk, Theme.screenDim, Theme.meterPeak); if (card.desc) FG.draw(getContext("2d"), width, height, fx, card.desc, live) }
                         }
                         Grid {                       // perillas en dos filas
                             columns: card.cols; columnSpacing: 4; rowSpacing: 2
@@ -298,7 +298,7 @@ Rectangle {
         signal clicked()
         width: 24; height: 24; radius: 2              // objetivo mínimo de 24 px (WCAG 2.5.8)
         color: dbm.containsMouse || on ? Theme.knobArc : "transparent"
-        Text { anchors.centerIn: parent; text: db.glyph; color: dbm.containsMouse || db.on ? "#000" : Theme.deviceInk
+        Text { anchors.centerIn: parent; text: db.glyph; color: dbm.containsMouse || db.on ? Theme.inkOnAccent : Theme.deviceInk
                font.family: db.glyph.length > 1 ? Theme.font : "Segoe UI Symbol"; font.pixelSize: db.glyph.length > 1 ? 10 : 12; font.weight: 700 }
         MouseArea { id: dbm; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: db.clicked() }
         ToolTipLite { text: db.tip; show: dbm.containsMouse }

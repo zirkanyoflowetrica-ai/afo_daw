@@ -321,9 +321,9 @@ Column {
                             spacing: 6
                             Text { width: 48; text: modelData[0]; color: Theme.deviceInk; font.family: Theme.font; font.pixelSize: 11; font.weight: 600 }
                             Rectangle {
-                                width: 70; height: 9; color: "#120f0a"; border.width: 1; border.color: Theme.line
+                                width: 70; height: 9; color: Theme.lcdBg; border.width: 1; border.color: Theme.line
                                 anchors.verticalCenter: parent.verticalCenter
-                                Rectangle { x: 1; y: 1; height: 7; color: (root.meters[modelData[1]] || -100) > -1 ? "#ff4d3d" : "#5ee0b0"
+                                Rectangle { x: 1; y: 1; height: 7; color: (root.meters[modelData[1]] || -100) > -1 ? Theme.meterPeak : Theme.meterOk
                                             width: 68 * Math.max(0, Math.min(1, ((root.meters[modelData[1]] === undefined ? -100 : root.meters[modelData[1]]) + 60) / 60)) }
                             }
                             Text { text: root.db(root.meters[modelData[1]] === undefined ? -100 : root.meters[modelData[1]]) + " dB"
@@ -457,7 +457,7 @@ Column {
                     function hit(x, y) { for (var i = 0; i < pts.length; i++) if (Math.abs(xOf(pts[i][0]) - x) < 7 && Math.abs(yOf(pts[i][1]) - y) < 7) return i; return -1 }
                     onPaint: {
                         var ctx = getContext("2d"); ctx.reset()
-                        ctx.fillStyle = "#0c0a07"; ctx.fillRect(0, 0, width, height)
+                        ctx.fillStyle = String(Theme.screen); ctx.fillRect(0, 0, width, height)
                         ctx.strokeStyle = "rgba(255,255,255,0.10)"; ctx.lineWidth = 1
                         for (var b = 0; b <= 16; b++) { var gx = width * b / 16; ctx.beginPath(); ctx.moveTo(gx, 0); ctx.lineTo(gx, height); ctx.stroke() }
                         var p = pts || []
@@ -469,8 +469,8 @@ Column {
                             ctx.fillStyle = String(Theme.lcd)
                             for (var j = 0; j < p.length; j++) ctx.fillRect(xOf(p[j][0]) - 4, yOf(p[j][1]) - 4, 8, 8)
                         }
-                        if (playX >= 0) { ctx.strokeStyle = "#ff4d3d"; ctx.beginPath(); ctx.moveTo(playX, 0); ctx.lineTo(playX, height); ctx.stroke() }
-                        ctx.fillStyle = "#bdb398"; ctx.font = "11px '" + Theme.font + "'"
+                        if (playX >= 0) { ctx.strokeStyle = String(Theme.meterPeak); ctx.beginPath(); ctx.moveTo(playX, 0); ctx.lineTo(playX, height); ctx.stroke() }
+                        ctx.fillStyle = String(Theme.screenDim); ctx.font = "11px '" + Theme.font + "'"
                         ctx.fillText("16 compases · clic: añadir · arrastrar: mover · clic derecho: borrar", 6, 12)
                     }
                     MouseArea {
@@ -504,7 +504,7 @@ Column {
                 onBandsChanged: requestPaint()
                 onPaint: {
                     var ctx = getContext("2d"); ctx.reset()
-                    ctx.fillStyle = "#0c0a07"; ctx.fillRect(0, 0, width, height)
+                    ctx.fillStyle = String(Theme.screen); ctx.fillRect(0, 0, width, height)
                     ctx.strokeStyle = "rgba(255,255,255,0.10)"; ctx.lineWidth = 1
                     var lo = eq ? -24 : -90, hi = eq ? 24 : 0
                     ;[20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000].forEach(function (f) {
@@ -519,8 +519,8 @@ Column {
                         var x2 = width * i / (d.length - 1), y2 = height * (hi - Math.max(lo, Math.min(hi, d[i]))) / (hi - lo)
                         if (i) ctx.lineTo(x2, y2); else ctx.moveTo(x2, y2)
                     }
-                    ctx.strokeStyle = eq ? String(Theme.lcdSoft) : "#5ee0b0"; ctx.lineWidth = 2; ctx.stroke()
-                    ctx.fillStyle = "#bdb398"; ctx.font = "11px '" + Theme.font + "'"
+                    ctx.strokeStyle = eq ? String(Theme.lcdSoft) : String(Theme.meterOk); ctx.lineWidth = 2; ctx.stroke()
+                    ctx.fillStyle = String(Theme.screenDim); ctx.font = "11px '" + Theme.font + "'"
                     ctx.fillText(eq ? "respuesta real del EQ (±24 dB)" : "espectro (dBFS, 20 Hz – 20 kHz)", 6, 12)
                 }
             }
@@ -567,7 +567,7 @@ Column {
                                 id: addBtn
                                 visible: !!it.fx
                                 text: "+ " + it.modelData[0] + " " + it.modelData[1]; fontSize: 11; padX: 6; padY: 1; shadow: 2
-                                color: Theme.lcdSoft; textColor: "#000"
+                                color: Theme.lcdSoft; textColor: Theme.inkOnColor
                                 tip: it.fx ? it.fx.summary : ""
                                 onClicked: root.add(it.fx.key)
                             }

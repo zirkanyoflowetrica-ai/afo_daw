@@ -187,7 +187,7 @@ Column {
         }
         NeoButton {
             visible: !root.fx && root.trackId >= 0
-            text: "Insertar afinador"; color: Theme.accent; textColor: "#000"
+            text: "Insertar afinador"; color: Theme.accent; textColor: Theme.inkOnAccent
             tip: "Pone el afinador en tiempo real al principio de la cadena de esta pista"
             onClicked: root.insert()
         }
@@ -195,7 +195,7 @@ Column {
             visible: !!root.fx
             readonly property bool on: !!root.fx && root.fx.enabled
             text: on ? "Activo" : "Puenteado"; pressedState: on
-            color: on ? Theme.accent : Theme.button; textColor: on ? "#000" : Theme.ink
+            color: on ? Theme.accent : Theme.button; textColor: on ? Theme.inkOnAccent : Theme.ink
             tip: on ? "Clic: puentear (comparar con la voz sin afinar)" : "Clic: volver a afinar"
             onClicked: { root.studio.call("fxEnable", root.fx.id, !on); root.fx = Object.assign({}, root.fx, { enabled: !on }) }
         }
@@ -220,7 +220,7 @@ Column {
     Rectangle {
         id: screen
         width: root.width; height: 168
-        color: "#0f1014"; border.width: Theme.border; border.color: Theme.line; radius: Theme.radius
+        color: Theme.screen; border.width: Theme.border; border.color: Theme.line; radius: Theme.radius
         readonly property real det: root.meters.length > 2 ? root.meters[2] : 0
         readonly property real tgt: root.meters.length > 3 ? root.meters[3] : 0
         readonly property real corr: root.meters.length > 4 ? root.meters[4] : 0
@@ -249,7 +249,7 @@ Column {
             Text { anchors.horizontalCenter: parent.horizontalCenter; y: 46; text: "0"; color: Theme.lcdSoft; font.family: Theme.font; font.pixelSize: 11 }
             Text { anchors.right: parent.right; y: 46; text: "+50"; color: Theme.lcdSoft; font.family: Theme.font; font.pixelSize: 11 }
             Rectangle {
-                width: 4; height: 44; y: 2; radius: 2; color: "#ffffff"
+                width: 4; height: 44; y: 2; radius: 2; color: Theme.screenInk
                 x: needle.width / 2 + needle.off / 50 * needle.width / 2 - 2
                 visible: screen.live
                 Behavior on x { NumberAnimation { duration: 60 } }
@@ -282,7 +282,7 @@ Column {
     // ---------------- gráfica de tono ----------------
     Rectangle {
         width: root.width; height: 150
-        color: "#0f1014"; border.width: Theme.border; border.color: Theme.line; radius: Theme.radius
+        color: Theme.screen; border.width: Theme.border; border.color: Theme.line; radius: Theme.radius
         Canvas {
             id: graph
             anchors.fill: parent; anchors.margins: 4
@@ -318,7 +318,7 @@ Column {
                     ctx.strokeStyle = color; ctx.lineWidth = w; ctx.stroke()
                 }
                 ctx.globalAlpha = 0.55; line(1, String(k), 5)     // destino (nota de la escala), banda ancha
-                ctx.globalAlpha = 1.0; line(0, "#ffffff", 2)       // lo que se canta
+                ctx.globalAlpha = 1.0; line(0, String(Theme.screenInk), 2)       // lo que se canta
             }
         }
         Text { anchors.right: parent.right; anchors.rightMargin: 8; y: 6
@@ -343,10 +343,10 @@ Column {
                 readonly property bool on: root.fx && root.inScale(index)
                 readonly property bool now: root.meters.length > 3 && root.meters[3] > 0 && root.studio.playing && (Math.round(root.meters[3]) % 12) === index
                 width: (keysRow.width - 33) / 12; height: 44; radius: 3
-                color: now ? Theme.lcd : on ? (black ? "#55597a" : "#d9dcef") : (black ? "#202124" : "#5a5c63")
+                color: now ? Theme.lcd : on ? (black ? Theme.keyBlackDown : Theme.keyWhite) : (black ? Theme.keyBlack : Theme.keyLabel)
                 border.width: 1; border.color: Theme.line
                 Text { anchors.centerIn: parent; text: root.noteNames[index]
-                       color: parent.now ? "#000" : parent.on && !parent.black ? "#000" : "#e8e8e8"
+                       color: parent.now ? Theme.inkOnAccent : parent.on && !parent.black ? Theme.inkOnColor : Theme.keyWhite
                        font.family: Theme.font; font.pixelSize: 13; font.weight: 700 }
                 MouseArea { anchors.fill: parent; enabled: !!root.fx; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
                             onClicked: root.setP("key", parent.index)
@@ -422,7 +422,7 @@ Column {
                 NeoButton {
                     objectName: "pitchAnalyze"
                     text: root.seq && root.seq.pitchBusy === "analyze" ? "Analizando…" : root.peHere ? "Volver a analizar" : "Analizar notas"
-                    color: root.peHere ? Theme.button : Theme.accent; textColor: root.peHere ? Theme.ink : "#000"
+                    color: root.peHere ? Theme.button : Theme.accent; textColor: root.peHere ? Theme.ink : Theme.inkOnAccent
                     enabled: root.trackId >= 0 && !!root.seq && !root.seq.pitchBusy
                     tip: "Busca las notas de «" + root.trackName() + "» en su audio (el motor lo hace en otro hilo)"
                          + (root.peHere && root.peEdited ? ". Se pierden los cambios sin aplicar" : "")
@@ -432,7 +432,7 @@ Column {
                     objectName: "pitchApply"
                     text: root.seq && root.seq.pitchBusy === "apply" ? "Aplicando…" : "Aplicar a la pista"
                     enabled: root.peHere && !root.seq.pitchBusy
-                    color: root.peEdited ? Theme.pc.afina : Theme.button; textColor: root.peEdited ? "#000" : Theme.ink
+                    color: root.peEdited ? Theme.pc.afina : Theme.button; textColor: root.peEdited ? Theme.inkOnColor : Theme.ink
                     tip: root.peEdited ? "Escribe la toma con " + root.peEdited + (root.peEdited === 1 ? " nota cambiada" : " notas cambiadas") + " y la pone en la pista (Ctrl+Z vuelve)"
                                        : "Sin cambios: la pista vuelve a la toma analizada"
                     onClicked: root.seq.pitchApply()
@@ -623,7 +623,7 @@ Column {
                     objectName: "pitchFlatten"
                     readonly property bool on: root.peHere && root.sel.length > 0 && root.sel.every(function (i) { return !!root.pe.notes[i] && root.pe.notes[i].flatten > 0 })
                     text: "Enderezar"; fontSize: 13; padX: 8; padY: 4; pressedState: on
-                    color: on ? Theme.pc.afina : Theme.button; textColor: on ? "#000" : Theme.ink
+                    color: on ? Theme.pc.afina : Theme.button; textColor: on ? Theme.inkOnColor : Theme.ink
                     tip: on ? "Clic: devolver el vibrato y la deriva a las notas elegidas" : "Lleva cada instante de las notas elegidas a su centro: quita vibrato y deriva"
                     onClicked: root.peFlat()
                 }
@@ -663,7 +663,7 @@ Column {
                                + root.tn.confirmed.scale + " · " + Math.round(root.tn.confirmed.bpm) + " BPM"
                              : "Confirmar " + (root.noteNames[root.mixer.keys.indexOf(root.tn.key)] || root.tn.key) + " " + root.tn.scale
                                + " · " + Math.round(root.tn.bpm) + " BPM"
-                    pressedState: ok; color: ok ? Theme.pc.afina : Theme.button; textColor: ok ? "#000" : Theme.ink
+                    pressedState: ok; color: ok ? Theme.pc.afina : Theme.button; textColor: ok ? Theme.inkOnColor : Theme.ink
                     tip: ok ? "Tonalidad confirmada: la Mezcla IA puede afinar. Clic: volver a confirmar"
                             : "Autoriza a la Mezcla IA a afinar en esta tonalidad (la del análisis; «Detectar tonalidad» la propone)"
                     onClicked: root.mixer.confirmTune()
@@ -671,14 +671,14 @@ Column {
                 NeoButton {
                     readonly property bool on: root.tn.method !== "psola"
                     text: "Efecto nativo (AF-60)"; fontSize: 12; padX: 8; padY: 3; pressedState: on
-                    color: on ? Theme.pc.afina : Theme.button; textColor: on ? "#000" : Theme.ink
+                    color: on ? Theme.pc.afina : Theme.button; textColor: on ? Theme.inkOnColor : Theme.ink
                     tip: "Por defecto: pone el afinador AF-60 en la cadena de la voz; no escribe audio y se retoca aquí"
                     onClicked: root.mixer.setTune({ method: "live" })
                 }
                 NeoButton {
                     readonly property bool on: root.tn.method === "psola"
                     text: "Copia precisa (PSOLA)"; fontSize: 12; padX: 8; padY: 3; pressedState: on
-                    color: on ? Theme.pc.afina : Theme.button; textColor: on ? "#000" : Theme.ink
+                    color: on ? Theme.pc.afina : Theme.button; textColor: on ? Theme.inkOnColor : Theme.ink
                     tip: "Afinación sin conexión (PSOLA de V4.2): algo más exacta, escribe una copia afinada de la voz"
                     onClicked: root.mixer.setTune({ method: "psola" })
                 }
@@ -691,7 +691,7 @@ Column {
                         required property var modelData
                         readonly property bool on: !!root.tn.voices[modelData[0]]
                         text: modelData[1]; fontSize: 12; padX: 8; padY: 3
-                        color: on ? Theme.pc.afina : Theme.button; textColor: on ? "#000" : Theme.ink; pressedState: on
+                        color: on ? Theme.pc.afina : Theme.button; textColor: on ? Theme.inkOnColor : Theme.ink; pressedState: on
                         onClicked: root.mixer.toggleVoice(modelData[0])
                     }
                 }

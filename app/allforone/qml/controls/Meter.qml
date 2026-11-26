@@ -7,7 +7,7 @@ Rectangle {
     property real level: 0                     // 0..100 (escala -60..0 dBFS)
     width: 12
     height: 150
-    color: "#120f0a"
+    color: Theme.lcdBg
     border.width: Theme.buttonBorder; border.color: Theme.line
     clip: true
     Rectangle {
@@ -16,10 +16,10 @@ Rectangle {
         y: parent.height - 2 - height
         gradient: Gradient {
             // de abajo (#5ee0b0 hasta el 70 %) a arriba (#ff7a70)
-            GradientStop { position: 0.0; color: "#ff7a70" }
-            GradientStop { position: 0.15; color: "#ffc233" }
-            GradientStop { position: 0.30; color: "#5ee0b0" }
-            GradientStop { position: 1.0; color: "#5ee0b0" }
+            GradientStop { position: 0.0; color: Theme.meterPeak }
+            GradientStop { position: 0.15; color: Theme.meterWarn }
+            GradientStop { position: 0.30; color: Theme.meterOk }
+            GradientStop { position: 1.0; color: Theme.meterOk }
         }
     }
     Column {                                   // separación entre segmentos
@@ -28,7 +28,7 @@ Rectangle {
         spacing: 5
         Repeater {
             model: Math.max(0, Math.ceil((root.height - 4) / 7))
-            Rectangle { width: parent.width; height: 2; color: "#120f0a" }
+            Rectangle { width: parent.width; height: 2; color: Theme.lcdBg }
         }
     }
 }

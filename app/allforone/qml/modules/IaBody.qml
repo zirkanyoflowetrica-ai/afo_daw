@@ -111,7 +111,7 @@ Column {
             NeoButton {
                 id: mgen
                 text: root.seq.composing ? "Componiendo…" : "Componer MIDI"
-                color: root.accent; textColor: "#000"; padX: 14; padY: 8; shadow: 4
+                color: root.accent; textColor: Theme.inkOnColor; padX: 14; padY: 8; shadow: 4
                 enabled: root.midiReady && !root.seq.composing
                 opacity: enabled ? 1 : 0.55
                 tip: root.midiReady ? "Compone en tu tarjeta gráfica; cada instrumento entra como pista editable" : "Instala el modelo MIDI primero"
@@ -341,7 +341,7 @@ Column {
         NeoButton {
             id: gen
             text: root.seq.generating ? "Generando…" : root.c.inst ? "Generar instrumental" : "Generar canción"
-            color: root.accent; textColor: "#000"; padX: 14; padY: 8; shadow: 4
+            color: root.accent; textColor: Theme.inkOnColor; padX: 14; padY: 8; shadow: 4
             enabled: root.ready && !root.seq.generating
             opacity: enabled ? 1 : 0.55
             tip: root.ready ? "Compone y sintetiza en tu tarjeta gráfica; el audio entra como pista en Pistas" : "Instala los modelos primero"
@@ -386,7 +386,7 @@ Column {
                     id: pgen
                     visible: !!root.ai.partsReady
                     text: root.seq.generating ? "Generando…" : "Generar parte"
-                    color: root.accent; textColor: "#000"
+                    color: root.accent; textColor: Theme.inkOnColor
                     enabled: !root.seq.generating && (root.studio.tracks || []).length > 0
                     opacity: enabled ? 1 : 0.55
                     tip: (root.studio.tracks || []).length ? "Genera " + (root.c.part || "Guitarra").toLowerCase() + " acorde a las pistas del proyecto (≈ 10 s por cada 30 s en tu tarjeta)"
@@ -445,14 +445,14 @@ Column {
         property int lines: 3
         signal edited(string v)
         height: lines * 19 + 20
-        color: "#08170f"; border.width: Theme.border; border.color: Theme.line; radius: Theme.radius
+        color: Theme.input; border.width: Theme.border; border.color: Theme.line; radius: Theme.radius
         TextEdit {
             id: te
             x: 10; y: 9; width: parent.width - 20; height: parent.height - 18
             wrapMode: TextEdit.Wrap; selectByMouse: true; clip: true
-            color: "#7dffb0"; font.family: "Consolas"; font.pixelSize: 15
+            color: Theme.ink; font.family: "Consolas"; font.pixelSize: 15
             onTextChanged: if (activeFocus) fld.edited(text)
-            Text { visible: !te.text.length; text: fld.placeholder; color: "#5fae80"; font: te.font; width: te.width; wrapMode: Text.Wrap }
+            Text { visible: !te.text.length; text: fld.placeholder; color: Theme.inkDim; font: te.font; width: te.width; wrapMode: Text.Wrap }
         }
     }
 }

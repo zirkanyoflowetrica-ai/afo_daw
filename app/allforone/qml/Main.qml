@@ -163,7 +163,7 @@ Window {
     }
     readonly property real bar16: 16 * 4 * 60 / Math.max(40, bpm)
     property real stripScroll: 0               // desplazamiento horizontal de las tiras de la consola
-    function setDark(b) { setTheme(b ? "AllForOne Oscuro" : "AllForOne") }
+    function setDark(b) { setTheme(b ? "Oscuro" : "Claro") }
     // ---------------- temas (carpeta templates/) ----------------
     property var themes: []
     function loadThemes() { var r = call("themeList"); if (r.ok) themes = r.themes; return themes }
@@ -255,11 +255,19 @@ Window {
                 ["texto/fondo", c(Theme.ink), c(Theme.bg)], ["texto/cabecera", c(Theme.ink), c(Theme.header)],
                 ["texto/campo", c(Theme.ink), c(Theme.input)], ["texto/botón", c(Theme.ink), c(Theme.button)],
                 ["texto/menú", c(Theme.ink), c(Theme.sidebar)], ["botón pulsado", c(Theme.pressedInk), c(Theme.pressedBg)],
-                ["botón principal", "#000000", c(Theme.accent)], ["chip del modelo", c(Theme.chipInk), c(Theme.chip)],
+                ["botón principal", c(Theme.inkOnAccent), c(Theme.accent)], ["chip del modelo", c(Theme.chipInk), c(Theme.chip)],
                 ["dispositivo", c(Theme.deviceInk), c(Theme.device)], ["cabecera de dispositivo", c(Theme.deviceInk), c(Theme.deviceHead)],
                 ["pantalla", c(Theme.screenInk), c(Theme.screen)], ["tarjeta de pantalla", c(Theme.screenInk), c(Theme.screenCard)],
                 ["texto secundario de pantalla", c(Theme.screenDim), c(Theme.screenCard)],
-                ["pantalla con el ratón", c(Theme.screenInk), c(Theme.screenHover)]]
+                ["pantalla con el ratón", c(Theme.screenInk), c(Theme.screenHover)],
+                ["texto secundario/zona", c(Theme.inkDim), c(Theme.s1)], ["texto secundario/control", c(Theme.inkDim), c(Theme.s3)],
+                ["texto/ratón encima", c(Theme.ink), c(Theme.pn2)], ["ayuda emergente", c(Theme.tipInk), c(Theme.tipBg)],
+                ["lectura LCD", c(Theme.lcd), c(Theme.lcdBg)], ["lectura LCD secundaria", c(Theme.lcdSoft), c(Theme.lcdBg)],
+                ["texto sobre grabar", c(Theme.inkOnColor), c(Theme.rec)], ["aviso en rojo", c(Theme.recInk), c(Theme.s1)],
+                ["texto sobre IA", c(Theme.inkOnColor), c(Theme.ai)], ["texto sobre medidor", c(Theme.inkOnColor), c(Theme.meterOk)]]
+            for (var ti = 0; ti < Theme.tracks.length; ti++)
+                out2.push(["texto sobre pista " + (ti + 1), c(Theme.inkOnColor), c(Theme.tracks[ti])])
+            for (var mk2 in Theme.pc) out2.push(["texto sobre color " + mk2, c(Theme.inkOnColor), c(Theme.pc[mk2])])
             for (var mid in Theme.pc) {
                 out2.push(["título " + mid, c(Theme.headInk(Theme.pc[mid])), c(Theme.panelHead)])
                 if (mid !== "piano") out2.push(["cuerpo " + mid, c(Theme.ink), c(Theme.panelColor(mid, Theme.pc[mid]))])
@@ -294,7 +302,7 @@ Window {
 
     // ---------------- diseño guardado ----------------
     function saveLayout() {
-        layoutStore.save(JSON.stringify({ v: layoutVersion, theme: Theme.name, view: view === "home" ? "arrange" : view, look2: 2, detailH: detailH,
+        layoutStore.save(JSON.stringify({ v: layoutVersion, theme: Theme.name, view: view === "home" ? "arrange" : view, look2: 3, detailH: detailH,
                                           fold: { nav: navZ.folded, insp: inspZ.folded, detail: detZ.folded },
                                           tab: { nav: navZ.current, insp: inspZ.current, detail: detZ.current } }))
     }
@@ -608,7 +616,7 @@ Window {
                 NeoButton {
                     text: win.playing ? "❚❚ Pausa" : "▶ Reproducir"
                     tip: "Reproducir o pausar (Espacio)"
-                    color: Theme.accent; textColor: "#000"
+                    color: Theme.accent; textColor: Theme.inkOnAccent
                     width: Math.max(100, implicitWidth)
                     onClicked: {
                         if (!win.engineOk) { win.toast("Motor nativo no disponible"); return }
@@ -626,8 +634,8 @@ Window {
                 Rectangle {                         // .time
                     width: timeLbl.implicitWidth + 26; height: 35
                     anchors.verticalCenter: parent.verticalCenter
-                    color: "#120f0a"; border.width: Theme.border; border.color: Theme.line
-                    Rectangle { anchors.fill: parent; anchors.margins: 3; color: "transparent"; border.width: Theme.buttonBorder; border.color: "#3a3020" }
+                    color: Theme.lcdBg; border.width: Theme.border; border.color: Theme.line
+                    Rectangle { anchors.fill: parent; anchors.margins: 3; color: "transparent"; border.width: Theme.buttonBorder; border.color: Theme.line }
                     Text { id: timeGlow; anchors.centerIn: parent; text: timeLbl.text; color: Theme.lcd; opacity: 0.45
                            font: timeLbl.font; scale: 1.06 }
                     Text { id: timeLbl; anchors.centerIn: parent; text: win.timeText(); color: Theme.lcd
@@ -891,7 +899,7 @@ Window {
                        text: "Arreglo"; color: Theme.ink; font.family: Theme.font; font.pixelSize: 15; font.weight: 700 }
                 NeoButton {
                     text: win.playing ? "❚❚ Pausa" : "▶ Reproducir"; tip: "Reproducir o pausar (Espacio)"
-                    color: Theme.accent; textColor: "#000"
+                    color: Theme.accent; textColor: Theme.inkOnAccent
                     onClicked: { var r = win.call("togglePlay"); if (!r.ok) win.toast(r.error) }
                 }
                 NeoButton { text: "■"; tip: "Detener y volver al principio (Mayús+Espacio)"; onClicked: { if (win.engineOk) win.call("stop"); win.step = -1 } }
@@ -936,13 +944,12 @@ Window {
         x: (win.width - width) / 2; y: statusBar.y - 24 - height
         width: Math.min(toastText.implicitWidth + 28, win.width * 0.9)
         height: toastText.height + 16
-        color: "#000"
-        Rectangle { x: 4; y: 4; z: -1; width: parent.width; height: parent.height; color: "#ffc233" }
+        color: Theme.tipBg; border.width: 1; border.color: Theme.accent
         Text {
             id: toastText
             x: 14; y: 8; width: Math.min(implicitWidth, win.width * 0.9 - 28)
             wrapMode: Text.Wrap
-            color: "#fff"; font.family: Theme.font; font.pixelSize: 14; font.weight: 600
+            color: Theme.tipInk; font.family: Theme.font; font.pixelSize: 14; font.weight: 600
         }
     }
 
@@ -953,12 +960,14 @@ Window {
         if (tb.insp && pageZone[tb.insp] === "insp") inspZ.current = tb.insp
         if (tb.detail && pageZone[tb.detail] === "detail") detZ.current = tb.detail
         loadThemes()                              // tema guardado (los diseños antiguos guardaban "dark"/"light")
-        // De fábrica: Sobrio (carbón, un acento discreto, colores apagados; X12, 24-11-2026: «quita los
-        // colores llamativos»). Un diseño guardado antes con un tema de fábrica pasa una vez a Sobrio;
-        // después se respeta lo que elija el usuario en «Tema».
-        var tn = savedLayout.theme === "dark" ? "AllForOne Oscuro" : savedLayout.theme === "light" ? "AllForOne" : savedLayout.theme
-        if (!tn || ((savedLayout.look2 || 0) < 2 && ["AllForOne", "AllForOne Oscuro", "Professional"].indexOf(tn) >= 0)) tn = "Sobrio"
-        if (!setTheme(tn, true)) setTheme("Sobrio", true)
+        // De fábrica: Oscuro (familia Oscuro / Grafito / Claro, docs/FLUJO_PROFESIONAL.md §6). Un diseño
+        // guardado con un tema anterior a la familia (AllForOne, AllForOne Oscuro, Professional, Sobrio)
+        // pasa una vez al de la familia con la misma luz; después se respeta lo que elija el usuario.
+        var tn = savedLayout.theme
+        var old = ({ "AllForOne": "Claro", "light": "Claro", "AllForOne Oscuro": "Oscuro", "dark": "Oscuro",
+                     "Professional": "Grafito", "Sobrio": "Oscuro" })
+        if (!tn || ((savedLayout.look2 || 0) < 3 && old[tn])) tn = old[tn] || "Oscuro"
+        if (!setTheme(tn, true)) setTheme("Oscuro", true)
 
         var info = call("hello")
         engineOk = !!info.engine

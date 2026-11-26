@@ -57,7 +57,7 @@ Item {
         x: mouse.pressed ? root.sh : 0
         y: mouse.pressed ? root.sh : 0
         width: parent.width; height: parent.height; radius: Theme.radius
-        color: root.arming ? "#b3261e" : mouse.containsMouse && root.hoverColor !== root.color && !root.pressedState ? root.hoverColor : root.color
+        color: root.arming ? Theme.rec : mouse.containsMouse && root.hoverColor !== root.color && !root.pressedState ? root.hoverColor : root.color
         border.width: root.border
         border.color: Theme.line
         Row {
@@ -69,7 +69,7 @@ Item {
                 id: lbl
                 text: root.styled(root.arming ? root.confirm : root.text)
                 textFormat: Text.RichText
-                color: root.arming ? "#ffffff" : root.textColor
+                color: root.arming ? Theme.inkOnColor : root.textColor
                 font.family: Theme.font
                 font.pixelSize: root.fontSize
                 font.weight: root.fontWeight

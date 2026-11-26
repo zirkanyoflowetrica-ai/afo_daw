@@ -63,7 +63,7 @@ Column {
                 required property int index
                 readonly property bool on: !!root.t && root.t.cfg.v === index
                 width: grid.cw; height: col.height + 12 + 4
-                Rectangle { x: 3; y: 3; width: parent.width; height: parent.height; color: "#000"; visible: Theme.buttonShadow > 0 && (!cm.pressed) }
+                Rectangle { x: 3; y: 3; width: parent.width; height: parent.height; color: Theme.shadowColor; visible: Theme.buttonShadow > 0 && (!cm.pressed) }
                 Rectangle {
                     x: cm.pressed ? 3 : 0; y: cm.pressed ? 3 : 0
                     width: parent.width; height: parent.height
@@ -74,9 +74,9 @@ Column {
                         Item {
                             width: 11; height: 15
                             Rectangle { anchors.centerIn: parent; anchors.verticalCenterOffset: -2; width: 20; height: 20; radius: 10
-                                        color: "#ff4d3d"; opacity: 0.25; visible: card.on }
+                                        color: Theme.rec; opacity: 0.25; visible: card.on }
                             Rectangle { width: 11; height: 11; radius: 5.5; border.width: Theme.buttonBorder; border.color: Theme.line
-                                        color: card.on ? "#ff4d3d" : "#4a1d1a" }
+                                        color: card.on ? Theme.rec : Theme.ledOff }
                         }
                         Text { width: parent.width; elide: Text.ElideRight; text: card.modelData[0]
                                color: Theme.screenInk; font.family: Theme.font; font.pixelSize: 15; font.weight: 700 }

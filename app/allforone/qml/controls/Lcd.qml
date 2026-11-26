@@ -13,9 +13,9 @@ Rectangle {
     implicitHeight: Math.round(fontSize * 1.4 + 2 * padY + 6)
     width: implicitWidth
     height: implicitHeight
-    color: "#120f0a"
+    color: Theme.lcdBg
     border.width: Math.max(1, Theme.border); border.color: Theme.line; radius: Theme.radius
-    Rectangle { anchors.fill: parent; anchors.margins: 3; color: "transparent"; border.width: Theme.buttonBorder; border.color: "#3a3020"; visible: Theme.border > 1 }
+    Rectangle { anchors.fill: parent; anchors.margins: 3; color: "transparent"; border.width: Theme.buttonBorder; border.color: Theme.line; visible: Theme.border > 1 }
     Text { anchors.centerIn: parent; text: t.text; font: t.font; color: Theme.lcd; opacity: 0.4; scale: 1.05 }
     Text {
         id: t

@@ -9,24 +9,34 @@ from allforone import paths, themes
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_repo_themes_are_valid():
-    names = {t["name"] for t in themes.list_themes()}
-    assert {"AllForOne", "AllForOne Oscuro", "Professional"} <= names
-    pro = themes.load("Professional")
-    assert pro["dark"] and pro["style"]["frame"] == 0 and pro["style"]["knob"] == "arc"
-    assert themes.list_themes()[0]["name"] == "AllForOne"      # el de fábrica primero
+def test_familia_de_temas():
+    """F9 (FLUJO_PROFESIONAL §6): Oscuro, Grafito y Claro, en ese orden; los temas de antes no salen."""
+    names = [t["name"] for t in themes.list_themes()]
+    assert names[:3] == ["Oscuro", "Grafito", "Claro"], names
+    assert not {"AllForOne", "AllForOne Oscuro", "Professional", "Sobrio"} & set(names)
+    assert themes.load("Sobrio")["legacy"]                     # se cargan por nombre (diseños guardados)
+    # un tema de la familia solo cambia la luz: los colores con significado, los de zona y la forma son comunes
+    fijos = {"rec", "ai", "meterOk", "meterWarn", "meterPeak", "ledOff"}
+    for n in ("Oscuro", "Grafito", "Claro"):
+        t = themes.load(n)
+        assert t.get("family") and "modules" not in t and "style" not in t, n
+        assert not fijos & set(t.get("colors", {})), n
+    assert len(themes.load("Claro")["tracks"]) == 12
 
 
-def test_tema_sobrio_apagado():
-    """X12: el tema de fábrica Sobrio no lleva colores llamativos (saturación HSL ≤ 35 %)."""
-    from allforone.native_ui import _hsl_sat, contrast_ratio
-    t = themes.load("Sobrio")
-    assert t["dark"]
-    cols = dict(t["modules"], accent=t["colors"]["accent"], knobArc=t["colors"]["knobArc"])
-    loud = {k: round(_hsl_sat(c), 2) for k, c in cols.items() if _hsl_sat(c) > 0.35}
-    assert not loud, loud
-    c = t["colors"]
-    assert contrast_ratio(c["ink"], c["bg"]) >= 4.5 and contrast_ratio("#000000", c["accent"]) >= 4.5
+def test_sin_colores_fijos_en_la_interfaz():
+    """F9: ningún QML ni JS de la interfaz lleva un color «#…» propio; todos salen de theme/Theme.qml."""
+    import re
+    qml = ROOT / "app" / "allforone" / "qml"
+    pat = re.compile(r"""["'](#[0-9a-fA-F]{3,8})["']""")
+    found = []
+    for f in list(qml.rglob("*.qml")) + list(qml.rglob("*.js")):
+        if f.parent.name == "theme":
+            continue
+        for i, line in enumerate(f.read_text(encoding="utf-8").splitlines(), 1):
+            if pat.search(line):
+                found.append(f"{f.relative_to(qml)}:{i}")
+    assert not found, found
 
 
 def test_shared_theme_folder_is_picked_up(tmp_path, monkeypatch):

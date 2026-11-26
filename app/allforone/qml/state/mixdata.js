@@ -20,13 +20,14 @@ var KIND_FOR_ROLE = { P: "Voz principal", B: "Voz de apoyo (_B)", L: "Voz latera
 
 function roleTip() { return "Rol vocal: " + ROLES.map(function (r) { return r + " = " + ROLE_NAME[r] }).join(" · ") }
 
-function kindColor(k) {
+// Color del tipo de audio, de los 12 colores de pista del tema (pal = Theme.tracks)
+function kindColor(k, pal) {
     k = String(k || "")
-    if (/Voz|Coros/.test(k)) return "#ffc233"
-    if (/Drum|Kick|Snare|Hi-hat|Overhead|Toms|Percu/.test(k)) return "#d4f26a"
-    if (/Bajo/.test(k)) return "#ff7a70"
-    if (/Guitarra|Piano|Pad|Teclado/.test(k)) return "#b79bff"
-    return "#c9ccd2"
+    if (/Voz|Coros/.test(k)) return pal[2]
+    if (/Drum|Kick|Snare|Hi-hat|Overhead|Toms|Percu/.test(k)) return pal[3]
+    if (/Bajo/.test(k)) return pal[0]
+    if (/Guitarra|Piano|Pad|Teclado/.test(k)) return pal[9]
+    return pal[7]
 }
 function kindShort(k) {
     return String(k || "").replace("Voz principal", "Voz P").replace("Voz lateral (_L/_R)", "Voz L/R")

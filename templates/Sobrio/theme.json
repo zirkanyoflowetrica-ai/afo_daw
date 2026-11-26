@@ -1,6 +1,7 @@
 {
   "name": "Sobrio",
-  "description": "De fábrica: carbón y grises, texto claro y un solo acento gris azulado discreto; los colores de módulo y de pista, apagados (saturación ≤ 35 %).",
+  "legacy": true,
+  "description": "(Retirado el 26-11-2026: lo sustituye la familia Oscuro / Grafito / Claro.) De fábrica: carbón y grises, texto claro y un solo acento gris azulado discreto; los colores de módulo y de pista, apagados (saturación ≤ 35 %).",
   "dark": true,
   "font": "Segoe UI",
   "colors": {

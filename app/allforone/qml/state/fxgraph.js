@@ -1,8 +1,17 @@
 .pragma library
 
 // Colores de las lecturas (los pone el tema: Theme.lcd / Theme.lcdSoft antes de dibujar)
-var pal = { lcd: "#a3acea", soft: "#c6cbef" }
-function setPalette(lcd, soft) { pal = { lcd: String(lcd), soft: String(soft) } }
+var pal = { lcd: "", soft: "", bg: "", curve: "", dim: "", peak: "" }
+// «#rrggbb» + transparencia → «rgba(…)» (para rellenos del color de la curva)
+function alpha(c, a) {
+    var h = String(c).replace("#", "")
+    if (h.length === 8) h = h.slice(2)
+    return "rgba(" + parseInt(h.slice(0, 2), 16) + "," + parseInt(h.slice(2, 4), 16) + "," + parseInt(h.slice(4, 6), 16) + "," + a + ")"
+}
+function setPalette(lcd, soft, bg, curve, dim, peak) {
+    pal = { lcd: String(lcd), soft: String(soft), bg: String(bg || ""), curve: String(curve || lcd),
+            dim: String(dim || soft), peak: String(peak || lcd) }
+}
 // Mini gráficas de las tarjetas del rack: se calculan con los MISMOS valores y fórmulas que usa el
 // motor (biquads RBJ de native/src/fx/FxDsp.h, curvas del Saturator, ley del compresor). No miden
 // audio: muestran lo que el efecto hará con esos parámetros.
@@ -92,7 +101,7 @@ function stripFilters(fx, d) {
 // Fondo con rejilla; devuelve los colores
 function frame(ctx, w, h, vlines, hlines) {
     ctx.reset()
-    ctx.fillStyle = "#0c0a07"; ctx.fillRect(0, 0, w, h)
+    ctx.fillStyle = pal.bg; ctx.fillRect(0, 0, w, h)
     ctx.strokeStyle = "rgba(255,255,255,0.09)"; ctx.lineWidth = 1
     for (var i = 0; i < vlines.length; i++) { ctx.beginPath(); ctx.moveTo(vlines[i], 0); ctx.lineTo(vlines[i], h); ctx.stroke() }
     for (var j = 0; j < hlines.length; j++) { ctx.beginPath(); ctx.moveTo(0, hlines[j]); ctx.lineTo(w, hlines[j]); ctx.stroke() }
@@ -146,10 +155,10 @@ function draw(ctx, w, h, fx, d, live) {
         return response(ctx, w, h, [function (f) { var g = Math.pow(10, bp(f) / 20); return 20 * Math.log(1 + (Math.pow(10, depth / 20) - 1) * g) / Math.LN10 }], 18, pal.soft)
     }
     if (key === "compressor")
-        return transfer(ctx, w, h, compCurve(v(fx, d, "threshold"), v(fx, d, "ratio"), v(fx, d, "knee"), v(fx, d, "makeup")), "#5ee0b0")
+        return transfer(ctx, w, h, compCurve(v(fx, d, "threshold"), v(fx, d, "ratio"), v(fx, d, "knee"), v(fx, d, "makeup")), pal.curve)
     if (key === "gate") {
         var thr = v(fx, d, "threshold"), range = v(fx, d, "range")
-        return transfer(ctx, w, h, function (x) { return x < thr ? x + range : x }, "#5ee0b0")
+        return transfer(ctx, w, h, function (x) { return x < thr ? x + range : x }, pal.curve)
     }
     if (key === "saturator") {
         var c = Math.round(v(fx, d, "character")), g = Math.pow(10, v(fx, d, "drive") / 20), mix = v(fx, d, "mix") / 100
@@ -175,7 +184,7 @@ function draw(ctx, w, h, fx, d, live) {
             ctx.fillRect(bx - 2, h - 2 - bh, 4, bh)
             a *= fb
         }
-        ctx.fillStyle = "#5ee0b0"; ctx.fillRect(0, 2, 4, h - 4)
+        ctx.fillStyle = pal.curve; ctx.fillRect(0, 2, 4, h - 4)
         return
     }
     if (key === "multitap") {
@@ -190,7 +199,7 @@ function draw(ctx, w, h, fx, d, live) {
             ctx.fillStyle = spr > 0 && k % 2 ? pal.soft : pal.lcd
             ctx.fillRect(gx - 2, h - 2 - gh, 4, gh)
         }
-        ctx.fillStyle = "#5ee0b0"; ctx.fillRect(0, 2, 4, h - 4)
+        ctx.fillStyle = pal.curve; ctx.fillRect(0, 2, 4, h - 4)
         return
     }
     if (key === "trancegate") {
@@ -202,7 +211,7 @@ function draw(ctx, w, h, fx, d, live) {
         var sw = w / 16
         frame(ctx, w, h, [w / 4, w / 2, w * 3 / 4], [])
         for (var s = 0; s < 16; s++) {
-            if (s === cur) { ctx.fillStyle = "rgba(94,224,176,0.25)"; ctx.fillRect(s * sw, 0, sw, h) }
+            if (s === cur) { ctx.fillStyle = alpha(pal.curve, 0.25); ctx.fillRect(s * sw, 0, sw, h) }
             var floorH = (h - 4) * (1 - depthT)
             ctx.fillStyle = pal.soft; ctx.fillRect(s * sw + 1, h - 2 - floorH, sw - 2, floorH)
             if (pat[s] !== "1") continue
@@ -218,7 +227,7 @@ function draw(ctx, w, h, fx, d, live) {
         var dist = v(fx, d, "distance"), spray = v(fx, d, "spray"), size = v(fx, d, "size"), rev = v(fx, d, "reverse") / 100
         frame(ctx, w, h, [w * 0.25, w * 0.5, w * 0.75], [h - 2])
         var x0 = w * Math.min(1, dist / 2000), x1 = w * Math.min(1, (dist + spray + size) / 2000)
-        ctx.fillStyle = "rgba(94,224,176,0.25)"; ctx.fillRect(x0, 2, Math.max(2, x1 - x0), h - 4)
+        ctx.fillStyle = alpha(pal.curve, 0.25); ctx.fillRect(x0, 2, Math.max(2, x1 - x0), h - 4)
         var gw = Math.max(4, w * size / 2000), live2 = live && live.length > 2 ? live[2] : 0
         ctx.beginPath()
         for (var gi = 0; gi <= 40; gi++) {
@@ -228,7 +237,7 @@ function draw(ctx, w, h, fx, d, live) {
         }
         ctx.strokeStyle = pal.lcd; ctx.lineWidth = 2; ctx.stroke()
         if (rev > 0) { ctx.fillStyle = pal.soft; ctx.fillRect(x0, h - 6, gw * rev, 4) }
-        if (v(fx, d, "freeze") > 0.5) { ctx.fillStyle = "#5ee0b0"; ctx.fillRect(0, 2, 4, h - 4) }
+        if (v(fx, d, "freeze") > 0.5) { ctx.fillStyle = pal.curve; ctx.fillRect(0, 2, 4, h - 4) }
         if (live2 > 0) { ctx.fillStyle = pal.lcd; for (var gk = 0; gk < live2; gk++) ctx.fillRect(w - 6 - gk * 5, 4, 3, 8) }
         return
     }
@@ -247,8 +256,8 @@ function draw(ctx, w, h, fx, d, live) {
             ctx.fillStyle = mode === 2 ? pal.soft : pal.lcd
             ctx.fillRect(sx - bwid / 2, h - 2 - bh2, bwid, bh2)
         }
-        if (mode === 3) { ctx.fillStyle = "#5ee0b0"; ctx.fillRect(0, h - 2 - (h - 4) * (1 + thrS / 90), w, 2) }
-        if (mode === 4) { ctx.fillStyle = "#5ee0b0"; ctx.fillRect(0, 2, 4, h - 4) }
+        if (mode === 3) { ctx.fillStyle = pal.curve; ctx.fillRect(0, h - 2 - (h - 4) * (1 + thrS / 90), w, 2) }
+        if (mode === 4) { ctx.fillStyle = pal.curve; ctx.fillRect(0, 2, 4, h - 4) }
         return
     }
     if (key === "space" || key === "shimmer" || key === "textureverb" || key === "infinity") {
@@ -261,8 +270,8 @@ function draw(ctx, w, h, fx, d, live) {
             ctx.lineTo(x2, h - (h - 4) * env * Math.max(0.15, wetS))
         }
         ctx.lineTo(w, h); ctx.closePath()
-        ctx.fillStyle = "rgba(94,224,176,0.35)"; ctx.fill()
-        ctx.strokeStyle = "#5ee0b0"; ctx.lineWidth = 2; ctx.stroke()
+        ctx.fillStyle = alpha(pal.curve, 0.35); ctx.fill()
+        ctx.strokeStyle = pal.curve; ctx.lineWidth = 2; ctx.stroke()
         return
     }
     if (key === "dyneq") {
@@ -362,7 +371,7 @@ function draw(ctx, w, h, fx, d, live) {
             var lx = w * i / (live.length - 1), ly = h * Math.min(1, Math.max(0, -live[i] / 90))
             if (i) ctx.lineTo(lx, ly); else ctx.moveTo(lx, ly)
         }
-        ctx.strokeStyle = "#5ee0b0"; ctx.lineWidth = 2; ctx.stroke()
+        ctx.strokeStyle = pal.curve; ctx.lineWidth = 2; ctx.stroke()
         return
     }
     // Ganancia y el resto: nivel de entrada y salida

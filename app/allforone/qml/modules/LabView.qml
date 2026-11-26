@@ -123,7 +123,7 @@ Item {
                 }
                 Text { width: parent.width; wrapMode: Text.Wrap; color: Theme.ink; opacity: 0.85; font.family: Theme.font; font.pixelSize: 11
                        text: "Tempo: el del proyecto (" + Math.round(root.studio ? root.studio.bpm : 0) + " BPM)." }
-                NeoButton { text: root.st ? "Nueva sesión" : "Crear sesión"; fontSize: 12; padY: 3; color: Theme.accent; textColor: "#000"
+                NeoButton { text: root.st ? "Nueva sesión" : "Crear sesión"; fontSize: 12; padY: 3; color: Theme.accent; textColor: Theme.inkOnAccent
                             confirm: root.st ? "¿Nueva? (la actual queda guardada)" : ""
                             tip: "Familias propuestas para el estilo; la sesión se guarda en la carpeta de datos"
                             onClicked: root.newSession() }
@@ -199,7 +199,7 @@ Item {
             width: parent.width; spacing: 6
             Flow {
                 width: parent.width; spacing: 6
-                NeoButton { text: "Componer guía"; fontSize: 12; padY: 3; color: Theme.accent; textColor: "#000"
+                NeoButton { text: "Componer guía"; fontSize: 12; padY: 3; color: Theme.accent; textColor: Theme.inkOnAccent
                             opacity: root.stat.textOk ? 1 : 0.5
                             tip: root.stat.textOk ? "ACE-Step compone una canción guía y Demucs la separa: cada parte es la V1 de su familia (1–2 min)"
                                                   : "Falta el modelo de canciones de ACE-Step: descárgalo en Navegador › IA"
@@ -310,7 +310,7 @@ Item {
             id: brow
             x: 10; y: 8; width: parent.width - 20; spacing: 8
             NeoButton { text: root.lb && root.lb.previewing ? "Actualizar preescucha" : "Preescuchar"; fontSize: 12; padY: 3
-                        color: Theme.accent; textColor: "#000"; opacity: root.st ? 1 : 0.5
+                        color: Theme.accent; textColor: Theme.inkOnAccent; opacity: root.st ? 1 : 0.5
                         tip: "Una pista real «Lab (borrador)» por familia con la variante elegida, desde el compás 1"
                         onClicked: if (root.st) root.lb.preview() }
             NeoButton { text: root.studio && root.studio.playing ? "■ Parar" : "▶ Reproducir"; fontSize: 12; padY: 3
@@ -341,7 +341,7 @@ Item {
                                         + root.pending.variant.label + "? Su audio actual deja de sonar en esa pista." : "" }
             Row {
                 spacing: 8
-                NeoButton { text: "Cambiar"; fontSize: 12; padY: 3; color: Theme.accent; textColor: "#000"; onClicked: root.doReplace() }
+                NeoButton { text: "Cambiar"; fontSize: 12; padY: 3; color: Theme.accent; textColor: Theme.inkOnAccent; onClicked: root.doReplace() }
                 NeoButton { text: "Cancelar"; fontSize: 12; padY: 3; onClicked: root.pending = null }
             }
         }
@@ -370,7 +370,7 @@ Item {
                 onPaint: {
                     var c = getContext("2d"); c.reset()
                     var w = width, cx = w / 2, cy = w / 2, R = w / 2 - 2
-                    c.fillStyle = "#141414"; c.beginPath(); c.arc(cx, cy, R, 0, 2 * Math.PI); c.fill()
+                    c.fillStyle = String(Theme.screen); c.beginPath(); c.arc(cx, cy, R, 0, 2 * Math.PI); c.fill()
                     // surcos: la envolvente de la variante, de fuera (principio) a dentro (final)
                     var env = d.env || [], n = env.length || 1
                     for (var i = 0; i < env.length; i++) {
@@ -388,9 +388,9 @@ Item {
                         c.lineWidth = 2 + 6 * b[k] / mx
                         c.beginPath(); c.arc(cx, cy, R * 0.34, a0, a1); c.stroke()
                     }
-                    c.fillStyle = on ? Qt.rgba(col.r, col.g, col.b, 1) : "#3a3a3a"
+                    c.fillStyle = on ? Qt.rgba(col.r, col.g, col.b, 1) : String(Theme.screenLine)
                     c.beginPath(); c.arc(cx, cy, R * 0.2, 0, 2 * Math.PI); c.fill()
-                    c.fillStyle = "#000"; c.beginPath(); c.arc(cx, cy, 2.5, 0, 2 * Math.PI); c.fill()
+                    c.fillStyle = String(Theme.line); c.beginPath(); c.arc(cx, cy, 2.5, 0, 2 * Math.PI); c.fill()
                 }
                 RotationAnimation on rotation { running: dk.spin; loops: Animation.Infinite; from: 0; to: 360; duration: 1800 }
             }

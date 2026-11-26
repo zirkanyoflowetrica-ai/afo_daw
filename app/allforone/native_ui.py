@@ -315,25 +315,20 @@ def _native_daw_checks(rep, app, host, window, bridge, track_id) -> None:
               s_tone["detail"] == "fx" and s_tone["rack"] == track_id and s_drum["detail"] == "drums",
               {"tono": s_tone, "batería": s_drum})
 
-    # Temas: carpetas de templates/ (copiar la carpeta = compartir el tema)
-    t = lay("theme", "Professional")
-    rep.check("tema Professional (carpeta templates/Professional): plano, sin marco grueso, perillas de arco",
-              t["ok"] and t["name"] == "Professional" and t["frame"] == 0 and t["knob"] == "arc"
-              and {"AllForOne", "AllForOne Oscuro", "Professional", "Sobrio"} <= set(t["themes"]), t)
-    # Tema sobrio (X12): acento y colores de módulo apagados (saturación HSL ≤ 35 %)
-    t = lay("theme", "Sobrio")
-    sat = {k: round(_hsl_sat(c), 2) for k, c in t.get("colors", {}).items()}
-    rep.check("tema Sobrio: carbón, un acento discreto y colores de módulo con saturación ≤ 35 %",
-              t["ok"] and t["name"] == "Sobrio" and sat and max(sat.values()) <= 0.35, sat)
-    t = lay("theme", "AllForOne")
-    rep.check("volver al tema AllForOne", t["ok"] and t["name"] == "AllForOne" and t["frame"] == 9, t)
-
-    # Guía de diseño §8: contraste WCAG AA (texto ≥ 4,5:1) en cada tema de fábrica
-    for name in ("AllForOne", "AllForOne Oscuro", "Professional", "Sobrio"):
-        lay("theme", name)
-        low = [(what, round(r, 2)) for what, fg, bg in lay("contrast") if (r := contrast_ratio(fg, bg)) < 4.5]
-        rep.check(f"contraste del tema {name}: todo el texto ≥ 4,5:1 (WCAG AA)", not low, low)
-    lay("theme", "AllForOne")
+    # Temas: familia Oscuro / Grafito / Claro (FLUJO_PROFESIONAL §6): solo cambia la luz
+    looks = {}
+    for name in ("Oscuro", "Grafito", "Claro"):
+        t = lay("theme", name)
+        looks[name] = t
+        low = [(what, fg, bg, round(r, 2)) for what, fg, bg in lay("contrast") if (r := contrast_ratio(fg, bg)) < 4.5]
+        rep.check(f"contraste del tema {name}: todo el texto ≥ 4,5:1 (WCAG AA)", t["ok"] and not low, low)
+    o, g, c = looks["Oscuro"], looks["Grafito"], looks["Claro"]
+    same = {k for k in o["colors"] if k != "accent" and o["colors"][k] == g["colors"].get(k) == c["colors"].get(k)}
+    rep.check("una familia: los tres temas tienen la misma forma y los mismos colores de zona",
+              o["themes"][:3] == ["Oscuro", "Grafito", "Claro"] and o["frame"] == g["frame"] == c["frame"] == 0
+              and o["knob"] == g["knob"] == c["knob"] == "arc" and same == set(o["colors"]) - {"accent"},
+              {"lista": o["themes"], "distintos": sorted(set(o["colors"]) - same)})
+    lay("theme", "Oscuro")
 
 
 def _native_lab_checks(rep, app, host, window, bridge) -> None:
@@ -615,7 +610,7 @@ def run_native_selftest(app, host, report_path: str | None, screenshot_path: str
     QMetaObject.invokeMethod(window, "saveLayout")
     saved = json.loads((paths.user_data_dir() / LAYOUT_FILE).read_text(encoding="utf-8"))
     rep.check("diseño y tema guardados en la carpeta de datos",
-              saved.get("theme") == "AllForOne Oscuro" and saved.get("v") == 7 and set(saved.get("fold", {})) == {"nav", "insp", "detail"}, saved)
+              saved.get("theme") == "Oscuro" and saved.get("v") == 7 and set(saved.get("fold", {})) == {"nav", "insp", "detail"}, saved)
     QMetaObject.invokeMethod(window, "setDark", Q_ARG("QVariant", False))
 
     shot = Path(screenshot_path) if screenshot_path else paths.logs_dir() / "selftest_nativo.png"

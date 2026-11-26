@@ -87,7 +87,7 @@ Column {
     }
     Flow {
         width: root.width; spacing: 6; bottomPadding: 8
-        NeoButton { text: "Guardar versión → Rebobinado"; fontWeight: 700; color: Theme.accent; textColor: "#000"
+        NeoButton { text: "Guardar versión → Rebobinado"; fontWeight: 700; color: Theme.accent; textColor: Theme.inkOnAccent
                     tip: "Guarda el master tal como suena ahora (efectos, fader, saturación, tono, limitador) como versión manual"
                     onClicked: root.mixer.saveVersion("", "manual", null) }
         NeoButton { text: "Quitar master auto"; opacity: root.st ? 1 : 0.5; onClicked: if (root.st) root.mixer.unmaster() }

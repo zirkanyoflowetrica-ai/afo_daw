@@ -54,16 +54,16 @@ Item {
     function ms(b) { return rate > 0 ? " (" + (b / rate * 1000).toFixed(1) + " ms)" : "" }
 
     MouseArea { anchors.fill: parent; onClicked: root.open = false }              // fuera del cuadro: cerrar
-    Rectangle { anchors.fill: parent; color: "#000"; opacity: 0.35 }
+    Rectangle { anchors.fill: parent; color: Theme.shadowColor; opacity: 0.35 }
 
     Rectangle {
         id: box
         width: Math.min(560, root.width - 40)
         height: col.height + 28
         anchors.centerIn: parent
-        color: Theme.dark ? Theme.help : "#c9ccd2"
+        color: Theme.help
         border.width: Math.max(1, Theme.border); border.color: Theme.line; radius: Theme.radius
-        Rectangle { visible: Theme.panelShadowSize > 0; x: 6; y: 6; z: -1; width: parent.width; height: parent.height; color: "#000" }
+        Rectangle { visible: Theme.panelShadowSize > 0; x: 6; y: 6; z: -1; width: parent.width; height: parent.height; color: Theme.shadowColor }
         MouseArea { anchors.fill: parent }                                         // no cerrar al pulsar dentro
 
         Column {
@@ -124,7 +124,7 @@ Item {
             }
             Flow {
                 width: col.width; spacing: 6
-                NeoButton { text: "Aplicar"; color: "#5ee0b0"; textColor: "#000"; onClicked: root.apply() }
+                NeoButton { text: "Aplicar"; color: Theme.meterOk; textColor: Theme.inkOnColor; onClicked: root.apply() }
                 NeoButton {
                     visible: root.asio && root.type === root.device.type
                     text: "Panel del driver"; tip: "Panel propio del driver ASIO (en ASIO4ALL: qué entradas y salidas usa)"
@@ -132,7 +132,7 @@ Item {
                 }
                 NeoButton {
                     visible: root.pendingRestart
-                    text: "Reiniciar ahora"; color: Theme.accent; textColor: "#000"
+                    text: "Reiniciar ahora"; color: Theme.accent; textColor: Theme.inkOnAccent
                     tip: "Cierra y vuelve a abrir AllForOne con el driver elegido (guarda antes tu proyecto)"
                     onClicked: { var r = root.studio.call("restartApp"); if (!r.ok) root.studio.toast(r.error) }
                 }
@@ -142,7 +142,7 @@ Item {
                 visible: root.status.length > 0
                 width: col.width; wrapMode: Text.Wrap
                 text: root.status
-                color: root.failed ? "#b3261e" : Theme.ink; font.family: Theme.font; font.pixelSize: 12; font.weight: 700
+                color: root.failed ? Theme.recInk : Theme.ink; font.family: Theme.font; font.pixelSize: 12; font.weight: 700
             }
             Text {
                 width: col.width; wrapMode: Text.Wrap

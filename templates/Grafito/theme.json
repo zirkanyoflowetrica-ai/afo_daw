@@ -1,0 +1,17 @@
+{
+  "name": "Grafito",
+  "description": "Familia AllForOne con gris medio: los mismos colores y acento que Oscuro, con más luz.",
+  "dark": true,
+  "family": true,
+  "colors": {
+    "s0": "#3a3833", "s1": "#45423e", "s2": "#4f4d48", "s3": "#5a5853",
+    "ink": "#f4f1ed", "inkDim": "#d4d0cb", "line": "#26241f", "pn2": "#65635e",
+    "bg": "#3a3833", "canvas": "#3a3833", "header": "#45423e", "sidebar": "#45423e", "panelHead": "#45423e", "panelHeadInk": "#f4f1ed",
+    "panelBody": "#45423e", "panelBorder": "#26241f", "button": "#5a5853", "input": "#3a3833", "dot": "#43413c",
+    "help": "#4f4d48", "mdl": "#5a5853", "grip": "#6c6a64", "chip": "#4f4d48", "chipInk": "#d4d0cb",
+    "device": "#4f4d48", "deviceHead": "#5a5853", "deviceInk": "#f4f1ed", "deviceBorder": "#26241f",
+    "knobTrack": "#3a3833", "knobValue": "#f4f1ed", "chain": "#45423e",
+    "lcdBg": "#2a2824", "screen": "#2a2824", "screenCard": "#45423e", "screenHover": "#4f4d48", "screenLine": "#5a5853",
+    "screenInk": "#f4f1ed", "screenDim": "#d4d0cb", "tipBg": "#5a5853", "tipInk": "#f4f1ed", "recInk": "#ffb3ab"
+  }
+}

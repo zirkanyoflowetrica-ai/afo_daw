@@ -103,7 +103,7 @@ Rectangle {
                                 color: pressedState ? Theme.pressedBg : Theme.button; textColor: pressedState ? Theme.pressedInk : Theme.ink
                                 tip: "Una sola canción"; onClicked: col.relType = "single" }
                     NeoButton {
-                        id: okBtn; text: "Crear"; fontSize: 12; padY: 3; color: Theme.accent; textColor: "#000"
+                        id: okBtn; text: "Crear"; fontSize: 12; padY: 3; color: Theme.accent; textColor: Theme.inkOnAccent
                         tip: "Crear (Intro); Esc cancela"
                         function go() {
                             if (!nameIn.text.trim()) return
@@ -205,7 +205,7 @@ Rectangle {
                     Text { text: "Recientes"; anchors.verticalCenter: parent.verticalCenter; color: Theme.ink
                            font.family: Theme.font; font.pixelSize: 15; font.weight: 700 }
                     NeoButton { text: "Abrir canción"; fontSize: 12; padY: 3; enabled: !!root.song; opacity: enabled ? 1 : 0.5
-                                color: Theme.accent; textColor: "#000"; tip: "Abrir la canción elegida (o doble clic en ella)"
+                                color: Theme.accent; textColor: Theme.inkOnAccent; tip: "Abrir la canción elegida (o doble clic en ella)"
                                 onClicked: root.openSong(root.song) }
                     NeoButton { text: "Proyecto suelto"; fontSize: 12; padY: 3
                                 tip: "Empezar sin artista ni canción (se guarda donde elijas)"

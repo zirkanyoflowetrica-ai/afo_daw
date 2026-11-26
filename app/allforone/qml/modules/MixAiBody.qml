@@ -43,7 +43,7 @@ Column {
         NeoButton {
             width: (root.width - 8) / 2; text: "MEZCLAR AUTOMÁTICAMENTE"
             fontSize: 15; fontWeight: 700; padY: 10; shadow: 4
-            color: root.mixer.busy ? "#e0c0a0" : Theme.lcdSoft; textColor: "#000"
+            color: root.mixer.busy ? Theme.pn2 : Theme.accent; textColor: root.mixer.busy ? Theme.ink : Theme.inkOnAccent
             onClicked: if (!root.mixer.busy) root.mixer.mix(false)
         }
         NeoButton {
@@ -55,7 +55,7 @@ Column {
     }
     Rectangle {                                   // .afo-prog
         width: root.width; height: 16
-        color: "#120f0a"; border.width: Theme.border; border.color: Theme.line
+        color: Theme.lcdBg; border.width: Theme.border; border.color: Theme.line
         Item {
             x: 3; y: 3; height: 10; clip: true
             width: (parent.width - 6) * Math.max(0, Math.min(100, root.mixer.progress)) / 100

@@ -480,7 +480,7 @@ Rectangle {
                                         clip: true
                                         Text { x: 5; y: 2; width: parent.width - 10; elide: Text.ElideRight
                                                text: trk.t.name + (Math.abs(ac.v.gain_db || 0) > 0.05 ? "  " + root.dbTxt(ac.v.gain_db) : "")
-                                               color: "#000"; font.family: Theme.font; font.pixelSize: 11; font.weight: 700 }
+                                               color: Theme.inkOnColor; font.family: Theme.font; font.pixelSize: 11; font.weight: 700 }
                                         Canvas {             // forma de onda del trozo que suena, con su volumen y fundidos
                                             y: 16; width: parent.width; height: parent.height - 18
                                             property var peaks: trk.t.peaks || []
@@ -535,7 +535,7 @@ Rectangle {
                                         x: (parent.width - width) / 2; y: 18
                                         width: gainTxt.implicitWidth + 12; height: 18; radius: 9
                                         color: gm.pressed ? Theme.accent : Theme.button; border.width: Theme.buttonBorder; border.color: Theme.line
-                                        Text { id: gainTxt; anchors.centerIn: parent; text: root.dbTxt(ac.v.gain_db || 0); color: gm.pressed ? "#000" : Theme.ink
+                                        Text { id: gainTxt; anchors.centerIn: parent; text: root.dbTxt(ac.v.gain_db || 0); color: gm.pressed ? Theme.inkOnColor : Theme.ink
                                                font.family: Theme.font; font.pixelSize: 11; font.weight: 700 }
                                         MouseArea {
                                             id: gm; anchors.fill: parent; anchors.margins: -3; preventStealing: true; cursorShape: Qt.SizeVerCursor
@@ -633,7 +633,7 @@ Rectangle {
                                 x: 0; y: 4; height: parent.height - 8; width: 16 * 4 * root.beat * root.pps
                                 color: Qt.darker(trk.c, trk.t.mute ? 2.2 : 1.0); border.width: Theme.buttonBorder; border.color: Theme.line; radius: 3
                                 Text { x: 6; anchors.verticalCenter: parent.verticalCenter; width: parent.width - 12; elide: Text.ElideRight
-                                       text: trk.t.name + " · patrón de 16 compases (se repite)"; color: "#000"
+                                       text: trk.t.name + " · patrón de 16 compases (se repite)"; color: Theme.inkOnColor
                                        font.family: Theme.font; font.pixelSize: 11; font.weight: 700 }
                             }
                             Text {
@@ -679,7 +679,7 @@ Rectangle {
                                             tip: "Silenciar esta pista"; onClicked: root.studio.toggleTrackFlag(trk.t.uid, "mute") }
                                 NeoButton { visible: !trk.master; text: "S"; padX: 7; padY: 3; fontSize: 12; shadow: 2
                                             pressedState: !!trk.t.solo
-                                            color: trk.t.solo ? Theme.accent : Theme.button; textColor: trk.t.solo ? "#000" : Theme.ink
+                                            color: trk.t.solo ? Theme.accent : Theme.button; textColor: trk.t.solo ? Theme.inkOnAccent : Theme.ink
                                             tip: "Solo: escuchar solo esta pista (y las demás en solo)"; onClicked: root.studio.toggleTrackFlag(trk.t.uid, "solo") }
                                 NeoButton { visible: !trk.master
                                             readonly property string m: trk.inf.mode || "read"
@@ -687,7 +687,7 @@ Rectangle {
                                             padX: 6; padY: 3; fontSize: 12; shadow: 2
                                             pressedState: m !== "read"
                                             color: m === "read" ? Theme.button : m === "write" ? Theme.pressedBg : Theme.accent
-                                            textColor: m === "read" ? Theme.ink : m === "write" ? Theme.pressedInk : "#000"
+                                            textColor: m === "read" ? Theme.ink : m === "write" ? Theme.pressedInk : Theme.inkOnAccent
                                             tip: "Automatización: " + root.modeName[m] + ". " + root.modeHelp[m] + ". Clic: siguiente modo (Read → Touch → Latch → Write)"
                                             onClicked: root.cycleMode(trk.t) }
                                 NeoButton { visible: trk.inf.lanes.length > 0
@@ -869,7 +869,7 @@ Rectangle {
         property bool on: false
         property bool active: true
         fontSize: 12; padX: 7; padY: 2; shadow: 0
-        color: on ? Theme.accent : Theme.button; textColor: on ? "#000" : Theme.ink
+        color: on ? Theme.accent : Theme.button; textColor: on ? Theme.inkOnAccent : Theme.ink
         opacity: active ? 1 : 0.45
         enabled: active
     }

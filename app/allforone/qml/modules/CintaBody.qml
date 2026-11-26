@@ -31,16 +31,16 @@ Column {
                     onPaint: {
                         var ctx = getContext("2d"), c = 46, r = 42
                         ctx.reset()
-                        var seg = [[0, .12, "#222"], [.12, .33, "#e8e8e8"], [.33, .45, "#222"], [.45, .66, "#e8e8e8"],
-                                   [.66, .78, "#222"], [.78, 1, "#e8e8e8"]]
+                        var seg = [[0, .12, String(Theme.screen)], [.12, .33, String(Theme.inkDim)], [.33, .45, String(Theme.screen)], [.45, .66, String(Theme.inkDim)],
+                                   [.66, .78, String(Theme.screen)], [.78, 1, String(Theme.inkDim)]]
                         for (var i = 0; i < seg.length; i++) {
                             ctx.beginPath(); ctx.moveTo(c, c)
                             ctx.arc(c, c, r, -Math.PI / 2 + seg[i][0] * 2 * Math.PI, -Math.PI / 2 + seg[i][1] * 2 * Math.PI)
                             ctx.closePath(); ctx.fillStyle = seg[i][2]; ctx.fill()
                         }
-                        ctx.beginPath(); ctx.arc(c, c, r * .22, 0, 2 * Math.PI); ctx.fillStyle = "#d9d9d9"; ctx.fill()
-                        ctx.beginPath(); ctx.arc(c, c, r * .12, 0, 2 * Math.PI); ctx.fillStyle = "#000"; ctx.fill()
-                        ctx.beginPath(); ctx.arc(c, c, 44, 0, 2 * Math.PI); ctx.lineWidth = 4; ctx.strokeStyle = "#000"; ctx.stroke()
+                        ctx.beginPath(); ctx.arc(c, c, r * .22, 0, 2 * Math.PI); ctx.fillStyle = String(Theme.ink); ctx.fill()
+                        ctx.beginPath(); ctx.arc(c, c, r * .12, 0, 2 * Math.PI); ctx.fillStyle = String(Theme.line); ctx.fill()
+                        ctx.beginPath(); ctx.arc(c, c, 44, 0, 2 * Math.PI); ctx.lineWidth = 4; ctx.strokeStyle = String(Theme.line); ctx.stroke()
                     }
                     RotationAnimation on rotation { from: 0; to: 360; duration: Math.round(120000 / Math.max(1, root.studio.bpm)); loops: Animation.Infinite; running: root.go }
                 }
@@ -91,16 +91,16 @@ Column {
 
     Rectangle {                                 // .tvu: nivel real de la entrada armada
         width: root.width; height: 12
-        color: "#120f0a"; border.width: Theme.buttonBorder; border.color: Theme.line
+        color: Theme.lcdBg; border.width: Theme.buttonBorder; border.color: Theme.line
         Rectangle {
             x: 2; y: 2; height: parent.height - 4
             width: (parent.width - 4) * Math.min(1, root.rec ? MD.dbToPct(root.rec.db) / 100 : 0)
             gradient: Gradient {
                 orientation: Gradient.Horizontal
-                GradientStop { position: 0.0; color: "#5ee0b0" }
-                GradientStop { position: 0.7; color: "#5ee0b0" }
-                GradientStop { position: 0.85; color: "#ffc233" }
-                GradientStop { position: 1.0; color: "#ff4d3d" }
+                GradientStop { position: 0.0; color: Theme.meterOk }
+                GradientStop { position: 0.7; color: Theme.meterOk }
+                GradientStop { position: 0.85; color: Theme.meterWarn }
+                GradientStop { position: 1.0; color: Theme.meterPeak }
             }
         }
     }
@@ -109,7 +109,7 @@ Column {
     Flow {                                      // .tbtn
         width: root.width; spacing: 6; bottomPadding: 10
         NeoButton {
-            text: "● Grabar"; color: "#ff4d3d"; textColor: "#fff"; hoverColor: "#ff4d3d"
+            text: "● Grabar"; color: Theme.rec; textColor: Theme.inkOnColor; hoverColor: Theme.rec
             pressedState: root.seq.recording
             tip: "Graba la entrada en la pista armada desde la posición del cursor"
             onClicked: root.seq.startTake()

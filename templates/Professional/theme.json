@@ -1,6 +1,7 @@
 {
   "name": "Professional",
-  "description": "Como un DAW clásico: grises oscuros planos, bordes finos, perillas de arco y una franja de color apagado (azul a morado y rojo) por módulo.",
+  "legacy": true,
+  "description": "(Retirado el 26-11-2026: lo sustituye la familia Oscuro / Grafito / Claro.) Como un DAW clásico: grises oscuros planos, bordes finos, perillas de arco y una franja de color apagado (azul a morado y rojo) por módulo.",
   "dark": true,
   "font": "Segoe UI",
   "colors": {

@@ -28,9 +28,9 @@ Rectangle {
                 readonly property bool on: root.tab === index
                 visible: index > 0
                 width: (root.width - 20 - 3 - 4) / 2; height: 30
-                color: on ? "#000" : Theme.button
+                color: on ? Theme.pressedBg : Theme.button
                 border.width: Theme.buttonBorder; border.color: Theme.line
-                Text { anchors.centerIn: parent; text: parent.modelData; color: parent.on ? Theme.accent : Theme.ink
+                Text { anchors.centerIn: parent; text: parent.modelData; color: parent.on ? Theme.pressedInk : Theme.ink
                        font.family: Theme.font; font.pixelSize: 10; font.weight: 700; font.letterSpacing: 0.4 }
                 MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.tab = parent.index }
             }
@@ -95,7 +95,7 @@ Rectangle {
             Rectangle {
                 visible: root.tab === 2
                 width: content.width; height: tgt.implicitHeight + 12
-                color: "#000"
+                color: Theme.lcdBg
                 Text {
                     id: tgt; x: 8; y: 6; width: parent.width - 16; wrapMode: Text.Wrap
                     text: "Se agrega a: " + (root.fxBody ? root.fxBody.targetName : "—") + "  (elige el canal en Mezcla)"
@@ -185,7 +185,7 @@ Rectangle {
         signal clicked()
         width: content.width; height: compact ? 38 : 44
         opacity: enabled ? 1 : 0.5
-        Rectangle { x: 2; y: 2; width: parent.width - 2; height: parent.height - 2; color: "#000"; visible: Theme.buttonShadow > 0 && (en.enabled) }
+        Rectangle { x: 2; y: 2; width: parent.width - 2; height: parent.height - 2; color: Theme.shadowColor; visible: Theme.buttonShadow > 0 && (en.enabled) }
         Rectangle {
             width: parent.width - 2; height: parent.height - 2
             color: em.containsMouse && en.enabled ? Theme.pn2 : Theme.button
@@ -213,7 +213,7 @@ Rectangle {
         width: 24; height: 24
         color: sbm.containsMouse ? Theme.accent : sb.accent ? Theme.pc.mezcla : Theme.button
         border.width: Theme.buttonBorder; border.color: Theme.line
-        Text { anchors.centerIn: parent; text: sb.glyph; color: sb.accent ? "#000" : Theme.ink
+        Text { anchors.centerIn: parent; text: sb.glyph; color: sb.accent ? Theme.inkOnAccent : Theme.ink
                font.family: "Segoe UI Symbol"; font.pixelSize: 14; font.weight: 700 }
         MouseArea { id: sbm; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: sb.clicked() }
         ToolTipLite { text: sb.tip; show: sbm.containsMouse }

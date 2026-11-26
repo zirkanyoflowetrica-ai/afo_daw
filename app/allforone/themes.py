@@ -1,7 +1,8 @@
 """Temas de la interfaz: carpeta `templates/` junto al programa (la raíz del proyecto en desarrollo).
 
 Cada subcarpeta con un `theme.json` es un tema; para compartirlo basta copiar la carpeta. El
-contenido lo interpreta `qml/theme/Theme.qml` (lo que falte toma el valor del tema AllForOne).
+contenido lo interpreta `qml/theme/Theme.qml` (lo que falte toma el valor de la familia: Oscuro).
+Los temas con `"legacy": true` (los de antes del 26-11-2026) se pueden cargar por nombre pero no se listan.
 """
 from __future__ import annotations
 
@@ -12,7 +13,9 @@ from pathlib import Path
 from . import paths
 
 log = logging.getLogger("allforone.themes")
-DEFAULT = "AllForOne"
+DEFAULT = "Oscuro"
+# Orden de la familia (docs/FLUJO_PROFESIONAL.md §6); los temas «legacy» no salen en la lista
+FAMILY = ("Oscuro", "Grafito", "Claro")
 
 
 def folder() -> Path:
@@ -37,10 +40,10 @@ def _read(d: Path) -> dict | None:
 def list_themes() -> list[dict]:
     out = []
     for d in sorted(folder().iterdir(), key=lambda p: p.name.lower()):
-        if d.is_dir() and (t := _read(d)):
+        if d.is_dir() and (t := _read(d)) and not t.get("legacy"):
             out.append({"name": t["name"], "folder": d.name, "description": t.get("description", ""), "dark": bool(t.get("dark"))})
-    # AllForOne primero (es el de fábrica)
-    out.sort(key=lambda t: (t["name"] != DEFAULT, t["name"].lower()))
+    # la familia primero, en su orden (Oscuro es el de fábrica); después los temas del usuario
+    out.sort(key=lambda t: (FAMILY.index(t["name"]) if t["name"] in FAMILY else len(FAMILY), t["name"].lower()))
     return out
 
 

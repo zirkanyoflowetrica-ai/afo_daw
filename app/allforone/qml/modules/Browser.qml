@@ -129,7 +129,7 @@ Column {
             Text { width: parent.width; wrapMode: Text.Wrap
                    text: parent.parent.d ? parent.parent.d.summary : "Plugin VST3 externo: se abre en su propia ventana."
                    color: Theme.ink; font.family: Theme.font; font.pixelSize: 12 }
-            NeoButton { text: "Añadir a " + root.targetName; fontSize: 12; padY: 3; color: Theme.accent; textColor: "#000"
+            NeoButton { text: "Añadir a " + root.targetName; fontSize: 12; padY: 3; color: Theme.accent; textColor: Theme.inkOnAccent
                         tip: "Lo mismo que el doble clic"; onClicked: root.add(root.selKey) }
         }
     }
@@ -137,7 +137,7 @@ Column {
     // ---------------- recientes ----------------
     NeoButton {
         visible: root.mode === "home"
-        text: "Abrir Inicio"; fontSize: 12; padY: 3; color: Theme.accent; textColor: "#000"
+        text: "Abrir Inicio"; fontSize: 12; padY: 3; color: Theme.accent; textColor: Theme.inkOnAccent
         tip: "Artistas, álbumes y canciones de la biblioteca (F4)"
         onClicked: root.studio.view = "home"
     }

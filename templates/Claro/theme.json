@@ -1,0 +1,19 @@
+{
+  "name": "Claro",
+  "description": "Familia AllForOne con fondo claro (el crema de la plantilla): mismos colores; acento ámbar oscuro para que se lea.",
+  "dark": false,
+  "family": true,
+  "colors": {
+    "s0": "#f8f5ef", "s1": "#eeebe5", "s2": "#e2dfda", "s3": "#d7d4ce",
+    "ink": "#1c1a17", "inkDim": "#4f4d48", "line": "#a9a59e", "pn2": "#cbc8c2",
+    "accent": "#8e5400", "focus": "#8e5400", "pressedBg": "#8e5400", "pressedInk": "#ffffff", "inkOnAccent": "#ffffff",
+    "knobArc": "#8e5400", "recInk": "#b3261e",
+    "bg": "#f8f5ef", "canvas": "#f8f5ef", "header": "#eeebe5", "sidebar": "#eeebe5", "panelHead": "#eeebe5", "panelHeadInk": "#1c1a17",
+    "panelBody": "#eeebe5", "panelBorder": "#a9a59e", "button": "#f8f5ef", "input": "#ffffff", "dot": "#e2dfda",
+    "help": "#e2dfda", "mdl": "#d7d4ce", "grip": "#c4c0b9", "chip": "#e2dfda", "chipInk": "#4f4d48",
+    "device": "#e2dfda", "deviceHead": "#d7d4ce", "deviceInk": "#1c1a17", "deviceBorder": "#a9a59e",
+    "knobTrack": "#d7d4ce", "knobValue": "#1c1a17", "chain": "#eeebe5", "tipBg": "#1c1a17", "tipInk": "#f8f5ef"
+  },
+  "tracks": ["#bd615b", "#b66b31", "#a1790c", "#85861f", "#4d9351", "#00977c",
+             "#00959c", "#1b8abd", "#5d7dc8", "#8670c0", "#ad6eb0", "#bc6892"]
+}

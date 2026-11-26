@@ -1,5 +1,6 @@
 {
   "name": "AllForOne",
-  "description": "El diseño original de AllForOne (PLANTILLA_DAW.html): crema, marcos de color gruesos y sombras duras.",
+  "legacy": true,
+  "description": "(Retirado el 26-11-2026: lo sustituye la familia Oscuro / Grafito / Claro.) El diseño original de AllForOne (PLANTILLA_DAW.html): crema, marcos de color gruesos y sombras duras.",
   "dark": false
 }

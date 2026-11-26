@@ -1,6 +1,7 @@
 {
   "name": "AllForOne Oscuro",
-  "description": "AllForOne con fondo oscuro (los mismos marcos de color).",
+  "legacy": true,
+  "description": "(Retirado el 26-11-2026: lo sustituye la familia Oscuro / Grafito / Claro.) AllForOne con fondo oscuro (los mismos marcos de color).",
   "dark": true,
   "colors": {
     "bg": "#121017", "pn2": "#3a3346", "ink": "#efe9ff", "line": "#000000", "button": "#2a2533",

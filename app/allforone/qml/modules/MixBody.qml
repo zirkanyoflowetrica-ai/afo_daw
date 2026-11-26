@@ -110,7 +110,7 @@ Column {
                     }
                     Chip {
                         visible: !!root.rackName
-                        text: root.rackName.toUpperCase(); fill: Theme.accent; ink: "#000"
+                        text: root.rackName.toUpperCase(); fill: Theme.accent; ink: Theme.inkOnAccent
                         tip: "Canal cuyo rack se ve en Efectos (clic en el nombre de una tira para cambiarlo)"
                         onClicked: root.studio.goTo("fx")
                     }
@@ -119,7 +119,7 @@ Column {
                         Chip {
                             required property var modelData
                             text: modelData[0]; tip: "Medidores: " + modelData[1]
-                            fill: root.studio.meterMode === modelData[0] ? Theme.pc.mezcla : Theme.button; ink: root.studio.meterMode === modelData[0] ? "#000" : Theme.ink
+                            fill: root.studio.meterMode === modelData[0] ? Theme.pc.mezcla : Theme.button; ink: root.studio.meterMode === modelData[0] ? Theme.inkOnColor : Theme.ink
                             onClicked: root.studio.meterMode = modelData[0]
                         }
                     }
@@ -158,7 +158,7 @@ Column {
                             border.width: ms.racked ? 3 : Theme.buttonBorder; border.color: Theme.line
                             Rectangle {
                                 x: 2; y: 2; width: parent.width - 4; height: 30; color: Theme.pc.mezcla
-                                Text { anchors.centerIn: parent; text: "MASTER"; color: "#000"
+                                Text { anchors.centerIn: parent; text: "MASTER"; color: Theme.inkOnColor
                                        font.family: Theme.font; font.pixelSize: 13; font.weight: 700 }
                                 Rectangle { y: parent.height; width: parent.width; height: 2; color: Theme.line }
                                 MouseArea { id: msMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
@@ -232,7 +232,7 @@ Column {
                 x: 2; y: 2; width: parent.width - 4; height: 30; color: strip.cc
                 Text { x: 4; width: parent.width - 8; anchors.verticalCenter: parent.verticalCenter
                        horizontalAlignment: Text.AlignHCenter; elide: Text.ElideRight
-                       text: strip.track.name.toUpperCase(); color: "#000"
+                       text: strip.track.name.toUpperCase(); color: Theme.inkOnColor
                        font.family: Theme.font; font.pixelSize: 11; font.weight: 700 }
                 Rectangle { y: parent.height; width: parent.width; height: 2; color: Theme.line }
                 MouseArea { id: rackMouse; anchors.fill: parent; hoverEnabled: true; enabled: strip.tid > 0; cursorShape: Qt.PointingHandCursor
@@ -246,7 +246,7 @@ Column {
                     width: parent.width; height: 18
                     Rectangle {
                         visible: strip.track.type === "ia" && !(strip.track.aclips || []).length && !(strip.track.len > 0)
-                        anchors.fill: parent; color: "#000"
+                        anchors.fill: parent; color: Theme.lcdBg
                         Text { anchors.centerIn: parent; text: "DEMO · sin audio"; color: Theme.lcd
                                font.family: Theme.font; font.pixelSize: 11; font.weight: 700 }
                     }
@@ -255,9 +255,9 @@ Column {
                         spacing: 3
                         Rectangle {
                             width: parent.parent.width - 44 - 3; height: 18
-                            color: MD.kindColor(strip.item ? strip.item.kind : ""); border.width: Theme.buttonBorder; border.color: Theme.line
+                            color: MD.kindColor(strip.item ? strip.item.kind : "", Theme.tracks); border.width: Theme.buttonBorder; border.color: Theme.line
                             Text { x: 3; width: parent.width - 6; anchors.verticalCenter: parent.verticalCenter; elide: Text.ElideRight
-                                   text: MD.kindShort(strip.item ? strip.item.kind : ""); color: "#000"
+                                   text: MD.kindShort(strip.item ? strip.item.kind : ""); color: Theme.inkOnColor
                                    font.family: Theme.font; font.pixelSize: 11; font.weight: 700 }
                         }
                         Select {
@@ -300,9 +300,9 @@ Column {
                                      show: lh.hovered && text.length > 0 } }
                 Row {
                     spacing: 6; anchors.horizontalCenter: parent.horizontalCenter
-                    Chip { text: "S"; fill: strip.track.solo ? Theme.pc.mezcla : Theme.button; ink: strip.track.solo ? "#000" : Theme.ink; tip: "Solo"
+                    Chip { text: "S"; fill: strip.track.solo ? Theme.pc.mezcla : Theme.button; ink: strip.track.solo ? Theme.inkOnColor : Theme.ink; tip: "Solo"
                            onClicked: root.studio.toggleTrackFlag(strip.track.uid, "solo") }
-                    Chip { text: "M"; fill: strip.track.mute ? Theme.pc.inst : Theme.button; ink: strip.track.mute ? "#000" : Theme.ink; tip: "Silenciar"
+                    Chip { text: "M"; fill: strip.track.mute ? Theme.pc.inst : Theme.button; ink: strip.track.mute ? Theme.inkOnColor : Theme.ink; tip: "Silenciar"
                            onClicked: root.studio.toggleTrackFlag(strip.track.uid, "mute") }
                 }
             }
@@ -342,7 +342,7 @@ Column {
                         color: modelData.enabled ? Theme.button : Theme.input
                         border.width: 1; border.color: Theme.line
                         Rectangle { x: 5; anchors.verticalCenter: parent.verticalCenter; width: 8; height: 8; radius: 4
-                                    color: modelData.enabled ? "#2fbf71" : "#7a7a7a"; border.width: 1; border.color: Theme.line }
+                                    color: modelData.enabled ? Theme.meterOk : Theme.inkDim; border.width: 1; border.color: Theme.line }
                         Text { x: 17; width: parent.width - 21 - (aut.visible ? aut.width + 2 : 0); anchors.verticalCenter: parent.verticalCenter
                                elide: Text.ElideRight; text: modelData.label; color: Theme.ink
                                font.family: Theme.font; font.pixelSize: 11; font.weight: 600
@@ -446,7 +446,7 @@ Column {
         property real r: 0
         property color color2: Theme.pc.mezcla
         width: 22; height: 150
-        color: "#120f0a"; border.width: Theme.buttonBorder; border.color: Theme.line
+        color: Theme.lcdBg; border.width: Theme.buttonBorder; border.color: Theme.line
         Repeater {
             model: [sm.l, sm.r]
             Rectangle {
@@ -456,7 +456,7 @@ Column {
                 height: (sm.height - 6) * Math.max(0, Math.min(100, modelData)) / 100
                 y: sm.height - 3 - height
                 gradient: Gradient {
-                    GradientStop { position: 0.0; color: modelData > 95 ? "#ff4d3d" : sm.color2 }
+                    GradientStop { position: 0.0; color: modelData > 95 ? Theme.meterPeak : sm.color2 }
                     GradientStop { position: 0.12; color: sm.color2 }
                     GradientStop { position: 1.0; color: sm.color2 }
                 }

@@ -12,7 +12,7 @@ Column {
     property var studio: seq ? seq.studio : null
     // carriles con golpe grabado (sampler del motor)
     readonly property var sampled: t && t.cfg.smp ? t.cfg.smp.map(function (p, i) { return p ? i : -1 }).filter(function (i) { return i >= 0 }) : []
-    readonly property var groupColor: ["#ff4d3d", "#ff9b3d", "#ffe14d", "#fff4d6"]
+    readonly property var groupColor: [Theme.trackColor(0), Theme.trackColor(1), Theme.trackColor(2), Theme.trackColor(3)]
     width: parent ? parent.width : 700
     spacing: 0
 
@@ -109,7 +109,7 @@ Column {
                    font.family: Theme.font; font.pixelSize: 13; font.weight: 700; font.letterSpacing: 0.6 }
             NeoButton {
                 text: (root.padRec ? "● " : "○ ") + "Grabar en el patrón"; fontSize: 11; padX: 6; padY: 2; shadow: 2
-                color: root.padRec ? "#ff4d3d" : Theme.button; textColor: root.padRec ? "#fff" : Theme.ink
+                color: root.padRec ? Theme.rec : Theme.button; textColor: root.padRec ? Theme.inkOnColor : Theme.ink
                 tip: "Con la canción sonando, cada golpe se escribe en el paso que suena"
                 onClicked: root.padRec = !root.padRec
             }
@@ -141,21 +141,21 @@ Column {
                     required property int index
                     readonly property bool lit: root.flash === index || pm.pressed
                     width: pads.pw; height: 54
-                    Rectangle { x: 3; y: 3; width: parent.width; height: parent.height; color: "#000"; visible: Theme.buttonShadow > 0 && (!pad.lit) }
+                    Rectangle { x: 3; y: 3; width: parent.width; height: parent.height; color: Theme.shadowColor; visible: Theme.buttonShadow > 0 && (!pad.lit) }
                     Rectangle {
                         x: pad.lit ? 3 : 0; y: pad.lit ? 3 : 0
                         width: parent.width; height: parent.height
                         color: pad.lit ? root.groupColor[pad.index % 4] : Theme.screenCard
                         border.width: Theme.buttonBorder; border.color: Theme.line
                         Rectangle { x: 4; y: 4; width: 8; height: 8; radius: 4; color: root.groupColor[pad.index % 4] }
-                        Text { x: 18; y: 6; text: pad.modelData; color: pad.lit ? "#000" : Theme.screenInk
+                        Text { x: 18; y: 6; text: pad.modelData; color: pad.lit ? Theme.inkOnColor : Theme.screenInk
                                font.family: Theme.font; font.pixelSize: 13; font.weight: 700 }
                         Text { x: 6; anchors.bottom: parent.bottom; anchors.bottomMargin: 4
                                visible: root.sampled.indexOf(pad.index) >= 0
-                               text: "GOLPE GRABADO"; color: pad.lit ? "#000" : Theme.screenDim
+                               text: "GOLPE GRABADO"; color: pad.lit ? Theme.inkOnColor : Theme.screenDim
                                font.family: Theme.font; font.pixelSize: 11; font.weight: 700 }
                         Text { anchors.right: parent.right; anchors.rightMargin: 6; anchors.bottom: parent.bottom; anchors.bottomMargin: 4
-                               text: String(pad.index + 1); color: pad.lit ? "#000" : Theme.screenDim
+                               text: String(pad.index + 1); color: pad.lit ? Theme.inkOnColor : Theme.screenDim
                                font.family: Theme.font; font.pixelSize: 15; font.weight: 700 }
                     }
                     MouseArea { id: pm; anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onPressed: root.hit(pad.index) }
@@ -281,7 +281,7 @@ Column {
                                 Rectangle {     // .st.cur
                                     visible: root.curStep === st.index
                                     anchors.fill: parent; anchors.margins: 4
-                                    color: "transparent"; border.width: Theme.border; border.color: "#fff"
+                                    color: "transparent"; border.width: Theme.border; border.color: Theme.ink
                                 }
                                 MouseArea { id: sm; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
                                             onClicked: root.stepEdit === "on" ? root.seq.toggleStep(lane.index, st.index)

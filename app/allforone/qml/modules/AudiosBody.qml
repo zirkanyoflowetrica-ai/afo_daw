@@ -31,13 +31,13 @@ Column {
         width: root.width; height: dropCol.height + 24 + 10
         Rectangle {
             width: parent.width; height: parent.height - 10
-            color: root.dropOver ? "#fff" : (Theme.dark ? Qt.rgba(1, 1, 1, 0.06) : Qt.rgba(1, 1, 1, 0.45))
+            color: root.dropOver ? Theme.accent : (Theme.dark ? Qt.rgba(1, 1, 1, 0.06) : Qt.rgba(1, 1, 1, 0.45))
             Rectangle { anchors.fill: parent; anchors.margins: 3; color: "transparent"; border.width: Theme.buttonBorder
                         border.color: Theme.dark ? Qt.rgba(1, 1, 1, 0.1) : Qt.rgba(1, 1, 1, 0.33) }
             Shape {
                 anchors.fill: parent
                 ShapePath {
-                    strokeColor: Theme.dark ? "#efe9ff" : "#000"; strokeWidth: 3; fillColor: "transparent"
+                    strokeColor: Theme.ink; strokeWidth: 3; fillColor: "transparent"
                     strokeStyle: ShapePath.DashLine; dashPattern: [3, 1.7]; capStyle: ShapePath.FlatCap
                     startX: 1.5; startY: 1.5
                     PathLine { x: root.width - 1.5; y: 1.5 }
@@ -50,10 +50,10 @@ Column {
                 id: dropCol
                 y: 12; width: parent.width
                 Text { width: parent.width; horizontalAlignment: Text.AlignHCenter; text: '<font face="Segoe UI Symbol">⬇</font> Arrastra aquí tus audios'; textFormat: Text.RichText
-                       color: root.dropOver ? "#000" : Theme.ink; font.family: Theme.font; font.pixelSize: 15; font.weight: 700 }
+                       color: root.dropOver ? Theme.inkOnAccent : Theme.ink; font.family: Theme.font; font.pixelSize: 15; font.weight: 700 }
                 Text { width: parent.width; horizontalAlignment: Text.AlignHCenter; topPadding: 2
                        text: "WAV · AIFF · FLAC · OGG · MP3 — hasta 30"
-                       color: root.dropOver ? "#000" : Theme.ink; font.family: Theme.font; font.pixelSize: 11; font.weight: 500 }
+                       color: root.dropOver ? Theme.inkOnAccent : Theme.ink; font.family: Theme.font; font.pixelSize: 11; font.weight: 500 }
             }
         }
     }
@@ -86,7 +86,7 @@ Column {
                         required property int index
                         width: list.width; height: 34
                         color: Theme.screenCard
-                        Rectangle { width: 8; height: parent.height; color: MD.kindColor(stem.modelData.kind) }
+                        Rectangle { width: 8; height: parent.height; color: MD.kindColor(stem.modelData.kind, Theme.tracks) }
                         Rectangle { y: parent.height - 2; width: parent.width; height: 2; color: Theme.line }
                         Row {
                             x: 14; width: parent.width - 20; height: parent.height - 2
@@ -102,7 +102,7 @@ Column {
                                        color: Theme.screenInk; font.family: Theme.font; font.pixelSize: 13; font.weight: 700 }
                                 Rectangle { id: conv; visible: !!stem.modelData.note; width: ct.implicitWidth + 8; height: 12
                                             anchors.verticalCenter: parent.verticalCenter; color: Theme.lcd
-                                            Text { id: ct; anchors.centerIn: parent; text: "conv."; color: "#000"
+                                            Text { id: ct; anchors.centerIn: parent; text: "conv."; color: Theme.inkOnColor
                                                    font.family: Theme.font; font.pixelSize: 11; font.weight: 700 } }
                             }
                             Select {

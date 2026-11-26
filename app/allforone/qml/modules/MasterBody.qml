@@ -19,7 +19,7 @@ Column {
     // ---------------- pletina: dos carretes y la versión que suena ----------------
     Rectangle {
         width: root.width; height: 118
-        color: "#2b2720"; border.width: Theme.border; border.color: Theme.line
+        color: Theme.screenCard; border.width: Theme.border; border.color: Theme.line
         Row {
             anchors.centerIn: parent; spacing: 18
             Reel { spinning: root.studio.playing && !!root.cur }
@@ -30,7 +30,7 @@ Column {
                       text: root.cur ? root.cur.name : "SIN VERSIÓN" }
                 Text { width: parent.width; elide: Text.ElideRight; horizontalAlignment: Text.AlignHCenter
                        text: root.cur ? root.f(root.cur.lufs) + " LUFS · pico " + root.f(root.cur.peak) + " dB" : "masteriza para llenar la cinta"
-                       color: "#f3e7c4"; font.family: Theme.font; font.pixelSize: 11; font.weight: 600 }
+                       color: Theme.screenInk; font.family: Theme.font; font.pixelSize: 11; font.weight: 600 }
             }
             Reel { spinning: root.studio.playing && !!root.cur }
         }
@@ -59,7 +59,7 @@ Column {
             Rectangle {                            // piloto
                 x: 10; anchors.verticalCenter: parent.verticalCenter
                 width: 12; height: 12; radius: 6; border.width: Theme.buttonBorder; border.color: Theme.line
-                color: row.on ? "#ff4d3d" : "#4a1d1a"
+                color: row.on ? Theme.rec : Theme.ledOff
             }
             Column {
                 x: 32; anchors.verticalCenter: parent.verticalCenter
@@ -80,8 +80,8 @@ Column {
                 id: tag
                 anchors.right: del.left; anchors.rightMargin: 8; anchors.verticalCenter: parent.verticalCenter
                 width: tagText.implicitWidth + 12; height: 20
-                color: row.modelData.kind === "auto" ? "#c8b6ff" : "#7ad6ff"; border.width: Theme.buttonBorder; border.color: Theme.line
-                Text { id: tagText; anchors.centerIn: parent; text: row.modelData.kind === "auto" ? "AUTO" : "MANUAL"; color: "#000"
+                color: row.modelData.kind === "auto" ? Theme.ai : Theme.trackColor(7); border.width: Theme.buttonBorder; border.color: Theme.line
+                Text { id: tagText; anchors.centerIn: parent; text: row.modelData.kind === "auto" ? "AUTO" : "MANUAL"; color: Theme.inkOnColor
                        font.family: Theme.font; font.pixelSize: 10; font.weight: 700 }
             }
             NeoButton { id: del; anchors.right: parent.right; anchors.rightMargin: 8; anchors.verticalCenter: parent.verticalCenter
@@ -92,7 +92,7 @@ Column {
 
     NeoButton {
         width: root.width; text: root.cur ? "EXPORTAR «" + root.cur.name + "»" : "EXPORTAR (master tal como está)"
-        fontSize: 14; fontWeight: 700; padY: 9; shadow: 4; color: Theme.accent; textColor: "#000"
+        fontSize: 14; fontWeight: 700; padY: 9; shadow: 4; color: Theme.accent; textColor: Theme.inkOnAccent
         tip: "WAV de toda la sesión con la versión elegida en el master"
         onClicked: root.mixer.versionSel >= 0 ? root.mixer.exportVersion(root.mixer.versionSel) : root.studio.exportMix()
     }
@@ -104,7 +104,7 @@ Column {
     component Reel: Rectangle {
         property bool spinning: false
         width: 76; height: 76; radius: 38
-        color: "#f3e7c4"; border.width: Theme.border; border.color: Theme.line
+        color: Theme.keyWhite; border.width: Theme.border; border.color: Theme.line
         anchors.verticalCenter: parent ? parent.verticalCenter : undefined
         Item {
             anchors.fill: parent
@@ -112,10 +112,10 @@ Column {
             Repeater {
                 model: 3
                 Rectangle { required property int index
-                            x: 38 - 4; y: 8; width: 8; height: 22; radius: 3; color: "#000"
+                            x: 38 - 4; y: 8; width: 8; height: 22; radius: 3; color: Theme.keyBlack
                             transform: Rotation { origin.x: 4; origin.y: 30; angle: index * 120 } }
             }
-            Rectangle { anchors.centerIn: parent; width: 16; height: 16; radius: 8; color: "#000" }
+            Rectangle { anchors.centerIn: parent; width: 16; height: 16; radius: 8; color: Theme.keyBlack }
         }
     }
 }

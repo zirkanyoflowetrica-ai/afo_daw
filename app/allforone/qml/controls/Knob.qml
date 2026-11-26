@@ -29,7 +29,7 @@ Column {
         Keys.onRightPressed: root.setValue(root.value + 5)
         Keys.onDownPressed: root.setValue(root.value - 5)
         Keys.onLeftPressed: root.setValue(root.value - 5)
-        Rectangle { x: 3; y: 3; width: 46; height: 46; radius: 23; color: "#000"; visible: Theme.buttonShadow > 0 && (Theme.knobStyle !== "arc") }
+        Rectangle { x: 3; y: 3; width: 46; height: 46; radius: 23; color: Theme.shadowColor; visible: Theme.buttonShadow > 0 && (Theme.knobStyle !== "arc") }
         Shape {                                  // arco (temas tipo DAW): pista, valor y aguja
             visible: Theme.knobStyle === "arc"
             anchors.fill: parent
@@ -52,20 +52,20 @@ Column {
                 anchors.fill: parent
                 preferredRendererType: Shape.CurveRenderer
                 ShapePath {
-                    strokeColor: "#000"; strokeWidth: 3
+                    strokeColor: Theme.line; strokeWidth: 3
                     fillGradient: ConicalGradient {
                         centerX: 23; centerY: 23; angle: 90
-                        GradientStop { position: 0.0; color: "#5a5a5a" }
-                        GradientStop { position: 0.25; color: "#e6e6e6" }
-                        GradientStop { position: 0.5; color: "#6a6a6a" }
-                        GradientStop { position: 0.75; color: "#d4d4d4" }
-                        GradientStop { position: 1.0; color: "#5a5a5a" }
+                        GradientStop { position: 0.0; color: Theme.metalDark }
+                        GradientStop { position: 0.25; color: Theme.metalLight }
+                        GradientStop { position: 0.5; color: Theme.metalDark }
+                        GradientStop { position: 0.75; color: Theme.metalLight }
+                        GradientStop { position: 1.0; color: Theme.metalDark }
                     }
                     PathAngleArc { centerX: 23; centerY: 23; radiusX: 21.5; radiusY: 21.5; startAngle: 0; sweepAngle: 360 }
                 }
             }
-            Rectangle { x: 12; y: 12; width: 22; height: 22; radius: 11; color: "#222"; border.width: Theme.buttonBorder; border.color: Theme.line }
-            Rectangle { x: 20.5; y: 5; width: 5; height: 13; radius: 2; color: "#ff4d3d"; border.width: 1; border.color: Theme.line }
+            Rectangle { x: 12; y: 12; width: 22; height: 22; radius: 11; color: Theme.knobTrack; border.width: Theme.buttonBorder; border.color: Theme.line }
+            Rectangle { x: 20.5; y: 5; width: 5; height: 13; radius: 2; color: Theme.accent; border.width: 1; border.color: Theme.line }
         }
         Rectangle { anchors.fill: parent; anchors.margins: -5; radius: 28; color: "transparent"
                     border.width: Theme.border; border.color: Theme.focus; visible: dial.activeFocus }

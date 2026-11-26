@@ -20,20 +20,20 @@ Rectangle {
             id: devBox
             anchors.verticalCenter: parent.verticalCenter
             width: devRow.width + 16; height: 22; radius: Theme.radius
-            color: root.noAudio ? "#b3261e" : devMouse.containsMouse ? Theme.pn2 : "transparent"
+            color: root.noAudio ? Theme.rec : devMouse.containsMouse ? Theme.pn2 : "transparent"
             Row {
                 id: devRow
                 x: 8; anchors.verticalCenter: parent.verticalCenter; spacing: 6
                 Rectangle { width: 9; height: 9; radius: 4.5; anchors.verticalCenter: parent.verticalCenter
-                            color: root.noAudio ? "#ffffff" : !root.studio.engineOk ? "#888888" : "#2fbf71"
-                            border.width: 1; border.color: root.noAudio ? "#ffffff" : Theme.line }
+                            color: root.noAudio ? Theme.inkOnColor : !root.studio.engineOk ? Theme.inkDim : Theme.meterOk
+                            border.width: 1; border.color: root.noAudio ? Theme.inkOnColor : Theme.line }
                 Text {
                     anchors.verticalCenter: parent.verticalCenter
                     text: !root.studio.engineOk ? "Motor de audio no disponible"
                           : root.noAudio ? "⚠ Sin salida de audio: clic para elegir un dispositivo"
                           : root.dev.type + " · " + root.dev.output + " · " + (root.dev.sample_rate / 1000).toFixed(1) + " kHz · "
                             + root.dev.buffer_size + " muestras · " + root.studio.latencyMs.toFixed(1) + " ms"
-                    color: root.noAudio ? "#ffffff" : Theme.ink
+                    color: root.noAudio ? Theme.inkOnColor : Theme.ink
                     font.family: Theme.font; font.pixelSize: 12; font.weight: root.noAudio ? 700 : 600
                     elide: Text.ElideRight; width: Math.min(implicitWidth, root.width * 0.42)
                 }

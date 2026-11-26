@@ -19,14 +19,14 @@ Item {
 
     // riel: negro en los temas claros; en los oscuros, un gris del texto del tema (≥ 3:1 con el fondo)
     Rectangle { x: 12; width: 8; height: parent.height
-                color: Theme.dark ? Qt.tint(Theme.device, Qt.rgba(Qt.color(Theme.ink).r, Qt.color(Theme.ink).g, Qt.color(Theme.ink).b, 0.55)) : "#000" }
+                color: Theme.dark ? Qt.tint(Theme.device, Qt.rgba(Qt.color(Theme.ink).r, Qt.color(Theme.ink).g, Qt.color(Theme.ink).b, 0.55)) : Theme.line }
     Item {
         id: thumb
         x: 1; width: 30; height: 18
         y: root.travel * (1 - root.value / 100)
-        Rectangle { x: 3; y: 3; width: 30; height: 18; color: "#000"; visible: Theme.buttonShadow > 0 }
+        Rectangle { x: 3; y: 3; width: 30; height: 18; color: Theme.shadowColor; visible: Theme.buttonShadow > 0 }
         Rectangle {
-            width: 30; height: 18; color: "#eeeeee"; border.width: Theme.border; border.color: Theme.line
+            width: 30; height: 18; color: Theme.knobValue; border.width: Theme.border; border.color: Theme.line
             Rectangle { x: 3; y: 7.5; width: 24; height: 3; color: Theme.line }
         }
     }

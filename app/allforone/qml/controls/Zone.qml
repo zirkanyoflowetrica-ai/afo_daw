@@ -54,7 +54,7 @@ Rectangle {
                     border.color: th.hovered && !on ? Theme.accent : Theme.line
                     border.width: 1
                     Text { id: tl; anchors.centerIn: parent; text: tb.modelData[1]
-                           color: tb.on ? "#000000" : Theme.chipInk
+                           color: tb.on ? Theme.inkOnAccent : Theme.chipInk
                            font.family: Theme.font; font.pixelSize: 12; font.weight: tb.on ? 700 : 600 }
                     HoverHandler { id: th }
                     ToolTipLite { text: tb.modelData[2] || ""; show: th.hovered && text.length > 0 }
