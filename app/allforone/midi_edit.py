@@ -1,4 +1,4 @@
-"""G2: notas que llegan de un teclado MIDI y cuantización.
+"""G2: notas que llegan de un teclado MIDI y cuantización. G7: notas de la IA escritas en la rejilla.
 
 El motor graba (Tracktion, «All MIDI Ins»); aquí solo se pasan las notas a la lista `midi` de la pista
 ([inicio en negras, duración en negras, nota, velocidad]) y se alinean a la rejilla. Todo en negras
@@ -34,6 +34,35 @@ def merge_take(track: dict, recorded) -> list[list]:
     out = track_notes(track) + [_note(s, l, n - tr, v) for s, l, n, v in recorded]
     out.sort(key=lambda n: (n[0], n[2]))
     return out
+
+
+def ai_fill(track: dict, ai_notes, start: float, end: float, grid: str = "1/16") -> tuple[list[list], int]:
+    """G7: escribe en la pista las notas que compuso la IA (en negras desde 0) entre `start` y `end`
+    (negras del proyecto): cada inicio y cada duración caen en la rejilla del Piano roll, lo que pasa
+    de `end` se corta y lo que la pista tenía en ese tramo se sustituye; fuera de él no se toca. Las
+    notas se guardan sin la transposición de la pista, para que suenen a la altura que eligió la IA.
+    Devuelve las notas de la pista y cuántas escribió la IA."""
+    g = GRIDS.get(grid)
+    if g is None:
+        raise ValueError(f"Rejilla desconocida: {grid}")
+    start, end = float(start), float(end)
+    if end - start < g:
+        raise ValueError("El tramo es más corto que la rejilla")
+    tr = transpose_of(track)
+    keep = [n for n in track_notes(track) if not (start - 1e-6 <= n[0] < end - 1e-6)]
+    new, seen = [], set()
+    for n in ai_notes:
+        s = start + round(float(n[0]) / g) * g
+        if s >= end - 1e-6 or s < start - 1e-6:
+            continue
+        key = (round(s, 6), int(n[2]))
+        if key in seen:                                  # dos notas iguales en la misma línea: una
+            continue
+        seen.add(key)
+        ln = min(max(g, round(float(n[1]) / g) * g), end - s)
+        new.append(_note(s, ln, int(n[2]) - tr, n[3]))
+    out = sorted(keep + new, key=lambda n: (n[0], n[2]))
+    return out, len(new)
 
 
 def quantize(notes, grid: str = "1/16", strength: float = 100.0, ends: bool = False) -> tuple[list[list], int]:

@@ -206,6 +206,8 @@ Window {
         case "clip.original": return clipPicked && ((a.selInfo.speed || 1) !== 1 || (a.selInfo.semitones || 0) !== 0)
         case "track.solo": case "track.mute": case "track.remove": return !!t
         case "track.midiKeys": case "clip.quantize": return engineOk && !!sq.active("inst")
+        case "clip.aiNotes": return engineOk && !!sq.active("inst") && !sq.active("inst").frozen && !sq.composing
+        case "clip.aiNotesUndo": return !!sq.active("inst") && !!sq.active("inst").aiPrev && !sq.active("inst").frozen
         case "transport.play": case "transport.stop": case "transport.metronome": case "transport.loop": case "transport.loopSection":
         case "transport.prevMarker": case "transport.nextMarker": return engineOk
         case "track.effects": return !!t && t.id > 0
@@ -277,6 +279,8 @@ Window {
         "transport.metronome": function () { setClick(!clickOn) },
         "track.midiKeys": function () { sq.midiArm(!sq.midiUid) },
         "clip.quantize": function () { sq.quantize() },
+        "clip.aiNotes": function () { sq.aiNotes(sq.active("inst").uid) },
+        "clip.aiNotesUndo": function () { sq.aiNotesUndo(sq.active("inst").uid) },
         "transport.loop": function () { toggleLoop() },
         "transport.loopSection": function () { loopSection() },
         "transport.prevMarker": function () { jumpMarker(-1) },
@@ -769,9 +773,11 @@ Window {
             if (a === "key") ok = sq.midiKey(b[0], b[1])
             else if (a === "set" && it) { sq.replace(it.uid, { midi: b }); sq.update(it.uid) }
             else if (a === "grid") sq.qGrid = b
+            else if (a === "aievent" && it) {         // G7: llega la composición de la IA para esta pista
+                sq.aiFillUid = it.uid; sq.aiFillRange = b.span; sq.onAiEvent(Object.assign({ target: it.uid }, b.ev)) }
             it = sq.active("inst")
             return { ok: ok, armed: sq.midiUid, active: it ? it.uid : "", midi: it ? (it.midi || null) : null,
-                     grid: sq.qGrid, rec: sq.midiRec }
+                     grid: sq.qGrid, rec: sq.midiRec, aiPrev: !!(it && it.aiPrev), span: sq.aiFillSpan(), fillUid: sq.aiFillUid }
         }
         if (what === "vca") {                    // G6: grupos VCA (a = orden, b = su dato)
             var okv = true

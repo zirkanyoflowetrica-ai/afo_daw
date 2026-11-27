@@ -270,4 +270,4 @@ claro y el más oscuro de la imagen bajo cada zona.
 | G4 ✓ | Sidechain | Compresor y puerta escuchan otra pista |
 | G5 ✓ | Consolidar y congelar | Clips en un audio; pista congelada con sus efectos (menos CPU) |
 | G6 ✓ | Grupos y VCA | Un fader mueve varias pistas sin sumar su audio |
-| G7 | MIDI de la IA a la rejilla | La IA escribe notas editables en el piano roll |
+| G7 ✓ | MIDI de la IA a la rejilla | La IA escribe notas editables en el piano roll |

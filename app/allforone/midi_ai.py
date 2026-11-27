@@ -586,6 +586,7 @@ class MidiAi:
             self.emit({"type": "aiMidi", "phase": "done", "ok": True, "progress": 1.0, "path": str(path),
                        "title": meta["title"], "notes": len(notes), "seconds": meta["seconds"],
                        "tracks": split_tracks(notes, bpm, "· patrón IA" if fam else "IA"), "family": fam,
+                       "target": str(opts.get("target") or ""),                 # G7: pista que la espera
                        "message": f"{len(notes)} notas en {len({n[3] for n in notes})} instrumentos"})
         except _Cancelled:
             self.emit({"type": "aiMidi", "phase": "done", "ok": False, "cancelled": True, "message": "Composición cancelada"})

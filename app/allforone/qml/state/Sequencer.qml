@@ -851,6 +851,63 @@ QtObject {
         studio.toast(midiMsg + " con la IA (en tu equipo)")
         return true
     }
+    // G7: la IA escribe notas en la pista de instrumento elegida, en la rejilla del Piano roll. El tramo
+    // es el bucle (si está puesto) o 4 compases desde el compás del cursor; lo de antes se puede recuperar.
+    property string aiFillUid: ""
+    property var aiFillRange: null                        // [inicio, fin] en negras del proyecto
+    // sonido del sintetizador (índice de insts) → familia que se le pide al modelo
+    readonly property var voiceFamily: ["Piano / teclados", "Bajo", "Batería", "Guitarra", "Sintetizador", "Cuerdas",
+        "Cuerdas", "Piano / teclados", "Bajo", "Sintetizador", "Sintetizador", "Piano / teclados"]
+    function aiFillSpan() {
+        var bps = studio.bpm / 60, L = studio.loop
+        if (L.on && studio.loopSet) {
+            var a = Math.floor(L.start * bps + 1e-6), b = Math.ceil(L.end * bps - 1e-6)
+            if (b - a >= 1) return [a, b]
+        }
+        var bar = Math.floor(studio.posSec * bps / 4 + 1e-6) * 4
+        return [bar, bar + 16]
+    }
+    function aiNotes(uid) {
+        var t = trackOf(uid)
+        if (!t || t.type !== "inst") { studio.toast("Elige una pista de instrumento"); return false }
+        if (t.frozen) { studio.toast("La pista está congelada: descongélala para escribir notas"); return false }
+        if (composing) { studio.toast("Ya se está componiendo"); return false }
+        midiRefresh()
+        if (!midiAi.engineOk || !midiAi.model || !midiAi.model.done) { studio.toast("Falta el modelo MIDI: descárgalo en Navegador › IA"); return false }
+        var span = aiFillSpan(), fam = voiceFamily[(t.cfg || {}).v || 0] || "Piano / teclados"
+        var k = studio.songKey.key ? studio.songKey.key + (studio.songKey.scale ? " " + studio.songKey.scale : "") : "Auto"
+        var r = studio.call("midiGenerate", JSON.stringify({ family: fam, prompt: "", style: "Libre", key: k, bpm: studio.bpm,
+                                                             bars: Math.max(1, Math.ceil((span[1] - span[0]) / 4)), beats: 4,
+                                                             length: 900, creativity: 60, seed: -1, target: uid }))
+        if (!r.ok) { studio.toast(r.error); return false }
+        aiFillUid = uid; aiFillRange = span
+        composing = true; midiProgress = 0.01; midiMsg = "Escribiendo notas de " + fam.toLowerCase() + " para «" + t.name + "»"
+        studio.toast(midiMsg + " con la IA (en tu equipo), compases " + (span[0] / 4 + 1) + "–" + (span[1] / 4))
+        return true
+    }
+    // Las notas de la IA entran en la pista que las pidió (no en pistas nuevas)
+    function applyAiFill(ev) {
+        var uid = aiFillUid, span = aiFillRange
+        aiFillUid = ""; aiFillRange = null
+        var t = trackOf(uid)
+        if (!t) return
+        var tr = (ev.tracks || []).filter(function (x) { return x.type === "inst" })[0]
+        if (!tr) { studio.toast("La IA no compuso notas para «" + t.name + "»: prueba otra vez"); return }
+        var r = studio.call("midiAiFill", JSON.stringify({ type: t.type, cfg: t.cfg, clips: t.clips, roll: t.roll, midi: t.midi || null }),
+                            JSON.stringify(tr.midi), span[0], span[1], qGrid)
+        if (!r.ok) { studio.toast(r.error); return }
+        replace(uid, { midi: r.midi, midiSrc: "IA", aiPrev: { midi: t.midi || null, midiSrc: t.midiSrc || "" } }); update(uid)
+        studio.markDirty()
+        studio.toast(r.added + " notas de la IA en «" + t.name + "» (rejilla " + qGrid + "), editables en el Piano roll · «Volver a las notas de antes» las quita")
+    }
+    function aiNotesUndo(uid) {
+        var t = trackOf(uid)
+        if (!t || !t.aiPrev) return false
+        replace(uid, { midi: t.aiPrev.midi, midiSrc: t.aiPrev.midiSrc, aiPrev: null }); update(uid)
+        studio.markDirty()
+        studio.toast("«" + t.name + "» vuelve a sus notas de antes de la IA")
+        return true
+    }
     function openMidi(path, title) {
         var r = studio.call("midiOpen", path || "", studio.bpm)
         if (!r.ok) { if (!r.cancelled) studio.toast(r.error); return }
@@ -894,6 +951,8 @@ QtObject {
             if (ev.phase === "progress") { composing = true; midiProgress = ev.progress; midiMsg = ev.message }
             else {
                 composing = false; midiProgress = 0; patternFamily = ""
+                if (ev.ok && ev.target && ev.target === aiFillUid) { midiMsg = ev.message; applyAiFill(ev); midiRefresh(); return }
+                if (!ev.ok) { aiFillUid = ""; aiFillRange = null }
                 if (ev.ok) {
                     midiMsg = ev.message
                     var n = addMidiTracks(ev.tracks, ev.title, ev.path)

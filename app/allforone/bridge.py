@@ -526,6 +526,15 @@ class Bridge(QObject):
             return _ok(midi=track.get("midi") or None, added=0)
         return _ok(midi=midi_edit.merge_take(track, rec), added=len(rec))
 
+    @Slot(str, str, float, float, str, result=str)
+    @_safe
+    def midiAiFill(self, payload: str, notes_json: str, start: float, end: float, grid: str) -> str:
+        """G7: las notas de la IA (negras desde 0) a la rejilla, en el tramo [start, end) de la pista."""
+        out, added = midi_edit.ai_fill(json.loads(payload), json.loads(notes_json or "[]"), start, end, grid)
+        if not added:
+            return _err("La IA no dejó notas dentro del tramo: prueba otra vez")
+        return _ok(midi=out, added=added)
+
     @Slot(str, str, float, bool, result=str)
     @_safe
     def midiQuantize(self, payload: str, grid: str, strength: float, ends: bool) -> str:

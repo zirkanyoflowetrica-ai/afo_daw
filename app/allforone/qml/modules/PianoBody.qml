@@ -119,6 +119,22 @@ Column {
             tip: "Cuantizar también el final de cada nota (si no, conservan su duración)"
             onClicked: root.seq.qEnds = !root.seq.qEnds
         }
+        NeoButton {                             // G7: la IA escribe en esta pista, en la rejilla
+            objectName: "aiNotesBtn"
+            text: root.seq.composing && root.seq.aiFillUid === (root.t ? root.t.uid : "") ? "Escribiendo…" : "Escribir con IA"
+            fontSize: 13; padX: 8; padY: 4
+            enabled: !root.seq.composing && !!root.t && !root.t.frozen
+            AiMark { size: 12; tip: "" }
+            tip: "La IA (en tu equipo) escribe notas para esta pista en el bucle, o 4 compases desde el cursor, ya en la rejilla «" + root.seq.qGrid + "»; luego se editan como cualquier nota"
+            onClicked: root.seq.aiNotes(root.t.uid)
+        }
+        NeoButton {
+            objectName: "aiNotesUndoBtn"
+            visible: !!root.t && !!root.t.aiPrev
+            text: "Notas de antes"; fontSize: 13; padX: 8; padY: 4
+            tip: "Deja la pista como estaba antes de «Escribir con IA»"
+            onClicked: root.seq.aiNotesUndo(root.t.uid)
+        }
         NeoButton {
             objectName: "quantizeBtn"
             text: "Cuantizar"; fontSize: 13; padX: 8; padY: 4

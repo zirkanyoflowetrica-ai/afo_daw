@@ -356,6 +356,42 @@ def _g5_checks(rep, window, host, lay) -> None:
     lay("rec", "remove", uid)
 
 
+def _g7_checks(rep, window, host, lay) -> None:
+    """G7: «Escribir notas con IA» (Clip y botón del Piano roll) escribe en la pista de instrumento, en la
+    rejilla, y «Notas de antes» la deja como estaba. La composición con el modelo local y que las notas
+    suenan en su sitio lo miden tests/test_midi_ia_rejilla.py; aquí llega su evento a la interfaz."""
+    acts = lay("actions")
+    rep.check("G7: «Escribir notas con IA» y «Volver a las notas de antes de la IA» en el menú Clip, con su función",
+              all(i in acts["ids"] and i not in acts["missing"] and i in acts["clip"] for i in ("clip.aiNotes", "clip.aiNotesUndo")),
+              {"faltan": acts["missing"]})
+
+    def walk(it):
+        for c in it.childItems():
+            yield c
+            yield from walk(c)
+    btn = [i for i in walk(window.contentItem()) if i.objectName() == "aiNotesBtn"]
+    rep.check("G7: botón «Escribir con IA» en el Piano roll (≥ 24 px)", len(btn) == 1 and btn[0].property("height") >= 24,
+              btn[0].property("height") if btn else None)
+    m0 = lay("midi")
+    old = m0["midi"]
+    lay("midi", "set", [[0.0, 4.0, 48, 100], [20.0, 1.0, 50, 100]])
+    lay("midi", "grid", "1/8")
+    ev = {"type": "aiMidi", "phase": "done", "ok": True, "message": "", "family": "Piano / teclados",
+          "tracks": [{"type": "inst", "program": 0, "name": "Piano IA", "midi": [[0.04, 0.45, 60, 96], [0.55, 0.3, 64, 96],
+                                                                              [1.1, 0.9, 67, 96], [7.7, 2.0, 72, 96]]}]}
+    m1 = lay("midi", "aievent", {"span": [16, 24], "ev": ev})
+    rep.check("G7: las notas de la IA entran en la pista que las pidió, en la rejilla (1/8), cortadas a su tramo y sustituyendo lo que había en él",
+              m1["aiPrev"] and m1["fillUid"] == "" and m1["midi"] == [[0.0, 4.0, 48, 100], [16.0, 0.5, 60, 96], [16.5, 0.5, 64, 96],
+                                                                       [17.0, 1.0, 67, 96], [23.5, 0.5, 72, 96]],
+              m1["midi"])
+    u = lay("run", "clip.aiNotesUndo")
+    m2 = lay("midi")
+    rep.check("G7: «Volver a las notas de antes» deja la pista como estaba",
+              u["ok"] and m2["midi"] == [[0.0, 4.0, 48, 100], [20.0, 1.0, 50, 100]] and not m2["aiPrev"], m2["midi"])
+    lay("midi", "set", old)
+    lay("midi", "grid", "1/16")
+
+
 def _g6_checks(rep, window, host, lay) -> None:
     """G6: grupos VCA en el Mezclador («+ VCA», una tira por grupo con sus pistas y su fader). Que el
     fader del grupo baja sus pistas y no las demás lo mide tests/test_vca.py en canciones completas."""
@@ -943,6 +979,7 @@ def _native_daw_checks(rep, app, host, window, bridge, track_id) -> None:
     _g4_checks(rep, window, host, lay)
     _g5_checks(rep, window, host, lay)
     _g6_checks(rep, window, host, lay)
+    _g7_checks(rep, window, host, lay)
     z1 = lay("zones")
     rep.check("tamaño fijo: ninguna zona cambia de tamaño por su contenido", z0 == z1,
               {k: (z0.get(k), z1.get(k)) for k in z1 if z0.get(k) != z1.get(k)})

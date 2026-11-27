@@ -62,6 +62,8 @@ _A = [
     ("clip.split", "Dividir en el cursor", "Clip", 1, "S", "Divide el clip donde está el cursor de reproducción"),
     ("clip.duplicate", "Duplicar", "Clip", 1, "Ctrl+D", "Copia el clip detrás del último de su pista"),
     ("clip.delete", "Borrar", "Clip", 1, "Supr", "Quita el clip"),
+    ("clip.aiNotes", "Escribir notas con IA", "Clip", 2, "", "La IA (en tu equipo) escribe notas para la pista de instrumento en el bucle (o 4 compases desde el cursor), ya en la rejilla del Piano roll y editables"),
+    ("clip.aiNotesUndo", "Volver a las notas de antes de la IA", "Clip", 2, "", "Deja la pista de instrumento como estaba antes de «Escribir notas con IA»"),
     ("clip.quantize", "Cuantizar notas", "Clip", 1, "Q", "Alinea el inicio de las notas de la pista de instrumento a la rejilla del Piano roll (1/16 de fábrica)"),
     ("clip.gainUp", "Subir 1 dB", "Clip", 2, "", "Sube el volumen del clip"),
     ("clip.gainDown", "Bajar 1 dB", "Clip", 2, "", "Baja el volumen del clip"),
@@ -111,14 +113,14 @@ _A = [
 CTX_CLIP = ("clip.split", "clip.duplicate", "clip.delete", "clip.gainUp", "clip.gainDown", "clip.normalize",
             "clip.fadeIn", "clip.fadeOut", "clip.noFades", "clip.repaint", "clip.cover", "clip.align",
             "clip.pitch", "clip.stems", "clip.tempoKey", "clip.toProjectTempo", "clip.projectToTempo",
-            "clip.toProjectKey", "clip.projectToKey", "clip.original")
+            "clip.toProjectKey", "clip.projectToKey", "clip.original", "clip.aiNotes", "clip.aiNotesUndo")
 CTX_TRACK = ("track.solo", "track.mute", "track.effects", "track.consolidate", "track.freeze", "track.unfreeze", "track.stems", "track.regenerate", "track.new", "track.generate",
              "track.interp", "track.newAudio", "track.newInst", "track.newDrum", "track.remove")
 # Órdenes que borran: piden un segundo clic en la misma fila (confirmación en el sitio, guía de diseño)
 CONFIRM = {"track.remove": "¿Quitar la pista? Clic otra vez", "clip.delete": "¿Borrar el clip? Clic otra vez",
            "edit.delete": "¿Borrar el clip? Clic otra vez"}
 AI = {"clip.tempoKey", "track.generate", "track.interp", "track.regenerate", "view.lab", "track.stems", "clip.repaint", "clip.cover", "clip.align", "clip.pitch", "clip.stems",
-      "mix.auto", "mix.remix", "mix.master"}
+      "mix.auto", "mix.remix", "mix.master", "clip.aiNotes"}
 
 
 def actions() -> list[dict]:
