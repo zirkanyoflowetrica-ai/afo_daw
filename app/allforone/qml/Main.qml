@@ -763,6 +763,18 @@ Window {
             return { ok: ok, armed: sq.midiUid, active: it ? it.uid : "", midi: it ? (it.midi || null) : null,
                      grid: sq.qGrid, rec: sq.midiRec }
         }
+        if (what === "rec") {                    // G3: varias pistas, punch y tomas (a = orden, b = su dato)
+            var ok3 = true
+            if (a === "add") { var nt = sq.addTrack("voz"); return { uid: nt ? nt.uid : "", id: nt ? nt.id : -1 } }
+            else if (a === "punch") ok3 = sq.setPunch(b)
+            else if (a === "extra") ok3 = sq.armExtra(b[0], b[1])
+            else if (a === "take") ok3 = sq.useTake(b[0], b[1])
+            else if (a === "apply") sq.applyTake(b)
+            else if (a === "remove") { var ti = sq.indexOf(b); if (ti >= 0) removeTrackAt(ti) }
+            var vt = sq.active("voz")
+            return { ok: ok3, punch: sq.punch, armed: sq.armedUid, extra: sq.extraUids, inputs: sq.inputs,
+                     active: vt ? { uid: vt.uid, id: vt.id, takes: (vt.takes || []).map(function (k) { return k.name }), take: vt.take === undefined ? -1 : vt.take, start: vt.start || 0 } : null }
+        }
         if (what === "arrangeScroll") {          // F10: lleva el scroll del Arreglo a una fracción (0..1)
             arrange.scrollTo(a); return arrange.scrollProgress > 0 || a === 0 }
         if (what === "backdrop") {               // F10: poner (a = modo, b = ruta), ajustar y medir

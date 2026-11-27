@@ -39,6 +39,9 @@ QtObject {
     property bool monitor: false
     property bool recording: false
     property string armedUid: ""
+    // G3: más pistas de voz grabando en la misma pasada, punch con el tramo del bucle
+    property var extraUids: []
+    property bool punch: false
     // G2: teclado MIDI. Lo toca y lo graba el motor («All MIDI Ins» de Tracktion); aquí qué pista
     // está armada, si se graba, los teclados conectados y la rejilla de «Cuantizar».
     property string midiUid: ""
@@ -171,6 +174,7 @@ QtObject {
     }
     function forget(t) {
         if (t.type === "voz" && t.uid === armedUid) { if (recording) stopTake(true); armedUid = "" }
+        if (extraUids.indexOf(t.uid) >= 0) extraUids = extraUids.filter(function (x) { return x !== t.uid })   // G3
         if (t.uid === midiUid) { if (midiRec) { midiRec = false; studio.call("recStop", true) } studio.call("midiArm", -1); midiUid = "" }
         if ((isSynth(t) || t.type === "voz" || t.type === "aux") && t.id >= 0) studio.call("removeTrack", t.id)
         var c = Object.assign({}, act)
@@ -200,7 +204,58 @@ QtObject {
         if (!inputs.length) { armedUid = ""; return }
         var r = studio.call("recArm", t.id, input, monitor)
         armedUid = r.ok ? t.uid : ""
-        if (!r.ok) studio.toast(r.error)
+        if (!r.ok) { studio.toast(r.error); return }
+        var keep = []                          // G3: las demás pistas armadas siguen armadas
+        extraUids.forEach(function (u) {
+            var x = trackOf(u)
+            if (!x || x.uid === t.uid || x.id < 0) return
+            var a = studio.call("recArmAdd", x.id, input, true)
+            if (a.ok) keep.push(u); else studio.toast(a.error)
+        })
+        extraUids = keep
+    }
+    // G3: armar o soltar otra pista de voz para grabarla a la vez que la activa
+    function armExtra(uid, on) {
+        if (!studio.engineOk || recording) return false
+        var t = trackOf(uid)
+        if (!t || t.type !== "voz" || t.id < 0) return false
+        if (uid === armedUid) {
+            if (!on) studio.toast("«" + t.name + "» es la pista activa: elige otra en las pestañas para soltarla")
+            return !!on
+        }
+        var r = studio.call("recArmAdd", t.id, input, !!on)
+        if (!r.ok) { studio.toast(r.error); return false }
+        var u = extraUids.filter(function (x) { return x !== uid })
+        if (on) u.push(uid)
+        extraUids = u
+        return true
+    }
+    function isArmed(uid) { return uid === armedUid || extraUids.indexOf(uid) >= 0 }
+    function setPunch(on) {
+        if (!studio.engineOk) return false
+        if (on && !studio.loopSet) { studio.toast("Marca primero el tramo arrastrando en la regla del Arreglo: el punch graba solo ahí"); return false }
+        var r = studio.call("recPunch", !!on)
+        if (!r.ok) { studio.toast(r.error); return false }
+        punch = r.punch
+        return true
+    }
+    // G3: lo grabado entra como tomas de la pista (F4): lo de antes queda como una toma más y suena la última pasada
+    function applyTake(info) {
+        var t = null
+        for (var i = 0; i < studio.tracks.length; i++) if (studio.tracks[i].id === info.id) t = studio.tracks[i]
+        if (!t) return null
+        var tk = (t.takes || []).slice(), prev = info.previous || { source: "", clips: [] }
+        if (!tk.length && prev.source) tk.push({ name: "Toma 1", source: prev.source, clips: prev.clips, ai: false })
+        else if (tk.length) tk[t.take || 0] = Object.assign({}, tk[t.take || 0], { clips: prev.clips })
+        var n = 1
+        tk.forEach(function (k) { if (k.name.indexOf("Grabación") === 0) n++ })
+        ;(info.takes || []).forEach(function (p) { tk.push({ name: "Grabación " + (n++), source: p, clips: info.clips || [], ai: false }) })
+        var many = tk.length > 1
+        replace(t.uid, { len: info.length_seconds, peaks: info.peaks, start: info.start_seconds || 0, aclips: info.clips || studio.clipsOf(t.id),
+                         takes: many ? tk : [], take: many ? tk.length - 1 : 0 })
+        studio.mixer.unlinkTrack(info.id)
+        studio.mixer.linkTrack(info)
+        return t
     }
     function setInput(v) { input = v; arm() }
     function setMonitor(b) { monitor = b; arm() }
@@ -222,14 +277,16 @@ QtObject {
         recording = false
         var r = studio.call("recStop", !!discard)
         if (!r.ok) { studio.toast(r.error); return }
-        var info = r.track, t = null
-        for (var i = 0; i < studio.tracks.length; i++) if (studio.tracks[i].id === info.id) t = studio.tracks[i]
-        if (!t || discard) return
-        if (!info.source_path) { studio.toast("La toma quedó vacía"); return }
-        replace(t.uid, { len: info.length_seconds, peaks: info.peaks, start: info.start_seconds || 0, aclips: studio.clipsOf(t.id) })
-        studio.mixer.unlinkTrack(info.id)
-        studio.mixer.linkTrack(info)
-        studio.toast("Toma guardada en " + t.name + " (" + L.fmt(info.length_seconds) + ")")
+        if (discard) return
+        var names = []
+        ;(r.tracks || [r.track]).forEach(function (info) {    // G3: todas las pistas armadas
+            if (!info.source_path) return
+            var t = applyTake(info)
+            if (t) names.push(t.name + ((info.takes || []).length > 1 ? " (" + info.takes.length + " pasadas)" : ""))
+        })
+        if (!names.length) { studio.toast("La toma quedó vacía"); return }
+        studio.markDirty()
+        studio.toast("Toma guardada en " + names.join(", ") + " (" + L.fmt(r.track.length_seconds || 0) + ")")
     }
     function listenTake() {
         var t = active("voz")

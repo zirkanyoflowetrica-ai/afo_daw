@@ -415,6 +415,28 @@ class Bridge(QObject):
         err = self.host.engine.arm_track(track_id, input_name, monitor)
         return _err(err) if err else _ok(state=self.host._rec_state())
 
+    @Slot(int, str, bool, result=str)
+    @_safe
+    def recArmAdd(self, track_id: int, input_name: str, on: bool) -> str:
+        """G3: arma (o desarma) una pista más para grabar en la misma pasada que las otras."""
+        if (g := self._guard()):
+            return g
+        eng = self.host.engine
+        if not on:
+            eng.unarm_track(int(track_id))
+            return _ok(armed=list(eng.armed_tracks()))
+        err = eng.arm_track(int(track_id), input_name, eng.record_state()["monitor"], True)
+        return _err(err) if err else _ok(armed=list(eng.armed_tracks()))
+
+    @Slot(bool, result=str)
+    @_safe
+    def recPunch(self, on: bool) -> str:
+        """G3: grabar solo dentro del tramo del bucle (punch in/out)."""
+        if (g := self._guard()):
+            return g
+        self.host.engine.set_punch(bool(on))
+        return _ok(punch=self.host.engine.punch())
+
     @Slot(result=str)
     @_safe
     def recStart(self) -> str:
@@ -429,12 +451,15 @@ class Bridge(QObject):
         if (g := self._guard()):
             return g
         try:
-            info = self.host.finish_take(discard)
+            primary = self.host.engine.record_state()["armed_track"]
+            infos = self.host.finish_takes(discard)
         except Exception as exc:
             return _err(f"No se pudo cerrar la toma: {exc}")
-        if info["source_path"]:
-            log.info("Toma grabada por el motor: %s (%.1f s)", info["source_path"], info["length_seconds"])
-        return _ok(track=info)
+        for i in infos:
+            if i["source_path"]:
+                log.info("Toma grabada por el motor: %s (%.1f s)", i["source_path"], i["length_seconds"])
+        info = next((i for i in infos if i["id"] == primary), infos[0] if infos else {"id": primary, "source_path": ""})
+        return _ok(track=info, tracks=infos)
 
     @Slot(int, result=str)
     @_safe

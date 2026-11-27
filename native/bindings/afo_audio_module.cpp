@@ -236,10 +236,21 @@ PYBIND11_MODULE (afo_audio, m)
         .def ("show_audio_control_panel", &afo::Engine::showAudioControlPanel)
         .def ("record_inputs", &afo::Engine::recordInputs)
         .def ("add_record_track", [] (afo::Engine& e, const std::string& name) { return toDict (e.addRecordTrack (name)); }, py::arg ("name"))
-        .def ("arm_track", &afo::Engine::armTrack, py::arg ("track_id"), py::arg ("input") = "", py::arg ("monitor") = false)
+        .def ("arm_track", &afo::Engine::armTrack, py::arg ("track_id"), py::arg ("input") = "", py::arg ("monitor") = false, py::arg ("add") = false)
         .def ("disarm", &afo::Engine::disarm)
         .def ("start_recording", &afo::Engine::startRecording)
         .def ("stop_recording", [] (afo::Engine& e, bool discard) { return toDict (e.stopRecording (discard)); }, py::arg ("discard") = false)
+        .def ("unarm_track", &afo::Engine::unarmTrack, py::arg ("track_id"))
+        .def ("armed_tracks", &afo::Engine::armedTracks)
+        .def ("set_punch", &afo::Engine::setPunch, py::arg ("on"))
+        .def ("punch", &afo::Engine::punch)
+        .def ("stop_recording_all", [] (afo::Engine& e, bool discard)
+              {
+                  py::list r;
+                  for (auto& i : e.stopRecordingAll (discard)) r.append (toDict (i));
+                  return r;
+              }, py::arg ("discard") = false)
+        .def ("last_takes", &afo::Engine::lastTakes, py::arg ("track_id"))
         .def ("midi_inputs", &afo::Engine::midiInputs)
         .def ("arm_midi", &afo::Engine::armMidi, py::arg ("track_id"))
         .def ("midi_armed", &afo::Engine::midiArmed)

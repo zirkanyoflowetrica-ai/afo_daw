@@ -106,12 +106,50 @@ Column {
     }
     Item { width: 1; height: 8 }
 
+    // G3: grabar varias pistas a la vez, punch dentro del bucle y tomas de cada pasada
+    Flow {
+        id: armRow
+        objectName: "armRow"
+        width: root.width; spacing: 6; bottomPadding: visible ? 8 : 0
+        readonly property var voz: root.studio.tracks.filter(function (x) { return x.type === "voz" })
+        visible: voz.length > 1
+        Text { text: "Grabar en:"; height: 28; verticalAlignment: Text.AlignVCenter
+               color: Theme.ink; font.family: Theme.font; font.pixelSize: 13; font.weight: 600 }
+        Repeater {
+            model: armRow.voz
+            NeoButton {
+                required property var modelData
+                objectName: "armTrack_" + modelData.uid
+                readonly property bool on: root.seq.isArmed(modelData.uid)
+                text: (on ? "● " : "") + modelData.name; fontSize: 12; padX: 8; padY: 4
+                pressedState: on
+                color: on ? Theme.rec : Theme.button; textColor: on ? Theme.inkOnColor : Theme.ink; hoverColor: on ? Theme.rec : Theme.pn2
+                tip: modelData.uid === root.seq.armedUid ? "Pista activa: siempre graba (elige otra en las pestañas para cambiarla)"
+                     : on ? "Clic: no grabar en " + modelData.name : "Grabar también en " + modelData.name + " en la misma pasada"
+                onClicked: root.seq.armExtra(modelData.uid, !on)
+            }
+        }
+    }
+    Flow {
+        width: root.width; spacing: 6; bottomPadding: 8
+        NeoButton {
+            objectName: "punchBtn"
+            text: "Punch"; fontSize: 12; padX: 8; padY: 4
+            pressedState: root.seq.punch
+            color: root.seq.punch ? Theme.pressedBg : Theme.button; textColor: root.seq.punch ? Theme.pressedInk : Theme.ink
+            tip: root.studio.loopSet ? "Graba solo entre " + L.fmt(root.studio.loop.start) + " y " + L.fmt(root.studio.loop.end)
+                                       + " (el tramo del bucle, con el bucle apagado) y conserva lo de fuera. Con el bucle encendido (≥ 2 s) cada vuelta es una toma: se eligen en la cabecera de la pista"
+                                     : "Graba solo dentro del tramo del bucle: márcalo arrastrando en la regla del Arreglo"
+            onClicked: root.seq.setPunch(!root.seq.punch)
+        }
+    }
+
     Flow {                                      // .tbtn
         width: root.width; spacing: 6; bottomPadding: 10
         NeoButton {
             text: "● Grabar"; color: Theme.rec; textColor: Theme.inkOnColor; hoverColor: Theme.rec
             pressedState: root.seq.recording
-            tip: "Graba la entrada en la pista armada desde la posición del cursor"
+            tip: "Graba la entrada en las pistas armadas desde la posición del cursor"
             onClicked: root.seq.startTake()
         }
         NeoButton { text: "■ Parar"; onClicked: root.seq.stopTake(false) }

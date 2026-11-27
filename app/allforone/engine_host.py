@@ -328,11 +328,33 @@ class EngineHost:
         return info
 
     def finish_take(self, discard: bool = False, buckets: int = 600) -> dict:
-        info = dict(self.engine.stop_recording(discard))
-        info["peaks"] = [round(v, 4) for v in self.engine.track_peaks(info["id"], buckets)] if info["source_path"] else []
-        info.update(originalPath=info["source_path"], note="")
-        self.tracks[info["id"]] = info
-        return info
+        primary = self.engine.record_state()["armed_track"]
+        takes = self.finish_takes(discard, buckets)
+        return next((i for i in takes if i["id"] == primary), takes[0] if takes else self.tracks.get(primary, {}))
+
+    def finish_takes(self, discard: bool = False, buckets: int = 600) -> list[dict]:
+        """G3: para la grabación de todas las pistas armadas. Cada pasada (una por vuelta del bucle) es una
+        toma entera de la pista: `takes` son sus archivos (suena el último) y `clips` sus clips; `previous`
+        es lo que sonaba antes ({source, clips}), que la interfaz guarda como «Toma 1» (tomas de F4)."""
+        eng = self.engine
+        before = {}
+        for tid in eng.armed_tracks():
+            t = self.tracks.get(tid) or {}
+            src = t.get("originalPath") or t.get("source_path") or ""
+            before[tid] = {"source": src, "clips": eng.clips(tid) if src else []}
+        out = []
+        for raw in eng.stop_recording_all(discard):
+            info = dict(raw)
+            tid = info["id"]
+            got = not discard and bool(info["source_path"]) and info["source_path"] != before.get(tid, {}).get("source")
+            info["takes"] = list(eng.last_takes(tid)) if got else []
+            info["clips"] = eng.clips(tid) if info["source_path"] else []
+            info["previous"] = before.get(tid, {"source": "", "clips": []})
+            info["peaks"] = [round(v, 4) for v in eng.track_peaks(tid, buckets)] if info["source_path"] else []
+            info.update(originalPath=info["source_path"], note="")
+            self.tracks[tid] = {**self.tracks.get(tid, {}), **info}
+            out.append(info)
+        return out
 
     # --- efectos nativos -------------------------------------------------------------
     @staticmethod
@@ -382,5 +404,6 @@ class EngineHost:
         r = self.engine.record_state()
         if not r["armed_track"]:
             return None
-        return {"track": r["armed_track"], "recording": r["recording"], "seconds": round(r["seconds"], 2),
+        return {"track": r["armed_track"], "armed": list(self.engine.armed_tracks()), "punch": self.engine.punch(),
+                "recording": r["recording"], "seconds": round(r["seconds"], 2),
                 "input": r["input"], "db": round(r["input_db"], 1), "monitor": r["monitor"]}

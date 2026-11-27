@@ -295,6 +295,73 @@ def _g2_checks(rep, window, host, lay) -> None:
               window.findChild(QObject, "midiBar") is not None and not small, small)
 
 
+def _g3_checks(rep, window, host, lay) -> None:
+    """G3: grabar en varias pistas a la vez, punch dentro del tramo del bucle y elegir la toma que suena.
+    Que se graba de verdad (dos pistas, punch que conserva lo de fuera, una toma por vuelta) lo mide
+    tests/test_grabacion_multipista.py con la entrada del dispositivo."""
+    import tempfile
+    from pathlib import Path
+
+    import numpy as np
+    import soundfile as sf
+    from PySide6.QtCore import QObject
+
+    eng = host.engine
+    lay("transport", "drag", [2.0, 5.0])                   # tramo 2–5 s (el arrastre enciende el bucle)
+    if lay("transport")["loop"]["on"]:
+        lay("run", "transport.loop")                       # punch: con el bucle apagado
+    p1 = lay("rec", "punch", True)
+    on = eng.punch()
+    p2 = lay("rec", "punch", False)
+    rep.check("G3: «Punch» con el tramo marcado lo enciende en el motor y vuelve a apagarlo",
+              p1["ok"] and p1["punch"] and on and p2["ok"] and not p2["punch"] and not eng.punch(), {"on": p1, "off": p2})
+    a = lay("rec", "add")
+    b = lay("rec", "add")
+    page = lay("goto", "cinta")                            # el Grabador, en el Inspector
+    row = window.findChild(QObject, "armRow")
+    st = lay("rec")
+    if st["inputs"]:
+        x = lay("rec", "extra", [a["uid"], True])
+        armed = sorted(eng.armed_tracks())
+        y = lay("rec", "extra", [a["uid"], False])
+        rep.check("G3: «Grabar en:» arma otra pista de voz para la misma pasada y la suelta",
+                  x["ok"] and a["uid"] in x["extra"] and armed == sorted([a["id"], b["id"]])
+                  and y["ok"] and a["uid"] not in y["extra"] and eng.armed_tracks() == [b["id"]],
+                  {"armadas": armed, "extra": x["extra"]})
+    else:
+        rep.add("G3: sin entradas en este dispositivo: armar varias pistas se prueba en tests/test_grabacion_multipista.py", "info")
+    if row is not None:
+        voz = row.property("voz")
+        voz = voz.toVariant() if hasattr(voz, "toVariant") else voz
+        rep.check("G3: con dos pistas de voz se ve la fila «Grabar en:»", bool(row.property("visible")),
+                  {"pistas de voz": len(voz or []), "página": page})
+    folder = Path(tempfile.mkdtemp(prefix="afo_tomas_"))
+    sr, files = 48000, []
+    for i, f in enumerate((220.0, 330.0)):
+        p = folder / f"toma_{i + 1}.wav"
+        t = np.arange(int(1.5 * sr)) / sr
+        sf.write(str(p), (0.2 * np.sin(2 * np.pi * f * t)).astype(np.float32), sr)
+        files.append(str(p))
+    tid = b["id"]
+    eng.set_track_audio(tid, files[0], 1.0)                 # lo que había en la pista
+    host.tracks[tid] = dict(host.tracks.get(tid, {}), source_path=files[0], originalPath=files[0])
+    prev = {"source": files[0], "clips": eng.clips(tid)}
+    info = dict(eng.set_track_audio(tid, files[1], 1.0))   # lo que deja una grabación (como finish_takes)
+    host.tracks[tid].update(source_path=files[1], originalPath=files[1])
+    info.update(takes=[files[1]], clips=eng.clips(tid), previous=prev, peaks=[])
+    lay("rec", "apply", info)
+    st = lay("rec", "takes")
+    u = lay("rec", "take", [b["uid"], 0])
+    clips = eng.clips(tid)
+    rep.check("G3: lo grabado entra como toma de la pista (lo de antes queda como «Toma 1») y se puede volver a ella",
+              st["active"]["takes"] == ["Toma 1", "Grabación 1"] and st["active"]["take"] == 1
+              and u["ok"] and u["active"]["take"] == 0
+              and host.tracks[tid]["originalPath"] == files[0] and any(abs(c["start"] - 1.0) < 0.01 for c in clips),
+              {"tras grabar": st["active"], "al elegir": u["active"], "clips": clips})
+    lay("rec", "remove", a["uid"])
+    lay("rec", "remove", b["uid"])
+
+
 def _f10_checks(rep, app, host, lay) -> None:
     """F10: fondo opcional (imagen o parallax), apagado de fábrica. Con el fondo puesto el texto de las
     zonas sigue ≥ 4,5:1 en los tres temas, medido con el píxel más oscuro y el más claro de la imagen
@@ -733,6 +800,7 @@ def _native_daw_checks(rep, app, host, window, bridge, track_id) -> None:
     _f10_checks(rep, app, host, lay)
     _g1_checks(rep, host, lay)
     _g2_checks(rep, window, host, lay)
+    _g3_checks(rep, window, host, lay)
     z1 = lay("zones")
     rep.check("tamaño fijo: ninguna zona cambia de tamaño por su contenido", z0 == z1,
               {k: (z0.get(k), z1.get(k)) for k in z1 if z0.get(k) != z1.get(k)})

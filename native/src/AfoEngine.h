@@ -235,7 +235,8 @@ public:
     // Pone un audio ya grabado en una pista (al abrir un proyecto): sustituye sus clips
     TrackInfo setTrackAudio (int trackId, const std::string& path, double startSeconds);                 // pista de audio vacía para grabar
     // Arma la pista con una entrada ("" = la primera). monitor: escuchar la entrada mientras está armada.
-    std::string armTrack (int trackId, const std::string& input, bool monitor);
+    // add = true (G3): arma esta pista además de las que ya lo están (la misma entrada puede grabar varias)
+    std::string armTrack (int trackId, const std::string& input, bool monitor, bool add = false);
     void disarm();
     std::string startRecording();             // graba desde la posición actual (las otras pistas suenan)
     // Detiene y devuelve la pista con la toma (o la info sin archivo si no se grabó nada)
@@ -250,6 +251,17 @@ public:
     std::vector<std::string> midiInputs();
     std::string armMidi (int trackId);
     bool midiArmed() const;
+
+    // G3: grabación multipista, punch y tomas. Todas las pistas armadas graban en la misma pasada;
+    // con punch solo se graba dentro del tramo del bucle. Cada pasada es una toma entera de la pista
+    // (un archivo: lo de antes fuera del tramo y la grabación dentro); lastTakes da sus archivos y
+    // suena la última. Elegir otra es cambiar el archivo de la pista (como las tomas de F4).
+    void unarmTrack (int trackId);
+    std::vector<int> armedTracks() const;
+    void setPunch (bool on);
+    bool punch() const;
+    std::vector<TrackInfo> stopRecordingAll (bool discard);
+    std::vector<std::string> lastTakes (int trackId) const;
     bool midiNote (int note, int velocity);            // velocidad 0 = soltar la nota
     std::vector<std::tuple<double, double, int, int>> takeRecordedMidi();
 

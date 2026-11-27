@@ -191,6 +191,10 @@ struct Engine::Impl
     te::WaveInputDevice* armedInput = nullptr;
     std::shared_ptr<te::MidiInputDevice> armedMidi;      // G2: «All MIDI Ins» dirigida a armedTrack
     std::vector<te::EditItemID> clipsBeforeRec;          // G2: clips de la pista antes de grabar MIDI
+    std::map<int, te::WaveInputDevice*> armedSet;        // G3: todas las pistas armadas y su entrada
+    std::map<int, std::vector<te::EditItemID>> clipsBefore;   // G3: clips de cada pista armada antes de grabar
+    std::map<int, std::vector<std::string>> takesOf;     // G3: archivos de la última grabación de cada pista
+    std::map<int, std::pair<std::string, std::vector<ClipInfo>>> baseOf;   // G3: audio y clips de cada pista antes de grabar
     te::LevelMeasurer::Client inputClient;
     double recordStart = 0.0;
     te::EditPlaybackContext* attachedContext = nullptr;
@@ -1830,7 +1834,7 @@ TrackInfo Engine::addRecordTrack (const std::string& name)
     return info;
 }
 
-std::string Engine::armTrack (int trackId, const std::string& input, bool monitor)
+std::string Engine::armTrack (int trackId, const std::string& input, bool monitor, bool add)
 {
     requireMessageThread();
     auto& slot = impl->slot (trackId);
@@ -1856,22 +1860,45 @@ std::string Engine::armTrack (int trackId, const std::string& input, bool monito
     if (inst == nullptr)
         return "La entrada no está disponible";
 
-    for (auto* other : edit.getAllInputDevices())      // una sola entrada armada a la vez
-        for (auto id : other->getTargets())
-        {
-            other->setRecordingEnabled (id, false);
-            [[maybe_unused]] auto r = other->removeTarget (id, nullptr);
-        }
-    auto res = inst->setTarget (slot.track->itemID, true, nullptr);
+    if (impl->armedMidi != nullptr)            // el teclado MIDI deja de estar armado
+    {
+        impl->armedMidi->setMonitorMode (te::InputDevice::MonitorMode::off);
+        impl->armedMidi = nullptr;
+    }
+    if (add)                                   // G3: quita solo lo que esta pista tuviera armado
+    {
+        for (auto* other : edit.getAllInputDevices())
+            for (auto id : other->getTargets())
+                if (id == slot.track->itemID)
+                {
+                    other->setRecordingEnabled (id, false);
+                    [[maybe_unused]] auto r = other->removeTarget (id, nullptr);
+                }
+    }
+    else
+    {
+        for (auto* other : edit.getAllInputDevices())      // una sola pista armada
+            for (auto id : other->getTargets())
+            {
+                other->setRecordingEnabled (id, false);
+                [[maybe_unused]] auto r = other->removeTarget (id, nullptr);
+            }
+        impl->armedSet.clear();
+    }
+    auto res = inst->setTarget (slot.track->itemID, ! add, nullptr);   // añadir: la entrada sigue en las otras
     if (! res)
         return toStd (res.error());
     inst->setRecordingEnabled (slot.track->itemID, true);
+    impl->armedSet[trackId] = dev;
 
-    if (impl->armedInput != nullptr)
-        impl->armedInput->levelMeasurer.removeClient (impl->inputClient);
-    dev->levelMeasurer.addClient (impl->inputClient);
-    impl->armedInput = dev;
-    impl->armedTrack = trackId;
+    if (! add || impl->armedTrack == 0 || impl->armedInput == nullptr)   // la principal: su medidor y su estado
+    {
+        if (impl->armedInput != nullptr)
+            impl->armedInput->levelMeasurer.removeClient (impl->inputClient);
+        dev->levelMeasurer.addClient (impl->inputClient);
+        impl->armedInput = dev;
+        impl->armedTrack = trackId;
+    }
     impl->monitor = monitor;
     edit.restartPlayback();
     impl->attachMasterMeter();
@@ -1900,6 +1927,7 @@ void Engine::disarm()
     }
     impl->armedInput = nullptr;
     impl->armedTrack = 0;
+    impl->armedSet.clear();
 }
 
 std::string Engine::startRecording()
@@ -1910,9 +1938,30 @@ std::string Engine::startRecording()
     auto& t = impl->edit->getTransport();
     if (t.isRecording())
         return {};
+    if (t.looping && impl->armedMidi == nullptr)   // G3: las condiciones de Tracktion, dichas antes de intentarlo
+    {
+        if (impl->edit->recordingPunchInOut)
+            return "Punch y bucle a la vez no se puede: apaga el bucle para el punch, o el punch para grabar una toma por vuelta";
+        if (t.getLoopRange().getLength().inSeconds() < 2.0)
+            return "Para grabar en bucle el tramo debe durar al menos 2 s";
+    }
     impl->clipsBeforeRec.clear();
     for (auto* c : impl->slot (impl->armedTrack).track->getClips())
         impl->clipsBeforeRec.push_back (c->itemID);
+    impl->clipsBefore.clear();
+    impl->baseOf.clear();
+    for (auto& [id, dev] : impl->armedSet)
+    {
+        const auto& src = impl->slot (id).info.sourcePath;
+        if (! src.empty() && toFile (src).existsAsFile())
+            if (auto cl = clips (id); ! cl.empty())
+                impl->baseOf[id] = { src, cl };
+        auto& v = impl->clipsBefore[id];
+        for (auto* c : impl->slot (id).track->getClips())
+            v.push_back (c->itemID);
+        if (dev != nullptr)
+            dev->setMergeMode (te::WaveInputDevice::getMergeModes()[1]);   // la toma reemplaza lo que había en su tramo (punch: solo ahí)
+    }
     impl->recordStart = t.getPosition().inSeconds();
     t.record (false, false);
     impl->attachMasterMeter();
@@ -1947,9 +1996,17 @@ TrackInfo Engine::setTrackAudio (int trackId, const std::string& path, double st
 TrackInfo Engine::stopRecording (bool discard)
 {
     requireMessageThread();
-    auto& t = impl->edit->getTransport();
     if (impl->armedTrack == 0)
         throw std::runtime_error ("afo_audio: no hay pista armada");
+    if (! impl->armedSet.empty())
+    {
+        const int primary = impl->armedTrack;
+        for (auto& info : stopRecordingAll (discard))
+            if (info.id == primary)
+                return info;
+        return impl->slot (primary).info;
+    }
+    auto& t = impl->edit->getTransport();
     auto& slot = impl->slot (impl->armedTrack);
     if (t.isRecording() || t.isPlaying())
         t.stop (discard, false);
@@ -2071,6 +2128,240 @@ std::vector<std::tuple<double, double, int, int>> Engine::takeRecordedMidi()
     impl->clipsBeforeRec.clear();
     std::sort (notes.begin(), notes.end());
     return notes;
+}
+
+// G3 ---------------------------------------------------------------------------
+void Engine::unarmTrack (int trackId)
+{
+    requireMessageThread();
+    auto& edit = *impl->edit;
+    if (edit.getTransport().isRecording())
+        return;
+    auto& slot = impl->slot (trackId);
+    for (auto* inst : edit.getAllInputDevices())
+        for (auto id : inst->getTargets())
+            if (id == slot.track->itemID)
+            {
+                inst->setRecordingEnabled (id, false);
+                [[maybe_unused]] auto r = inst->removeTarget (id, nullptr);
+            }
+    impl->armedSet.erase (trackId);
+    if (impl->armedTrack == trackId)
+    {
+        if (impl->armedInput != nullptr)
+            impl->armedInput->levelMeasurer.removeClient (impl->inputClient);
+        impl->armedInput = nullptr;
+        impl->armedTrack = 0;
+        if (! impl->armedSet.empty())          // otra pista armada pasa a ser la principal
+        {
+            impl->armedTrack = impl->armedSet.begin()->first;
+            impl->armedInput = impl->armedSet.begin()->second;
+            if (impl->armedInput != nullptr)
+                impl->armedInput->levelMeasurer.addClient (impl->inputClient);
+        }
+    }
+}
+
+std::vector<int> Engine::armedTracks() const
+{
+    std::vector<int> r;
+    for (auto& [id, dev] : impl->armedSet)
+        r.push_back (id);
+    return r;
+}
+
+void Engine::setPunch (bool on)
+{
+    requireMessageThread();
+    impl->edit->recordingPunchInOut = on;
+}
+
+bool Engine::punch() const { return impl->edit->recordingPunchInOut; }
+
+// G3: la toma entera de una pista que ya tenía audio: lo de antes fuera del tramo grabado y la grabación
+// dentro (con 10 ms de fundido en cada borde). Cada toma es un archivo, como las de «Rehacer con IA»; los
+// clips que devuelve son los de antes, alargados o con uno nuevo si la grabación cae fuera de ellos.
+static std::vector<ClipInfo> composeTake (const juce::File& base, std::vector<ClipInfo> cl, const juce::File& rec,
+                                          double recOffset, double start, double len, const juce::File& out)
+{
+    juce::AudioFormatManager fm;
+    fm.registerBasicFormats();
+    std::unique_ptr<juce::AudioFormatReader> rb (fm.createReaderFor (base)), rr (fm.createReaderFor (rec));
+    if (rb == nullptr || rr == nullptr || rb->sampleRate <= 0 || rr->sampleRate <= 0)
+        throw std::runtime_error ("afo_audio: no se pueden leer las tomas para unirlas");
+    std::sort (cl.begin(), cl.end(), [] (auto& x, auto& y) { return x.start < y.start; });
+    const ClipInfo* ref = &cl.front();          // el clip que suena donde empieza la grabación (o el primero)
+    for (auto& c : cl)
+        if (c.start <= start + 1e-6)
+            ref = &c;
+    double fileStart = start - ref->start + ref->offset;
+    const double pad = std::max (0.0, -fileStart);   // grabado antes del principio del archivo: se alarga por delante
+    fileStart += pad;
+    const double sr = rb->sampleRate;
+    const int ch = (int) rb->numChannels;
+    const auto nb = (int) rb->lengthInSamples;
+    const int padS = (int) std::lround (pad * sr), s0 = (int) std::lround (fileStart * sr), n = (int) std::lround (len * sr);
+    if (n <= 0)
+        throw std::runtime_error ("afo_audio: la toma está vacía");
+    juce::AudioBuffer<float> buf (ch, std::max (padS + nb, s0 + n));
+    buf.clear();
+    rb->read (&buf, padS, nb, 0, true, true);
+    // La grabación, en la frecuencia del archivo de antes
+    const double ratio = rr->sampleRate / sr;
+    const int nr = (int) std::lround (n * ratio) + 8;
+    juce::AudioBuffer<float> raw ((int) rr->numChannels, nr);
+    raw.clear();
+    rr->read (&raw, 0, nr, (juce::int64) std::lround (recOffset * rr->sampleRate), true, true);
+    juce::AudioBuffer<float> rs (raw.getNumChannels(), n);
+    for (int c = 0; c < raw.getNumChannels(); ++c)
+    {
+        if (std::abs (ratio - 1.0) < 1e-9)
+            rs.copyFrom (c, 0, raw, c, 0, n);
+        else
+        {
+            juce::LagrangeInterpolator li;
+            li.process (ratio, raw.getReadPointer (c), rs.getWritePointer (c), n, nr, 0);
+        }
+    }
+    const int f = std::max (1, std::min ((int) (0.01 * sr), n / 4));
+    for (int c = 0; c < ch; ++c)
+    {
+        auto* d = buf.getWritePointer (c, s0);
+        auto* r = rs.getReadPointer (std::min (c, rs.getNumChannels() - 1));
+        for (int i = 0; i < n; ++i)
+        {
+            const float w = i < f ? (float) i / (float) f : i >= n - f ? (float) (n - i) / (float) f : 1.0f;
+            d[i] = d[i] * (1.0f - w) + r[i] * w;
+        }
+    }
+    out.deleteFile();
+    std::unique_ptr<juce::OutputStream> os (out.createOutputStream());
+    juce::WavAudioFormat wav;
+    std::unique_ptr<juce::AudioFormatWriter> w (os != nullptr ? wav.createWriterFor (os.get(), sr, (unsigned) ch, 24, {}, 0) : nullptr);
+    if (w == nullptr)
+        throw std::runtime_error ("afo_audio: no se puede escribir " + toStd (out.getFullPathName()));
+    os.release();
+    if (! w->writeFromAudioSampleBuffer (buf, 0, buf.getNumSamples()))
+        throw std::runtime_error ("afo_audio: no se pudo escribir la toma");
+    w.reset();
+    // Clips: los de antes (desplazados si el archivo creció por delante) y que la grabación suene entera
+    for (auto& c : cl)
+        c.offset += pad;
+    bool covered = false;
+    for (auto& c : cl)
+        if (c.start <= start + 1e-6 && start < c.start + c.length)
+        {
+            c.length = std::max (c.length, start + len - c.start);
+            covered = true;
+        }
+    if (! covered)
+    {
+        ClipInfo c;
+        c.start = start; c.length = len; c.offset = fileStart;
+        cl.push_back (c);
+    }
+    return cl;
+}
+
+std::vector<TrackInfo> Engine::stopRecordingAll (bool discard)
+{
+    requireMessageThread();
+    auto& edit = *impl->edit;
+    auto& t = edit.getTransport();
+    std::map<int, juce::File> recFile;         // el WAV que escribe cada pista (antes de parar: luego ya no se sabe)
+    for (auto& [id, dev] : impl->armedSet)
+        if (dev != nullptr)
+            if (auto* inst = impl->instanceFor (dev))
+                recFile[id] = inst->getRecordingFile (impl->slot (id).track->itemID);
+    if (t.isRecording() || t.isPlaying())
+        t.stop (discard, false);
+
+    std::vector<TrackInfo> out;
+    impl->takesOf.clear();
+    for (auto& [id, dev] : impl->armedSet)
+    {
+        auto& slot = impl->slot (id);
+        auto& before = impl->clipsBefore[id];
+        // El clip de esta pasada: el que suena el archivo grabado (con punch, Tracktion también parte el clip
+        // de antes y su trozo de después es «nuevo»; por eso no basta con «el más reciente»)
+        te::WaveAudioClip* take = nullptr;
+        const auto rf = recFile[id];
+        for (auto* c : slot.track->getClips())
+            if (std::find (before.begin(), before.end(), c->itemID) == before.end())
+                if (auto* w = dynamic_cast<te::WaveAudioClip*> (c))
+                {
+                    const bool mine = rf != juce::File() && w->getOriginalFile() == rf;
+                    const bool takeMine = take != nullptr && rf != juce::File() && take->getOriginalFile() == rf;
+                    if (take == nullptr || (mine && ! takeMine)
+                        || (mine == takeMine && w->getPosition().getStart() >= take->getPosition().getStart()))
+                        take = w;
+                }
+        if (take == nullptr || discard)
+        {
+            out.push_back (slot.info);
+            continue;
+        }
+        // Tomas: cada pasada del bucle es un archivo; suena la última
+        std::vector<std::string> files;
+        // Tracktion parte la grabación de un bucle en el archivo original (1.ª vuelta) y «<nombre>_take_N»
+        // (las siguientes); el árbol de tomas guarda rutas relativas a un Edit sin carpeta, así que se
+        // buscan por su nombre, que es único para esta grabación.
+        const auto orig = take->getOriginalFile();
+        files.push_back (toStd (orig.getFullPathName()));
+        std::vector<std::pair<int, juce::File>> more;
+        for (auto& f : orig.getParentDirectory().findChildFiles (juce::File::findFiles, false, orig.getFileNameWithoutExtension() + "_take_*" + orig.getFileExtension()))
+        {
+            const int n = f.getFileNameWithoutExtension().fromLastOccurrenceOf ("_take_", false, false).getIntValue();
+            if (n > 1)
+                more.emplace_back (n, f);
+        }
+        std::sort (more.begin(), more.end(), [] (auto& x, auto& y) { return x.first < y.first; });
+        for (auto& [n, f] : more)
+            files.push_back (toStd (f.getFullPathName()));
+        const auto pos = take->getPosition();
+        const double start = pos.getStart().inSeconds(), len = pos.getLength().inSeconds(), off = pos.offset.inSeconds();
+        take->clearTakes();
+        // Cada pasada es una toma entera de la pista (un archivo, como las tomas de F4): sobre el audio de
+        // antes si lo había, para que fuera del tramo siga sonando lo mismo (punch); si no, la grabación sola
+        std::vector<std::string> takes;
+        std::vector<ClipInfo> cl;
+        auto base = impl->baseOf.find (id);
+        for (auto& p : files)
+        {
+            if (base != impl->baseOf.end())
+            {
+                const auto src = toFile (p);
+                const auto dst = src.getSiblingFile (src.getFileNameWithoutExtension() + "_toma.wav");
+                cl = composeTake (toFile (base->second.first), base->second.second, src, off, start, len, dst);
+                takes.push_back (toStd (dst.getFullPathName()));
+            }
+            else
+            {
+                ClipInfo c;
+                c.start = start; c.length = len; c.offset = off;
+                cl = { c };
+                takes.push_back (p);
+            }
+        }
+        impl->takesOf[id] = takes;
+        for (auto* c : slot.track->getClips())  // lo que Tracktion dejó (clip partido, tomas) sale: suena la última toma
+            c->removeFromParent();
+        te::AudioFile af (*impl->engine, toFile (takes.back()));
+        slot.info.sourcePath = takes.back();
+        slot.info.sampleRate = af.getSampleRate();
+        slot.info.numChannels = af.getNumChannels();
+        setClips (id, cl);
+        out.push_back (slot.info);
+    }
+    impl->clipsBefore.clear();
+    impl->baseOf.clear();
+    return out;
+}
+
+std::vector<std::string> Engine::lastTakes (int trackId) const
+{
+    auto it = impl->takesOf.find (trackId);
+    return it == impl->takesOf.end() ? std::vector<std::string>{} : it->second;
 }
 
 RecordState Engine::recordState()
