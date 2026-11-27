@@ -240,6 +240,11 @@ PYBIND11_MODULE (afo_audio, m)
         .def ("disarm", &afo::Engine::disarm)
         .def ("start_recording", &afo::Engine::startRecording)
         .def ("stop_recording", [] (afo::Engine& e, bool discard) { return toDict (e.stopRecording (discard)); }, py::arg ("discard") = false)
+        .def ("midi_inputs", &afo::Engine::midiInputs)
+        .def ("arm_midi", &afo::Engine::armMidi, py::arg ("track_id"))
+        .def ("midi_armed", &afo::Engine::midiArmed)
+        .def ("midi_note", &afo::Engine::midiNote, py::arg ("note"), py::arg ("velocity"))
+        .def ("take_recorded_midi", &afo::Engine::takeRecordedMidi)
         .def ("record_state", [] (afo::Engine& e)
               {
                   auto r = e.recordState();

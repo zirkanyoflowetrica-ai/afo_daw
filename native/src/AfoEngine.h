@@ -242,6 +242,17 @@ public:
     TrackInfo stopRecording (bool discard);
     RecordState recordState();
 
+    // G2: entrada MIDI. «All MIDI Ins» de Tracktion junta todos los teclados conectados; el teclado del
+    // ordenador (o el de pantalla) inyecta sus notas en él. armMidi lo dirige a una pista de instrumento:
+    // suena en vivo con su sintetizador o VST3 y startRecording / stopRecording graban sus notas.
+    // takeRecordedMidi devuelve lo grabado (inicio y duración en negras desde el principio del proyecto,
+    // nota, velocidad) y quita del Edit los clips de la grabación.
+    std::vector<std::string> midiInputs();
+    std::string armMidi (int trackId);
+    bool midiArmed() const;
+    bool midiNote (int note, int velocity);            // velocidad 0 = soltar la nota
+    std::vector<std::tuple<double, double, int, int>> takeRecordedMidi();
+
     // Pistas de audio
     TrackInfo addAudioTrack (const std::string& filePath, const std::string& name);
     bool removeTrack (int id);

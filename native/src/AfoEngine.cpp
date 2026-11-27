@@ -189,6 +189,8 @@ struct Engine::Impl
     int armedTrack = 0;
     bool monitor = false;
     te::WaveInputDevice* armedInput = nullptr;
+    std::shared_ptr<te::MidiInputDevice> armedMidi;      // G2: «All MIDI Ins» dirigida a armedTrack
+    std::vector<te::EditItemID> clipsBeforeRec;          // G2: clips de la pista antes de grabar MIDI
     te::LevelMeasurer::Client inputClient;
     double recordStart = 0.0;
     te::EditPlaybackContext* attachedContext = nullptr;
@@ -449,6 +451,15 @@ struct Engine::Impl
             if (auto* w = dm.getWaveInDevice (i); w != nullptr && (name.empty() || toStd (w->getName()) == name))
                 return w;
         return nullptr;
+    }
+
+    std::shared_ptr<te::MidiInputDevice> allMidiIns() const
+    {
+        auto& dm = engine->getDeviceManager();
+        if (auto d = dm.findMidiInputDeviceForID ("all_midi_in"))
+            return d;
+        dm.rescanMidiDeviceList();                 // la lista se rehace en un temporizador: la próxima vez estará
+        return {};
     }
 
     te::InputDeviceInstance* instanceFor (te::InputDevice* dev) const
@@ -1871,6 +1882,9 @@ void Engine::disarm()
 {
     requireMessageThread();
     auto& edit = *impl->edit;
+    if (impl->armedMidi != nullptr)
+        impl->armedMidi->setMonitorMode (te::InputDevice::MonitorMode::off);
+    impl->armedMidi = nullptr;
     if (edit.getTransport().isRecording())
         edit.getTransport().stop (true, false);
     for (auto* inst : edit.getAllInputDevices())
@@ -1891,11 +1905,14 @@ void Engine::disarm()
 std::string Engine::startRecording()
 {
     requireMessageThread();
-    if (impl->armedTrack == 0 || impl->armedInput == nullptr)
+    if (impl->armedTrack == 0 || (impl->armedInput == nullptr && impl->armedMidi == nullptr))
         return "Arma una pista primero";
     auto& t = impl->edit->getTransport();
     if (t.isRecording())
         return {};
+    impl->clipsBeforeRec.clear();
+    for (auto* c : impl->slot (impl->armedTrack).track->getClips())
+        impl->clipsBeforeRec.push_back (c->itemID);
     impl->recordStart = t.getPosition().inSeconds();
     t.record (false, false);
     impl->attachMasterMeter();
@@ -1957,6 +1974,105 @@ TrackInfo Engine::stopRecording (bool discard)
     return slot.info;
 }
 
+std::vector<std::string> Engine::midiInputs()
+{
+    requireMessageThread();
+    std::vector<std::string> r;
+    for (auto& d : impl->engine->getDeviceManager().getMidiInDevices())
+        if (d != nullptr && d->getDeviceType() == te::InputDevice::physicalMidiDevice)
+            r.push_back (toStd (d->getName()));
+    return r;
+}
+
+std::string Engine::armMidi (int trackId)
+{
+    requireMessageThread();
+    auto& slot = impl->slot (trackId);
+    if (slot.synth == nullptr && slot.instrument == nullptr)
+        return "Solo una pista de instrumento o de batería recibe MIDI";
+    auto& edit = *impl->edit;
+    auto& transport = edit.getTransport();
+    if (transport.isRecording())
+        return "Ya se está grabando";
+    auto dev = impl->allMidiIns();
+    if (dev == nullptr)
+        return "La entrada MIDI se está preparando: vuelve a intentarlo en un momento";
+    if (impl->armedTrack != 0)                 // una sola pista armada a la vez (audio o MIDI)
+        disarm();
+    for (auto& d : impl->engine->getDeviceManager().getMidiInDevices())   // los teclados conectados alimentan «All MIDI Ins»
+        if (d != nullptr && d->getDeviceType() == te::InputDevice::physicalMidiDevice && ! d->isEnabled())
+            d->setEnabled (true);
+    if (! dev->isEnabled())
+        dev->setEnabled (true);
+    dev->mergeRecordings = false;              // cada toma, clip aparte: takeRecordedMidi la saca sin tocar el clip del patrón
+    dev->replaceExistingClips = false;
+    dev->setMonitorMode (te::InputDevice::MonitorMode::on);
+
+    transport.ensureContextAllocated();
+    auto* inst = impl->instanceFor (dev.get());
+    if (inst == nullptr)
+    {
+        transport.freePlaybackContext();
+        transport.ensureContextAllocated();
+        inst = impl->instanceFor (dev.get());
+    }
+    if (inst == nullptr)
+        return "La entrada MIDI no está disponible";
+    auto res = inst->setTarget (slot.track->itemID, false, nullptr);
+    if (! res)
+        return toStd (res.error());
+    inst->setRecordingEnabled (slot.track->itemID, true);
+    impl->armedMidi = dev;
+    impl->armedTrack = trackId;
+    impl->monitor = true;
+    edit.restartPlayback();
+    impl->attachMasterMeter();
+    return {};
+}
+
+bool Engine::midiArmed() const { return impl->armedMidi != nullptr; }
+
+bool Engine::midiNote (int note, int velocity)
+{
+    requireMessageThread();
+    if (impl->armedMidi == nullptr)
+        return false;
+    const int n = juce::jlimit (0, 127, note);
+    auto m = velocity > 0 ? juce::MidiMessage::noteOn (1, n, (juce::uint8) juce::jlimit (1, 127, velocity))
+                          : juce::MidiMessage::noteOff (1, n);
+    m.setTimeStamp (juce::Time::getMillisecondCounterHiRes() * 0.001);
+    impl->armedMidi->handleIncomingMidiMessage (m, impl->armedMidi->getMPESourceID());
+    return true;
+}
+
+std::vector<std::tuple<double, double, int, int>> Engine::takeRecordedMidi()
+{
+    requireMessageThread();
+    std::vector<std::tuple<double, double, int, int>> notes;
+    if (impl->armedTrack == 0)
+        return notes;
+    auto& slot = impl->slot (impl->armedTrack);
+    auto& ts = impl->edit->tempoSequence;
+    juce::Array<te::Clip*> taken;
+    for (auto* c : slot.track->getClips())
+        if (std::find (impl->clipsBeforeRec.begin(), impl->clipsBeforeRec.end(), c->itemID) == impl->clipsBeforeRec.end())
+            if (auto* mc = dynamic_cast<te::MidiClip*> (c))
+            {
+                for (auto* n : mc->getSequence().getNotes())
+                {
+                    const double a = ts.toBeats (mc->getTimeOfContentBeat (n->getStartBeat())).inBeats();
+                    const double b = ts.toBeats (mc->getTimeOfContentBeat (n->getStartBeat() + n->getLengthBeats())).inBeats();
+                    notes.emplace_back (a, std::max (1.0 / 64.0, b - a), n->getNoteNumber(), n->getVelocity());
+                }
+                taken.add (c);
+            }
+    for (auto* c : taken)
+        c->removeFromParent();
+    impl->clipsBeforeRec.clear();
+    std::sort (notes.begin(), notes.end());
+    return notes;
+}
+
 RecordState Engine::recordState()
 {
     RecordState s;
@@ -1964,6 +2080,8 @@ RecordState Engine::recordState()
     s.recording = t.isRecording();
     s.armedTrack = impl->armedTrack;
     s.monitor = impl->monitor;
+    if (impl->armedMidi != nullptr)
+        s.input = "MIDI";
     if (impl->armedInput != nullptr)
     {
         s.input = toStd (impl->armedInput->getName());

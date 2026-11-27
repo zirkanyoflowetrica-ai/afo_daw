@@ -39,6 +39,15 @@ QtObject {
     property bool monitor: false
     property bool recording: false
     property string armedUid: ""
+    // G2: teclado MIDI. Lo toca y lo graba el motor («All MIDI Ins» de Tracktion); aquí qué pista
+    // está armada, si se graba, los teclados conectados y la rejilla de «Cuantizar».
+    property string midiUid: ""
+    property bool midiRec: false
+    property var midiIns: []
+    property string qGrid: "1/16"
+    property bool qEnds: false
+    readonly property var qGrids: [["1/4", "Negra"], ["1/8", "Corchea"], ["1/8T", "Corchea de tresillo"],
+        ["1/16", "Semicorchea"], ["1/16T", "Semicorchea de tresillo"], ["1/32", "Fusa"]]
 
     readonly property var src: ({ inst: "inst", drum: "drums", ia: "ia", voz: "cinta", audio: "pistas" })
     readonly property var tn: ({ inst: "Instrumento", drum: "Batería", ia: "IA", voz: "Voz", audio: "Audio", aux: "Aux" })
@@ -158,9 +167,11 @@ QtObject {
         studio.followSelection(t)
         if (act[t.type] !== undefined) { var c = Object.assign({}, act); c[t.type] = t.uid; act = c }
         if (t.type === "voz") arm()
+        if (t.type === "inst" && midiUid && midiUid !== t.uid && !midiRec) midiArm(true)   // G2: el teclado sigue a la pista elegida
     }
     function forget(t) {
         if (t.type === "voz" && t.uid === armedUid) { if (recording) stopTake(true); armedUid = "" }
+        if (t.uid === midiUid) { if (midiRec) { midiRec = false; studio.call("recStop", true) } studio.call("midiArm", -1); midiUid = "" }
         if ((isSynth(t) || t.type === "voz" || t.type === "aux") && t.id >= 0) studio.call("removeTrack", t.id)
         var c = Object.assign({}, act)
         for (var k in c) if (c[k] === t.uid) {
@@ -179,7 +190,7 @@ QtObject {
     }
     // Arma la pista de voz activa en la entrada elegida; sin pista o con el módulo quitado, desarma
     function arm() {
-        if (!studio.engineOk || recording) return
+        if (!studio.engineOk || recording || midiUid) return
         var t = active("voz")
         if (!t || t.id < 0 || studio.hidden.cinta) {
             if (armedUid) studio.call("recArm", -1, "", false)
@@ -225,6 +236,66 @@ QtObject {
         if (!t || t.id < 0) { studio.toast("Crea una pista de voz primero"); return }
         var r = studio.call("recListen", t.id)
         if (!r.ok) studio.toast(r.error)
+    }
+
+    // ---------------- G2: teclado MIDI ----------------
+    // Arma la pista de instrumento activa: lo que se toque (teclado MIDI conectado, el de pantalla o
+    // el del ordenador) suena con su instrumento. Volver a llamarlo la suelta.
+    function midiArm(on) {
+        if (!studio.engineOk) { studio.toast("Motor nativo no disponible"); return false }
+        if (!on) {
+            if (midiRec) midiStop()
+            if (midiUid) studio.call("midiArm", -1)
+            midiUid = ""; Qt.callLater(arm)       // la pista de voz vuelve a quedar armada
+            return true
+        }
+        var t = active("inst")
+        if (!t || t.id < 0) { studio.toast("Crea una pista de instrumento primero"); return false }
+        if (recording) { studio.toast("Termina la toma de voz primero"); return false }
+        var r = studio.call("midiArm", t.id)
+        if (!r.ok) { studio.toast(r.error); midiUid = ""; return false }
+        armedUid = ""
+        midiUid = t.uid; midiIns = r.inputs
+        studio.toast(midiIns.length ? "«" + t.name + "» suena con " + midiIns.join(", ") + " y con el teclado de pantalla"
+                                    : "«" + t.name + "» suena con el teclado de pantalla o el del ordenador (A W S E D F T G Y H U J K)")
+        return true
+    }
+    function midiKey(note, down) {
+        if (!midiUid) return false
+        var r = studio.call("midiNote", note, down ? 100 : 0)
+        return r.ok
+    }
+    // Grabar: el motor arranca desde el cursor y guarda lo tocado; al parar se suma a las notas de la pista
+    function midiStart() {
+        if (!midiUid && !midiArm(true)) return false
+        if (midiRec) return true
+        var r = studio.call("recStart")
+        if (!r.ok) { studio.toast(r.error); return false }
+        midiRec = true
+        return true
+    }
+    function midiStop() {
+        if (!midiRec) return false
+        midiRec = false
+        var t = trackOf(midiUid)
+        var r = studio.call("midiTake", JSON.stringify(t ? { type: t.type, cfg: t.cfg, clips: t.clips, roll: t.roll, midi: t.midi || null } : {}))
+        if (!r.ok) { studio.toast(r.error); return false }
+        if (!t || !r.added) { studio.toast("No se grabó ninguna nota"); return false }
+        replace(t.uid, { midi: r.midi, midiSrc: t.midiSrc || "Teclado MIDI" }); update(t.uid); studio.markDirty()
+        studio.toast(r.added + (r.added === 1 ? " nota grabada" : " notas grabadas") + " en «" + t.name + "»")
+        return true
+    }
+    function quantize(grid, ends) {
+        if (grid) qGrid = grid
+        if (ends !== undefined) qEnds = ends
+        var t = active("inst")
+        if (!t) { studio.toast("Crea una pista de instrumento primero"); return false }
+        var r = studio.call("midiQuantize", JSON.stringify({ type: t.type, cfg: t.cfg, clips: t.clips, roll: t.roll, midi: t.midi || null }),
+                            qGrid, 100, qEnds)
+        if (!r.ok) { studio.toast(r.error); return false }
+        replace(t.uid, { midi: r.midi, midiSrc: t.midiSrc || "Cuantizado" }); update(t.uid); studio.markDirty()
+        studio.toast(r.moved ? r.moved + (r.moved === 1 ? " nota alineada" : " notas alineadas") + " a " + qGrid : "Las notas ya estaban en la rejilla " + qGrid)
+        return true
     }
 
     // ---------------- sintetizador del motor ----------------

@@ -53,11 +53,13 @@ _A = [
     ("track.mute", "Silenciar", "Pista", 3, "", "Silencia la pista elegida"),
     ("track.stems", "Separar en pistas", "Pista", 4, "", "Demucs: batería, bajo, voz, guitarra, piano y otros, en la carpeta de la original, que queda silenciada"),
     ("track.effects", "Ver su cadena de efectos", "Pista", 4, "", "Abre la cadena de efectos de la pista en el panel de abajo"),
+    ("track.midiKeys", "Tocar con el teclado MIDI", "Pista", 4, "", "La pista de instrumento suena con tu teclado MIDI, el de pantalla del Piano roll o el del ordenador (A W S E D F T G Y H U J K)"),
     ("track.remove", "Quitar pista…", "Pista", 5, "", "Quita la pista con su canal y sus efectos (pide confirmación)"),
     # Clip
     ("clip.split", "Dividir en el cursor", "Clip", 1, "S", "Divide el clip donde está el cursor de reproducción"),
     ("clip.duplicate", "Duplicar", "Clip", 1, "Ctrl+D", "Copia el clip detrás del último de su pista"),
     ("clip.delete", "Borrar", "Clip", 1, "Supr", "Quita el clip"),
+    ("clip.quantize", "Cuantizar notas", "Clip", 1, "Q", "Alinea el inicio de las notas de la pista de instrumento a la rejilla del Piano roll (1/16 de fábrica)"),
     ("clip.gainUp", "Subir 1 dB", "Clip", 2, "", "Sube el volumen del clip"),
     ("clip.gainDown", "Bajar 1 dB", "Clip", 2, "", "Baja el volumen del clip"),
     ("clip.normalize", "Normalizar a −1 dBFS", "Clip", 2, "", "Deja el pico del clip en −1 dBFS"),

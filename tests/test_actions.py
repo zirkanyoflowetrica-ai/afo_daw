@@ -9,7 +9,7 @@ def test_registro_de_ordenes():
     assert {a["menu"] for a in acts} == set(actions.MENUS)
     for a in acts:
         assert a["label"] and a["tip"], a["id"]
-        assert a["id"].split(".")[0] in ("file", "edit", "track", "clip", "mix", "view", "script"), a["id"]
+        assert a["id"].split(".")[0] in ("file", "edit", "transport", "track", "clip", "mix", "view", "script"), a["id"]
     # un atajo no se repite entre órdenes distintas (salvo la misma orden en Editar y en Clip)
     seen = {}
     for a in acts:

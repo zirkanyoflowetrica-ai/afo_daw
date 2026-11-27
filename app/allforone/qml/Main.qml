@@ -201,6 +201,7 @@ Window {
         case "clip.projectToKey": return clipPicked && !(tkInfo && tkInfo.busy)
         case "clip.original": return clipPicked && ((a.selInfo.speed || 1) !== 1 || (a.selInfo.semitones || 0) !== 0)
         case "track.solo": case "track.mute": case "track.remove": return !!t
+        case "track.midiKeys": case "clip.quantize": return engineOk && !!sq.active("inst")
         case "transport.play": case "transport.stop": case "transport.metronome": case "transport.loop": case "transport.loopSection":
         case "transport.prevMarker": case "transport.nextMarker": return engineOk
         case "track.effects": return !!t && t.id > 0
@@ -226,6 +227,7 @@ Window {
         switch (id) {
         case "edit.snap": return arrange.snap
         case "transport.metronome": return clickOn
+        case "track.midiKeys": return !!sq.midiUid
         case "transport.loop": return loop.on
         case "edit.toolMove": return arrange.tool === "move"
         case "edit.toolCut": return arrange.tool === "cut"
@@ -266,6 +268,8 @@ Window {
         "transport.play": function () { var r = call("togglePlay"); if (!r.ok) toast(r.error) },
         "transport.stop": function () { call("stop"); step = -1 },
         "transport.metronome": function () { setClick(!clickOn) },
+        "track.midiKeys": function () { sq.midiArm(!sq.midiUid) },
+        "clip.quantize": function () { sq.quantize() },
         "transport.loop": function () { toggleLoop() },
         "transport.loopSection": function () { loopSection() },
         "transport.prevMarker": function () { jumpMarker(-1) },
@@ -571,6 +575,7 @@ Window {
     // G1: metrónomo, bucle y secciones (no mientras se escribe en un campo)
     Shortcut { sequence: "C"; enabled: !win.typing && win.view !== "home"; onActivated: win.runAction("transport.metronome") }
     Shortcut { sequence: "L"; enabled: !win.typing && win.view !== "home"; onActivated: win.runAction("transport.loop") }
+    Shortcut { sequence: "Q"; enabled: !win.typing && win.view !== "home"; onActivated: win.runAction("clip.quantize") }   // G2
     Shortcut { sequence: "Ctrl+L"; enabled: !win.typing && win.view !== "home"; onActivated: win.runAction("transport.loopSection") }
     Shortcut { sequence: ","; enabled: !win.typing && win.view !== "home"; onActivated: win.runAction("transport.prevMarker") }
     Shortcut { sequence: "."; enabled: !win.typing && win.view !== "home"; onActivated: win.runAction("transport.nextMarker") }
@@ -749,6 +754,15 @@ Window {
             var ps = pj.snapshot()
             return { clickOn: clickOn, clickVol: clickVol, loop: loop, posSec: posSec, markers: markers, band: arrange.loopInfo(),
                      pps: arrange.pps, project: { click: ps.click, loop: ps.loop } } }
+        if (what === "midi") {                   // G2: teclado MIDI y cuantizar (a = orden, b = su dato)
+            var it = sq.active("inst"), ok = true
+            if (a === "key") ok = sq.midiKey(b[0], b[1])
+            else if (a === "set" && it) { sq.replace(it.uid, { midi: b }); sq.update(it.uid) }
+            else if (a === "grid") sq.qGrid = b
+            it = sq.active("inst")
+            return { ok: ok, armed: sq.midiUid, active: it ? it.uid : "", midi: it ? (it.midi || null) : null,
+                     grid: sq.qGrid, rec: sq.midiRec }
+        }
         if (what === "arrangeScroll") {          // F10: lleva el scroll del Arreglo a una fracción (0..1)
             arrange.scrollTo(a); return arrange.scrollProgress > 0 || a === 0 }
         if (what === "backdrop") {               // F10: poner (a = modo, b = ruta), ajustar y medir

@@ -18,7 +18,7 @@ from pathlib import Path
 from PySide6.QtCore import QCoreApplication, QObject, QTimer, Signal, Slot
 from PySide6.QtWidgets import QFileDialog, QWidget
 
-from . import actions, audio_import, fx_presets, library, paths, project, themes
+from . import actions, audio_import, fx_presets, library, midi_edit, paths, project, themes
 from .engine_host import EngineHost, fader_to_db
 from .mixer_service import AUDIO_EXT, REF_LABEL, MixerService
 
@@ -452,6 +452,63 @@ class Bridge(QObject):
         if not eng.preview_play(path, 0.0):
             return _err("No se pudo abrir la toma")
         return _ok(playing=True)
+
+    # --- G2: teclado MIDI (lo toca y lo graba el motor; aquí solo las notas resultantes) -------
+    @Slot(result=str)
+    @_safe
+    def midiInputs(self) -> str:
+        """Teclados MIDI conectados y si hay una pista armada para tocar con ellos."""
+        if (g := self._guard()):
+            return g
+        eng = self.host.engine
+        return _ok(inputs=eng.midi_inputs(), armed=eng.midi_armed())
+
+    @Slot(int, result=str)
+    @_safe
+    def midiArm(self, track_id: int) -> str:
+        """Dirige el teclado MIDI a una pista de instrumento (track_id < 0: lo suelta)."""
+        if (g := self._guard()):
+            return g
+        eng = self.host.engine
+        if track_id < 0:
+            if eng.midi_armed():
+                eng.disarm()
+            return _ok()
+        err = eng.arm_midi(int(track_id))
+        return _err(err) if err else _ok(inputs=eng.midi_inputs())
+
+    @Slot(int, int, result=str)
+    @_safe
+    def midiNote(self, note: int, velocity: int) -> str:
+        """Nota del teclado de pantalla o del ordenador (velocidad 0 = soltar)."""
+        if (g := self._guard()):
+            return g
+        return _ok() if self.host.engine.midi_note(int(note), int(velocity)) else _err("Arma la pista con «Teclado MIDI» primero")
+
+    @Slot(str, result=str)
+    @_safe
+    def midiTake(self, payload: str) -> str:
+        """Para la grabación y suma lo tocado a las notas de la pista ({type, cfg, midi, roll, clips})."""
+        if (g := self._guard()):
+            return g
+        eng = self.host.engine
+        if eng.record_state()["recording"]:
+            eng.stop_recording(False)
+        rec = eng.take_recorded_midi()
+        track = json.loads(payload)
+        if not rec:
+            return _ok(midi=track.get("midi") or None, added=0)
+        return _ok(midi=midi_edit.merge_take(track, rec), added=len(rec))
+
+    @Slot(str, str, float, bool, result=str)
+    @_safe
+    def midiQuantize(self, payload: str, grid: str, strength: float, ends: bool) -> str:
+        """Cuantiza las notas de la pista: inicios (y finales con `ends`) a la rejilla."""
+        notes = midi_edit.track_notes(json.loads(payload))
+        if not notes:
+            return _err("La pista no tiene notas que cuantizar")
+        out, moved = midi_edit.quantize(notes, grid, strength, ends)
+        return _ok(midi=out, moved=moved)
 
     # --- efectos nativos (biblioteca AFO, Hito 1) -----------------------------------------
     @Slot(result=str)

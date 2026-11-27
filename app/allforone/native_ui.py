@@ -258,6 +258,43 @@ def _g1_checks(rep, host, lay) -> None:
     lay("transport", "seek", 0.0)
 
 
+def _g2_checks(rep, window, host, lay) -> None:
+    """G2: el teclado MIDI arma la pista de instrumento en el motor, sus teclas suenan por él y «Cuantizar» (Q)
+    alinea las notas. Que lo tocado se graba de verdad se mide en tests/test_midi_teclado.py."""
+    from PySide6.QtCore import QObject
+    eng = host.engine
+    m0 = lay("midi")
+    acts = lay("actions")
+    rep.check("G2: «Tocar con el teclado MIDI» (Pista) y «Cuantizar notas» (Clip, Q) en los menús, con su función",
+              all(i in acts["ids"] and i not in acts["missing"] for i in ("track.midiKeys", "clip.quantize")) and m0["active"] and not m0["armed"],
+              {"faltan": acts["missing"], "pista": m0["active"]})
+    a = lay("run", "track.midiKeys")
+    m1 = lay("midi")
+    rs = eng.record_state()
+    rep.check("G2: «Teclado MIDI» arma la pista de instrumento activa en el motor (entrada «MIDI»)",
+              a["ok"] and a["checked"] and m1["armed"] == m1["active"] and eng.midi_armed() and rs["input"] == "MIDI",
+              {"accion": a, "motor": rs})
+    on, off = lay("midi", "key", [60, True]), lay("midi", "key", [60, False])
+    rep.check("G2: las teclas (pantalla u ordenador) tocan la pista armada por el motor", on["ok"] and off["ok"], [on, off])
+    old = m1["midi"]
+    lay("midi", "grid", "1/8")
+    lay("midi", "set", [[0.06, 0.4, 60, 90], [0.53, 0.2, 64, 90], [1.24, 0.3, 67, 90]])
+    q = lay("run", "clip.quantize")
+    m2 = lay("midi")
+    rep.check("G2: «Cuantizar» (Q) lleva los inicios a la rejilla elegida (1/8) y conserva la duración",
+              q["ok"] and [n[0] for n in m2["midi"] or []] == [0, 0.5, 1.0] and [n[1] for n in m2["midi"]] == [0.4, 0.2, 0.3],
+              m2["midi"])
+    lay("midi", "set", old)
+    lay("midi", "grid", "1/16")
+    b = lay("run", "track.midiKeys")
+    rep.check("G2: volver a pulsar «Teclado MIDI» suelta la pista (el motor queda sin entrada MIDI)",
+              b["ok"] and not b["checked"] and not eng.midi_armed() and not lay("midi")["armed"], b)
+    small = [n for n in ("midiArmBtn", "midiRecBtn", "qGridSel", "qEndsBtn", "quantizeBtn")
+             if (o := window.findChild(QObject, n)) is not None and o.property("height") < 24]
+    rep.check("G2: los controles del teclado MIDI en el Piano roll miden ≥ 24 px",
+              window.findChild(QObject, "midiBar") is not None and not small, small)
+
+
 def _f10_checks(rep, app, host, lay) -> None:
     """F10: fondo opcional (imagen o parallax), apagado de fábrica. Con el fondo puesto el texto de las
     zonas sigue ≥ 4,5:1 en los tres temas, medido con el píxel más oscuro y el más claro de la imagen
@@ -695,6 +732,7 @@ def _native_daw_checks(rep, app, host, window, bridge, track_id) -> None:
     _f8_checks(rep, app, host, lay)
     _f10_checks(rep, app, host, lay)
     _g1_checks(rep, host, lay)
+    _g2_checks(rep, window, host, lay)
     z1 = lay("zones")
     rep.check("tamaño fijo: ninguna zona cambia de tamaño por su contenido", z0 == z1,
               {k: (z0.get(k), z1.get(k)) for k in z1 if z0.get(k) != z1.get(k)})
