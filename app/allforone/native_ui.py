@@ -370,7 +370,7 @@ def _native_daw_checks(rep, app, host, window, bridge, track_id) -> None:
                   for z in ("nav", "insp") for r in sx[z]["rows"])
     rep.check("Inspector a la izquierda y Navegador a la derecha, con secciones plegables (sin pestañas)",
               zz["inspector"]["x"] < zz["principal"]["x"] < zz["navegador"]["x"] and stacked
-              and {r["id"] for r in rows} == set(pages) - {"piano", "inst", "drums", "fx", "afina"},
+              and {r["id"] for r in rows} == set(pages) - {"piano", "inst", "drums", "fx", "tono", "afina"},
               {"x": {k: zz[k]["x"] for k in ("inspector", "principal", "navegador")},
                "secciones": [r["id"] for r in rows], "sin solaparse": stacked})
     tracks = call("mixerSnapshot")["tracks"]
@@ -383,6 +383,21 @@ def _native_daw_checks(rep, app, host, window, bridge, track_id) -> None:
     rep.check("la selección manda: elegir una pista abre su editor en el detalle y su cadena en Efectos",
               s_tone["detail"] == "fx" and s_tone["rack"] == track_id and s_drum["detail"] == "drums",
               {"tono": s_tone, "batería": s_drum})
+    # F3: el editor de abajo no tiene pestañas fijas: sus modos son los de lo elegido
+    by_type = {}
+    for t in tracks:
+        by_type.setdefault(t["type"], t["id"])
+    want = {"inst": ["piano", "inst", "fx"], "drum": ["drums", "fx"], "audio": ["fx", "tono", "afina"]}
+    got = {k: lay("modes", by_type[k]) for k in want if k in by_type}
+    got["master"] = lay("modes", 0)
+    lay("goto", "piano")
+    after = lay("modes", by_type.get("audio", track_id))
+    rep.check("editor de abajo: sus modos siguen a lo elegido (instrumento, batería, audio con Tono, master)",
+              len(got) == 4 and all(got[k]["modes"] == want[k] for k in want) and got["master"]["modes"] == ["fx"]
+              and after["current"] == "fx" and after["pitchTrack"] == by_type.get("audio", track_id)
+              and all(g["caption"].startswith("EDITOR · ") for g in got.values()),
+              {k: (g["modes"], g["caption"]) for k, g in got.items()} | {"piano → audio": after["current"]})
+    lay("modes", track_id)
 
     # Órdenes (F1, FLUJO_PROFESIONAL §4.2): un registro → barra de menús, clic derecho y paleta Ctrl+K
     ac = lay("actions")
@@ -664,7 +679,7 @@ def run_native_selftest(app, host, report_path: str | None, screenshot_path: str
     ids = sorted((pv.toVariant() if hasattr(pv, "toVariant") else pv) or [])
     rep.check("cada módulo tiene su sitio: páginas en las zonas y la consola como vista Mezclador",
               ids == sorted(["add", "fxlist", "ia", "audios", "recent", "pista", "asist", "master", "cinta", "piano",
-                             "inst", "drums", "fx", "afina"]), ids)
+                             "inst", "drums", "fx", "tono", "afina"]), ids)
     rep.check("motor conectado desde QML", bool(prop("engineOk")))
     _native_home_checks(rep, app, host, window, bridge, startup=True)   # lo demás de Inicio, al final: deja el proyecto vacío
 
@@ -902,9 +917,12 @@ def _native_mixer_checks(rep, app, host, window, bridge, prop) -> None:
     rep.check("Afinador en tiempo real: se inserta el primero en la voz, cambia la tónica y se quita",
               tfx is not None and tvals is not None and round(tvals[0]) == 9 and "tune" not in left,
               {"módulo": tb is not None, "efecto": tfx and tfx["key"], "valores": tvals, "queda": left})
-    # Editor de tono (AF-64) en el mismo módulo: analizar la voz, subir una nota, aplicar y volver a la toma
+    # Editor de tono (AF-64), modo «Tono» del editor de abajo (F3): analizar la voz, subir una nota,
+    # aplicar y volver a la toma
+    tb = next((i for i in _items(window.contentItem()) if i.objectName() == "pitchEditor"), None)
     pe_ok, pe_info = False, {"módulo": tb is not None}
     if tb is not None:
+        tb.setProperty("trackId", voz)
         seq = tb.property("seq")
         ctrls = [window.findChild(QObject, n) for n in ("pitchAnalyze", "pitchApply", "pitchRoll", "pitchFlatten", "pitchToScale")]
         QMetaObject.invokeMethod(seq, "pitchAnalyze", Q_ARG("QVariant", voz))

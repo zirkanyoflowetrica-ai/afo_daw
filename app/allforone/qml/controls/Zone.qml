@@ -17,6 +17,7 @@ Rectangle {
     property bool vertical: false             // plegada, la zona queda como franja vertical (lados) u horizontal (abajo)
     property var extra: null                  // componente opcional a la derecha de la cabecera
     property bool sections: false             // F2: secciones plegables en vez de pestañas
+    property string caption: ""               // F3: qué se edita (el editor de abajo dice de qué es)
     readonly property real rowH: 30
     readonly property int curIdx: { for (var i = 0; i < tabs.length; i++) if (tabs[i][0] === current) return i; return 0 }
     // dónde va la página abierta (ZonePage la sigue); sin secciones, todo el cuerpo
@@ -68,10 +69,18 @@ Rectangle {
             text: root.title.toUpperCase(); color: Theme.ink
             font.family: Theme.font; font.pixelSize: 13; font.weight: 800; font.letterSpacing: 0.8
         }
+        Text {                                // F3: «EDITOR · Voz_Principal»
+            id: capText
+            visible: !!root.caption && !root.sections && !(root.folded && root.vertical)
+            x: 12; anchors.verticalCenter: parent.verticalCenter
+            width: Math.min(implicitWidth, head.width * 0.3); elide: Text.ElideRight
+            text: root.caption; color: Theme.ink
+            font.family: Theme.font; font.pixelSize: 13; font.weight: 800; font.letterSpacing: 0.4
+        }
         Row {
             id: tabRow
             visible: !root.sections && !(root.folded && root.vertical)
-            x: 6; height: parent.height; spacing: 2
+            x: capText.visible ? capText.x + capText.width + 14 : 6; height: parent.height; spacing: 2
             // F12: si las pestañas no caben (zona estrecha), todas se estrechan por igual y recortan el
             // nombre; el tooltip lo da entero
             readonly property real natW: {
@@ -79,7 +88,7 @@ Rectangle {
                 for (var i = 0; i < tabRep.count; i++) { var it = tabRep.itemAt(i); if (it) s += it.nat + spacing }
                 return s
             }
-            readonly property real availW: head.width - 6 - (extraLd.item && extraLd.visible ? extraLd.width + 6 : 0)
+            readonly property real availW: head.width - x - (extraLd.item && extraLd.visible ? extraLd.width + 6 : 0)
                                            - (helpBtn.visible ? helpBtn.width + 6 : 0) - 38
             readonly property real k: natW > availW && natW > 0 ? Math.max(0.3, availW / natW) : 1
             Repeater {

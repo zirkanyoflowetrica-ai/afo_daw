@@ -17,7 +17,9 @@ ideas comunes son de interacción, no de aspecto: no se copia la apariencia de n
    Cubase: los ajustes de lo elegido junto a sus pistas, el catálogo junto al lado donde se suelta). En
    el centro, la vista principal. Abajo, el detalle de lo seleccionado. Inspector y navegador no
    tienen pestañas: cada página es una sección plegable (la abierta ocupa el sitio y las demás quedan
-   como títulos con su «?»). La cabecera lleva solo vistas, transporte, tempo, tono y audio; abrir,
+   como títulos con su «?»). El editor de abajo (F3) tampoco tiene pestañas fijas: dice qué edita
+   («EDITOR · Voz») y ofrece solo los modos de lo elegido: instrumento → notas, sonido y efectos;
+   batería → patrón y efectos; audio y voz → efectos, tono (AF-64) y afinador (AF-60); master → efectos. La cabecera lleva solo vistas, transporte, tempo, tono y audio; abrir,
    guardar, Inicio y Crear IA están en los menús Archivo y Ver. Las zonas se pliegan, pero no se cambian de sitio: la memoria espacial es lo que
    hace rápido el uso diario.
    El reparto se ajusta a la pantalla (F12, noviembre 2026), sin huecos:

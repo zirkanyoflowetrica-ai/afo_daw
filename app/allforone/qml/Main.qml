@@ -223,7 +223,7 @@ Window {
         "clip.repaint": function () { sq.repaintClip(arrange.clipUid, arrange.selInfo, "") },
         "clip.cover": function () { sq.coverClip(arrange.clipUid, arrange.selInfo) },
         "clip.align": function () { sq.alignTrack(arrange.clipUid, arrange.alignGuide.uid) },
-        "clip.pitch": function () { var id = arrange.selTrack.id; tuneBody.trackId = id; goTo("afina"); sq.pitchAnalyze(id) },
+        "clip.pitch": function () { var id = arrange.selTrack.id; rackTrack = id; pitchEd.trackId = id; goTo("tono"); sq.pitchAnalyze(id) },
         "clip.stems": function () { sq.splitStems(arrange.selTrack.id) },
         "clip.tempoKey": function () { tempoKey("clip.tempoKey") },
         "clip.toProjectTempo": function () { tempoKey("clip.toProjectTempo") },
@@ -402,12 +402,46 @@ Window {
     // detalle abre su editor (patrón, notas, clips)
     function followSelection(t) {
         if (!t || loading) return
+        selPicked = { id: t.id, type: t.type }                          // el tipo lo dice la pista elegida
         if (t.id > 0) rackTrack = t.id
         if (t.type === "inst") sq.oct = (t.cfg && t.cfg.oct) || 4      // la Octava es de cada pista
-        // audio, IA y voz se editan en el Arreglo (sus clips): el detalle muestra su cadena de efectos
-        var ed = ({ inst: "piano", drum: "drums", audio: "fx", ia: "fx", voz: "fx" })[t.type]
-        if (ed && ["piano", "drums", "inst"].indexOf(detZ.current) >= 0) detZ.current = ed
+        fitDetail()
     }
+    // F3 (FLUJO_PROFESIONAL §2): el editor de abajo no tiene pestañas fijas; muestra los modos de lo
+    // elegido (la tira o pista de rackTrack): instrumento → notas, sonido y efectos; batería → patrón
+    // y efectos; audio y voz → efectos, tono (AF-64) y afinador (AF-60); master → efectos.
+    readonly property var detTrack: { for (var i = 0; i < tracks.length; i++) if (tracks[i].id === rackTrack) return tracks[i]; return null }
+    property var selPicked: ({ id: -2, type: "" })
+    // se calcula al momento: onRackTrackChanged llega antes de que se actualicen las propiedades enlazadas
+    function kindOf(rt, picked, tr) {
+        if (rt === 0) return "master"
+        if (picked.id === rt && picked.type) return picked.type
+        for (var i = 0; i < tr.length; i++) if (tr[i].id === rt) return tr[i].type
+        return fxMain && fxMain.target === 0 ? "master" : ""     // sin tira elegida (o ya no existe), Efectos enseña el master
+    }
+    readonly property string detKind: kindOf(rackTrack, selPicked, tracks)
+    readonly property var detAll: ({ piano: ["Notas", "Piano roll: las notas de la pista de instrumento"],
+                                     inst: ["Sonido", "El instrumento de la pista: sintetizador del motor o VST3"],
+                                     drums: ["Patrón", "Pads y patrón de 16 pasos de la batería"],
+                                     fx: ["Efectos", "La cadena de efectos de lo elegido y el editor del efecto elegido"],
+                                     tono: ["Tono", "Editor de tono (AF-64): las notas de la toma, una a una"],
+                                     afina: ["Afinador", "Afinador en tiempo real AF-60 de la pista"] })
+    function detModesFor(kind) {
+        return ({ inst: ["piano", "inst", "fx"], drum: ["drums", "fx"], audio: ["fx", "tono", "afina"],
+                  voz: ["fx", "tono", "afina"], ia: ["fx", "tono", "afina"] })[kind] || ["fx"]
+    }
+    readonly property var detModes: {
+        var ids = detModesFor(detKind).slice()
+        if (ids.indexOf(detZ.current) < 0) ids.push(detZ.current)       // una orden abrió otro editor
+        return ids.map(function (id) { return [id, detAll[id][0], detAll[id][1]] })
+    }
+    function fitDetail() {
+        if (loading) return
+        var k = kindOf(rackTrack, selPicked, tracks), ids = detModesFor(k)
+        if (ids.indexOf(detZ.current) < 0) detZ.current = ids[0]
+        if (["audio", "voz", "ia"].indexOf(k) >= 0) { tuneBody.trackId = rackTrack; pitchEd.trackId = rackTrack }
+    }
+    onRackTrackChanged: fitDetail()
     readonly property real bar16: 16 * 4 * 60 / Math.max(40, bpm)
     property real stripScroll: 0               // desplazamiento horizontal de las tiras de la consola
     function setDark(b) { setTheme(b ? "Oscuro" : "Claro") }
@@ -512,7 +546,10 @@ Window {
         if (what === "browser") { if (a) fxBrowser.add(a)
                                   return { sections: fxBrowser.sections.map(function (s) { return [s[0], s[1].map(function (d) { return d.key })] }),
                                            target: fxBrowser.targetName } }
-        if (what === "pages") return navZ.tabs.concat(inspZ.tabs, detZ.tabs).map(function (t) { return t[0] })
+        if (what === "pages") return navZ.tabs.concat(inspZ.tabs).map(function (t) { return t[0] }).concat(Object.keys(detAll))
+        if (what === "modes") { if (a !== undefined && a !== null) rackTrack = a; fitDetail()
+                                return { kind: detKind, modes: detModes.map(function (m) { return m[0] }), current: detZ.current,
+                                         caption: detZ.caption, pitchTrack: pitchEd.trackId } }
         if (what === "overlaps") {
             var r = zoneRects(), ks = Object.keys(r).filter(function (k) { return r[k].visible && r[k].w > 0 && r[k].h > 0 }), out = []
             for (var i = 0; i < ks.length; i++)
@@ -525,7 +562,7 @@ Window {
         if (what === "goto") { goTo(a); var zn = zoneOf(currentId); return { currentId: currentId, zone: zn ? zn.title : "", page: zn ? zn.current : "",
                                                                      folded: zn ? zn.folded : true, view: view } }
         if (what === "fold") { var zf = ({ nav: navZ, insp: inspZ, detail: detZ })[a]; zf.folded = !!b; return zoneRects() }
-        if (what === "select") { sq.pick(a); return { detail: detZ.current, rack: rackTrack } }
+        if (what === "select") { sq.pick(a); fitDetail(); return { detail: detZ.current, rack: rackTrack, kind: detKind, picked: tracks[a] ? tracks[a].type + ":" + tracks[a].id : "" } }
         if (what === "contrast") {                // pares texto/fondo del tema actual (guía de diseño §8)
             var c = function (x) { return String(x) }, out2 = [
                 ["texto/fondo", c(Theme.ink), c(Theme.bg)], ["texto/cabecera", c(Theme.ink), c(Theme.header)],
@@ -603,12 +640,12 @@ Window {
     readonly property var pageZone: ({ ia: "nav", audios: "nav", add: "nav", fxlist: "nav", recent: "nav",
                                        pista: "insp", asist: "insp", master: "insp", cinta: "insp",
                                        inst: "detail", piano: "detail", drums: "detail",
-                                       fx: "detail", afina: "detail" })
+                                       fx: "detail", tono: "detail", afina: "detail" })
     function zoneOf(id) { return ({ nav: navZ, insp: inspZ, detail: detZ })[pageZone[id]] || null }
     function titleOf(id) {
         return ({ ia: "IA", audios: "Archivos", add: "Añadir", fxlist: "Efectos", recent: "Inicio", pista: "Pista", asist: "Asistente IA",
                   master: "Versiones", cinta: "Grabar", pistas: "Arreglo", inst: "Instrumento", piano: "Piano roll",
-                  drums: "Batería", fx: "Efectos", afina: "Afinador", mezcla: "Mezclador" })[id] || id
+                  drums: "Batería", fx: "Efectos", tono: "Tono", afina: "Afinador", mezcla: "Mezclador" })[id] || id
     }
     function goTo(id) {
         if (id === "mastia" || id === "antes") id = "asist"     // Master IA y A/B están en el Asistente IA (X17)
@@ -1162,11 +1199,8 @@ Window {
         anchors { left: parent.left; right: parent.right; bottom: statusBar.top }
         height: folded ? headH : win.detailFitH
         foldTip: folded ? "Mostrar el panel de detalle (Ctrl+E)" : "Plegar el panel de detalle (Ctrl+E)"
-        tabs: [["piano", "Piano roll", "Notas de la pista de instrumento elegida"],
-               ["inst", "Instrumento", "Sonido de la pista de instrumento: sintetizador del motor o VST3"],
-               ["drums", "Batería", "Pads y patrón de 16 pasos de la pista de batería"],
-               ["fx", "Efectos", "Cadena de efectos de la pista elegida y su editor"],
-               ["afina", "Afinador", "Afinador AF-60 y afinación de las voces"]]
+        tabs: win.detModes
+        caption: "EDITOR · " + (win.detKind === "master" ? "Master" : win.detTrack ? win.detTrack.name : "sin selección")
         current: "fx"
         extra: srcToggle
         help: ({
@@ -1174,7 +1208,8 @@ Window {
             inst: ["Instrumento", "El instrumento se carga una sola vez y cada pista guarda solo su preset. Velocidad, Brillo y Reverb son del sintetizador interno; un VST3 se ajusta en su propio editor."],
             drums: ["Batería", "Pads y patrón de 16 pasos de la pista de batería: cada paso encendido suena en ese tiempo del compás."],
             fx: ["Efectos", "La cadena de efectos de la pista elegida o del master, en el orden de la señal. Arrastra una tarjeta para cambiar el orden; A/B compara dos ajustes; el «?» de cada efecto explica qué hace. Los efectos se añaden desde Navegador › Efectos."],
-            afina: ["Afinador", "Afinador AF-60: corrige la afinación de la voz mientras suena y al exportar.<br><b>Editor de tono (AF-64)</b>: las notas de la toma, una a una. Muévelas en semitonos o cents, enderézalas (quita vibrato y deriva) o llévalas a la escala; «Aplicar» escribe una copia que la pista usa con los mismos clips (Ctrl+Z vuelve). El tiempo no cambia."]
+            tono: ["Tono", "<b>Editor de tono (AF-64)</b>: las notas de la toma, una a una. Muévelas en semitonos o cents, enderézalas (quita vibrato y deriva) o llévalas a la escala; «Aplicar» escribe una copia que la pista usa con los mismos clips (Ctrl+Z vuelve). El tiempo no cambia. Clic derecho en un clip › Editar tono lo abre aquí."],
+            afina: ["Afinador", "Afinador AF-60: corrige la afinación de la voz mientras suena y al exportar. Es un efecto de la cadena (también se ajusta en Efectos). Debajo, cómo afina la Mezcla IA."]
         })
         onFoldedChanged: if (!win.loading) win.saveLayout()
         onPicked: if (!win.loading) win.saveLayout()
@@ -1210,6 +1245,7 @@ Window {
                 AutoMasterBox { mixer: mx; visible: fxMain.target === 0 }
             }
         }
+        ZonePage { zid: "tono"; tint: "afina"; minWidth: 620; PitchEditor { id: pitchEd; mixer: mx } }
         ZonePage { zid: "afina"; tint: "afina"; minWidth: 620; TuneBody { id: tuneBody; mixer: mx } }
     }
 
