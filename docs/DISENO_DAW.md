@@ -47,7 +47,7 @@ ideas comunes son de interacción, no de aspecto: no se copia la apariencia de n
      no hay vista Crear IA.
    - Un solo mezclador (F6): la mezcla automática es una orden del Mezclador (barra y menú Mezcla,
      ajustes en su diálogo, A/B en la barra, Ctrl+Z la deshace) y lo que pone se ve en las tiras con
-     la marca «IA». Master IA es un dispositivo más del master, con su A/B en la tira MASTER. El
+     la marca «IA». Master automático es un dispositivo más del master, con su A/B en la tira MASTER. El
      Inspector ya no tiene Asistente IA.
    - Análisis del proyecto (F7): Editar › Analizar el proyecto escribe, bajo la regla del Arreglo,
      las secciones (A, B, A…) y la pista de acordes, y la tonalidad del proyecto. Ctrl+Z lo deshace.
@@ -86,10 +86,10 @@ ideas comunes son de interacción, no de aspecto: no se copia la apariencia de n
 │ (plegable)│                                                                       │ (plegable)             │
 │ Inicio    │                                                                       │ volumen, paneo, envíos │
 │ Efectos   │                                                                       │ salida, tipo y rol     │
-│ VST3      │                                                                       │ (Mezcla IA), voz a     │
+│ VST3      │                                                                       │ (Mezcla automática), voz a     │
 │ Sonidos   │                                                                       │ afinar                 │
 │ IA        │                                                                       │ Asistente IA:          │
-│ Archivos  │                                                                       │ Mezcla IA · Master IA  │
+│ Archivos  │                                                                       │ Mezcla automática · Master automático  │
 ├───────────┴───────────────────────────────────────────────────────────────────────┴────────────────────────┤
 │ Panel de detalle (lo seleccionado): [EQ]→[Comp]→[AF-60]→[Space] … + editor grande del efecto elegido       │
 │ o editor del clip: piano roll / patrón de batería / audio (cortes, fundidos)                               │
@@ -104,8 +104,8 @@ ideas comunes son de interacción, no de aspecto: no se copia la apariencia de n
 | Arreglo (`ArrangeView`) | Vista principal |
 | Mezcla (`MixBody`) | Vista Mezclador (Tab) |
 | Efectos (`FxBody`) | Panel de detalle: cadena de la pista elegida y editor del efecto elegido |
-| Afinador (`TuneBody`) | **Editor del efecto nativo AF-60** dentro del panel de detalle (sale al elegir AF-60 en la cadena). La parte de la Mezcla IA (voces e intensidad) va en la orden «Mezcla automática» (F6) |
-| Master (`MasterBody`, `MasteringBody`), Master IA (`AutoMasterBox`), Antes/Después (`ReviewBody`) | Tira MASTER del Mezclador, Inspector › Master y, en Efectos › Master, el dispositivo Master IA y el Antes / Después (F6) |
+| Afinador (`TuneBody`) | **Editor del efecto nativo AF-60** dentro del panel de detalle (sale al elegir AF-60 en la cadena). La parte de la mezcla automática (voces e intensidad) va en la orden «Mezcla automática» (F6) |
+| Master (`MasterBody`, `MasteringBody`), Master automático (`AutoMasterBox`), Antes/Después (`ReviewBody`) | Tira MASTER del Mezclador, Inspector › Master y, en Efectos › Master, el dispositivo Master automático y el Antes / Después (F6) |
 | Instrumentos, Batería, Piano (`InstBody`, `DrumsBody`, `PianoBody`) | Panel de detalle al elegir una pista de instrumento o un clip MIDI |
 | Cinta (`CintaBody`) | Grabación desde la cabecera de pista (armar ● y R); la cinta queda como medidor de entrada en el Inspector |
 | IA (`IaBody`): canción, MIDI, **parte para el proyecto** | Navegador › IA (las generaciones entran como pistas) |
@@ -138,9 +138,9 @@ Todos salen del catálogo del motor C++ (`afo_audio.effect_catalog()`). El naveg
 | Espacio | Space (reverb), Delay digital |
 | Utilidad | Ganancia, Analizador de espectro |
 
-- La Mezcla IA y el Master IA ponen estos mismos efectos, marcados «IA», y se editan igual que los
+- La mezcla automática y el Master automático ponen estos mismos efectos, marcados «IA», y se editan igual que los
   puestos a mano.
-- Desde el 23-11-2026 la Mezcla IA afina por defecto con el AF-60 nativo, que queda en la cadena.
+- Desde el 23-11-2026 la mezcla automática afina por defecto con el AF-60 nativo, que queda en la cadena.
   La copia PSOLA es la opción «Copia precisa».
 
 ## 4. Plan por fases
@@ -150,7 +150,7 @@ Todos salen del catálogo del motor C++ (`afo_audio.effect_catalog()`). El naveg
    pliega con un botón y su atajo.
 2. **Panel de detalle de efectos** (X15): la cadena de la pista seleccionada como fila de
    dispositivos con el mismo marco; al elegir uno se abre su editor. El editor del AF-60 es el
-   `TuneBody` actual, sin la parte de Mezcla IA.
+   `TuneBody` actual, sin la parte de la mezcla automática.
 3. **Navegador** (X16): efectos por categoría (tabla de arriba), VST3, IA, Archivos e Inicio; doble
    clic añade a la pista elegida.
 4. **Inspector** (X17; F6 quitó el Asistente IA): ajustes de la pista, envíos, master y grabación;

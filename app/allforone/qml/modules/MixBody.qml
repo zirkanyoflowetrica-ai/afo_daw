@@ -182,13 +182,13 @@ Column {
                                 MouseArea { id: msMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
                                             onClicked: root.studio.rackTrack = 0 }
                                 ToolTipLite { text: "Clic: ver el rack del master en Efectos"; show: msMouse.containsMouse }
-                                Chip {                   // F6: A/B del Master IA en la tira MASTER
+                                Chip {                   // F6: A/B del Master automático en la tira MASTER
                                     objectName: "masterAbBtn"
                                     readonly property bool off: root.mixer.masterAb === "A"
                                     visible: !!root.mixer.masterStats
                                     x: parent.width - width - 3; y: 3
                                     text: "A/B"; fill: off ? Theme.pressedBg : Theme.button; ink: off ? Theme.pressedInk : Theme.ink
-                                    tip: off ? "Sonando sin Master IA (A). Clic: con Master IA (B)" : "Sonando con Master IA (B). Clic: sin Master IA (A)"
+                                    tip: off ? "Sonando sin Master automático (A). Clic: con Master automático (B)" : "Sonando con Master automático (B). Clic: sin Master automático (A)"
                                     onClicked: root.mixer.bypassMaster(off ? "B" : "A")
                                 }
                             }

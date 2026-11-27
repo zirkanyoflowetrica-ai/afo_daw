@@ -41,7 +41,7 @@ QtObject {
             bpm: s.bpm, songKey: s.songKey, chords: s.chords, markers: s.markers, sus: sq.sus, oct: sq.oct, hidden: s.hidden,
             master: { pos: s.masterPos, drive: s.masterDrive, tone: s.masterTone, limiter: s.limiter },
             masterVersions: mx.versions, versionSel: mx.versionSel,
-            // Ajustes de la Mezcla IA y del Afinador (la tonalidad confirmada vuelve confirmada)
+            // Ajustes de la mezcla automática y del Afinador (la tonalidad confirmada vuelve confirmada)
             ai: { profile: mx.profile, mode: mx.mode, stepKnob: mx.stepKnob, space: mx.spaceKnob, masterSel: mx.masterSel,
                   tuneStrength: mx.tuneStrength,
                   tune: { mode: mx.tune.mode, key: mx.tune.key, scale: mx.tune.scale, bpm: mx.tune.bpm, method: mx.tune.method,

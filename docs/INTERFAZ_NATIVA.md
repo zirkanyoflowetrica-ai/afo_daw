@@ -20,7 +20,7 @@ python tools/native_compare.py   # comparación píxel a píxel con la plantilla
 |---|---|---|
 | 0 | Ventana, cabecera (transporte, tempo, zoom, Ver todo, Restaurar diseño, tema), lienzo infinito con puntos, 12 módulos movibles (13 con Efectos) y redimensionables, cables con curva, conectores y cuadrados de curva arrastrables, diseño y tema guardados, módulo **Pistas** con el motor real, arrastrar audios a la ventana | **Hecha** |
 | 1 | Audios, Mezcla (consola, faders, rol de voz, MEZCLAR AUTOMÁTICAMENTE), Mezcla final (VU, master, exportar) | **Hecha** |
-| 2 | Afinador, Master IA, Antes / Después | **Hecha** |
+| 2 | Afinador, Master automático, Antes / Después | **Hecha** |
 | 3 | Piano roll, Instrumentos, Batería, Pistas con IA, con sonido del motor (hoy son la demo Web Audio) | **Hecha** |
 | 4 | Grabador de cintas grabando con el motor, configuración de audio (drivers, ASIO), módulo Efectos (Biblioteca nativa, Hito 1) | **Hecha** |
 | 5 | Interfaz nativa como única interfaz, Qt WebEngine retirado, QML ordenado en carpetas | **Hecha** |
@@ -89,13 +89,13 @@ no muestra (fase 3).
   perillas Velocidad, Naturalidad, Intensidad y Mezcla (automatizables en Touch / Latch / Write).
   «Detectar tonalidad» analiza la música y «Usar …» lleva la tonalidad analizada al efecto (al
   insertarlo se aplica sola si ya estaba confirmada). Los medidores salen de `fxMeters` (~30 Hz solo
-  mientras suena). Abajo queda la afinación de la Mezcla IA (voces P / L / R / _B e intensidad) con
+  mientras suena). Abajo queda la afinación de la mezcla automática (voces P / L / R / _B e intensidad) con
   dos modos: **Efecto nativo (AF-60)**, por defecto desde noviembre de 2026 (lo pidió el usuario: el
   afinador es un efecto más de la cadena), el mismo afinador en la cadena de la voz, velocidad según el tempo y rango según el
   tono medido de la voz. `tests/test_proyectos_completos.py` mide los dos en trap, balada, rock y
   reguetón (sin afinar ≈ 30 cents; PSOLA 2,5–7,5; AF-60 7,5–12,5); **Copia precisa (PSOLA)** queda como opción porque afina algo más exacto, pero escribe una copia `_afinada`. Con intensidad > 0 % sale **un cable a la tira
   exacta** de cada voz con ese rol.
-- `MasteringBody.qml` (Master IA) y `ReviewBody.qml` (Antes / Después) se rehicieron para la
+- `MasteringBody.qml` (Master automático) y `ReviewBody.qml` (Antes / Después) se rehicieron para la
   mezcla en vivo: ver «Mezcla y master en vivo» más abajo (ya no hay WAVs, ZIP ni escucha de archivos).
 - `Mixer.qml` añade el estado del afinador (la confirmación se anula si cambian los audios, los
   roles o la tonalidad) y las acciones de escucha. `Note.qml` es el recuadro de notas.
@@ -107,7 +107,7 @@ confirmar F menor 91 BPM en modo manual; **REMEZCLAR con afinación al 60 %: la 
 «afinada»**; master enviado a Pistas; escucha B del master, A/B de una pista y parada en el motor.
 
 Diferencias que quedan con la web: el texto de la curva pendiente no sale estirado (en la web el
-SVG lo deforma), y en Master IA los tres botones caben en una fila porque el texto nativo es algo
+SVG lo deforma), y en Master automático los tres botones caben en una fila porque el texto nativo es algo
 más estrecho.
 
 ## Fase 3: cómo se hizo
@@ -284,7 +284,7 @@ ventana. La autoprueba abre la ventana, la captura (`logs/selftest_doble_flujo.p
   (los efectos llevan «∿»); en **Mezcla** la tira marca «∿» y su ayuda dice qué se automatizó, y el
   estado resume rides, lanzamientos, ducking y barridos. Las curvas se editan en la línea de
   automatización del efecto y se guardan con el proyecto.
-- **Master IA:** `live_mix.apply_master` reproduce `master()` de la mezcla automática con medidas del motor:
+- **Master automático:** `live_mix.apply_master` reproduce `master()` de la mezcla automática con medidas del motor:
   `Engine::measureMix()` procesa la sesión entera en memoria (un `RenderTask` propio con los
   plugins del master, sin archivo) y devuelve LUFS integrada, RMS y pico del master y de cada
   pista. Primero mide con la cadena a −24 dB (el limitador no actúa y el pico se lee a la entrada),
@@ -296,7 +296,7 @@ ventana. La autoprueba abre la ventana, la captura (`logs/selftest_doble_flujo.p
   efecto activo y a la salida del último (`chainScope`, ~10 tomas/s mientras suena). Se conecta al
   rack del canal o al master. A / B puentea toda la cadena y la deja como estaba.
 - **Medidores:** cada pista y el master llevan un `AfoMeterPlugin` (BS.1770: momentánea, corto
-  plazo, integrada; RMS de 300 ms; pico). Las tiras de Mezcla eligen dB, LUFS o RMS; Master IA
+  plazo, integrada; RMS de 300 ms; pico). Las tiras de Mezcla eligen dB, LUFS o RMS; Master automático
   muestra las tres del master.
 - **A/B de la mezcla automática** (Mezcla) puentea o activa todos los efectos que puso.
 - El proyecto `.afo` guarda el nombre y la marca «mezcla automática» de cada efecto y el techo del
@@ -399,7 +399,7 @@ normalizar / deshacer clips en el motor.
   antes; mezcla → mastia (Mastering) → fxm (Efectos master) → master (Rebobinado).
 - **Efectos** (`modules/FxBody.qml`): cadena horizontal de dispositivos como en un DAW (cabecera con
   activar, nombre, ◀ ▶ ≡ ✕; preset, gráfica, perillas en dos filas) y un hueco final «+ Agregar».
-- **Mezcla**: la mezcla IA va arriba de la consola y solo mezcla. **Mastering**
+- **Mezcla**: la mezcla automática va arriba de la consola y solo mezcla. **Mastering**
   (`MasteringBody.qml`) es la mesa del master; **MASTERIZAR AUTOMÁTICAMENTE** (`AutoMasterBox.qml`)
   va bajo Efectos master; **Rebobinado** (`MasterBody.qml`) lista las versiones para cargar,
   renombrar, borrar y exportar.

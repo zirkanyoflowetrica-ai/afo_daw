@@ -349,7 +349,7 @@ def _f7_checks(rep, app, host, lay) -> None:
 
 def _f6_checks(rep, app, host, window, call, snap) -> None:
     """F6: un solo mezclador. La mezcla automática es una orden del Mezclador (diálogo con sus ajustes,
-    A/B en la barra, marca «IA» en los efectos, Ctrl+Z la deshace) y Master IA un dispositivo del
+    A/B en la barra, marca «IA» en los efectos, Ctrl+Z la deshace) y Master automático un dispositivo del
     master con su A/B en la tira MASTER; el Inspector ya no tiene Asistente IA. Mezcla real, en vivo."""
     from PySide6.QtCore import QMetaObject, Q_ARG, Q_RETURN_ARG
 
@@ -378,7 +378,7 @@ def _f6_checks(rep, app, host, window, call, snap) -> None:
     ma = lay()
     mA = lay("masterA")
     mB = lay("masterB")
-    rep.check("F6: Master IA tiene su A/B en la tira MASTER (puentea su cadena y la vuelve a activar)",
+    rep.check("F6: Master automático tiene su A/B en la tira MASTER (puentea su cadena y la vuelve a activar)",
               ma["masterAuto"] >= 4 and mA["masterOn"] == 0 and mA["masterAb"] == "A" and mB["masterOn"] == ma["masterAuto"],
               {"efectos": ma["masterAuto"], "A": mA["masterOn"], "B": mB["masterOn"]})
     want = {v["id"]: (round(v["vol"]), v["pan"]) for v in (ma["undo"] or [])}
@@ -896,7 +896,7 @@ def _native_project_checks(rep, app, host, window) -> None:
               [(e["key"], e["automated"]) for e in master])
     ai = lambda snap: (lambda a: (a.get("profile"), a.get("tuneStrength"), (a.get("tune") or {}).get("method"),  # noqa: E731
                                   (a.get("tune") or {}).get("voices")))(snap.get("ai") or {})
-    rep.check("Proyecto: ajustes de la Mezcla IA y del Afinador recuperados",
+    rep.check("Proyecto: ajustes de la mezcla automática y del Afinador recuperados",
               ai(after) == ai(before) and ai(after)[1] == 35, {"antes": ai(before), "después": ai(after)})
     call("setTuneStrength", 0)
     notes = lambda snap: [(t["name"], sorted(t["roll"]), sorted(t["pat"]), t["cfg"]) for t in snap["tracks"] if t["type"] in ("inst", "drum")]  # noqa: E731
@@ -951,7 +951,7 @@ def _native_home_checks(rep, app, host, window, bridge, startup: bool = False) -
 
 def _native_inspector_checks(rep, app, host, window, track_id) -> None:
     """Inspector (X17): la página Pista sigue a la pista elegida y su volumen llega al motor. Sin
-    Asistente IA (F6): Master IA es un dispositivo del master en Efectos."""
+    Asistente IA (F6): Master automático es un dispositivo del master en Efectos."""
     from PySide6.QtCore import QMetaObject, Q_ARG, Q_RETURN_ARG
     from PySide6.QtQuick import QQuickItem
 
@@ -978,7 +978,7 @@ def _native_inspector_checks(rep, app, host, window, track_id) -> None:
               vol.property("value") if vol else None)
     QMetaObject.invokeMethod(window, "setTrackMixUid", Q_ARG("QVariant", uid), Q_ARG("QVariant", 70), Q_ARG("QVariant", 50))
     g = call("layoutCommand", "goto", "mastia", None)
-    rep.check("Master IA abre el rack del master en Efectos (F6: sin Asistente IA en el Inspector)",
+    rep.check("Master automático abre el rack del master en Efectos (F6: sin Asistente IA en el Inspector)",
               g["page"] == "fx" and g["zone"] == "Detalle", g)
 
 
@@ -1134,7 +1134,7 @@ def _native_mixer_checks(rep, app, host, window, bridge, prop) -> None:
         return
     _wait(app, lambda: False, 0.3, host)
     st = snap()
-    rep.check("la mezcla IA solo mezcla: el master queda sin tocar", st["master"] is None and not st["masterChain"], st["masterChain"])
+    rep.check("la mezcla automática solo mezcla: el master queda sin tocar", st["master"] is None and not st["masterChain"], st["masterChain"])
     call("mixerCommand", "master", 3)             # Efectos master → MASTERIZAR (Plataformas)
     _wait(app, lambda: snap()["master"] is not None or "Error" in snap()["status"], 240, host)
     st = snap()
@@ -1223,7 +1223,7 @@ def _native_mixer_checks(rep, app, host, window, bridge, prop) -> None:
     rep.check("medidores dB, LUFS y RMS por pista y del master", len(lv.get("loud", {})) >= 3 and len(lv.get("mloud") or []) == 5,
               lv.get("mloud"))
 
-    # Fase 2: Afinador (cable a la tira de la voz), confirmar tonalidad, Master IA y Antes / Después
+    # Fase 2: Afinador (cable a la tira de la voz), confirmar tonalidad, Master automático y Antes / Después
     call("setTuneStrength", 60)
     _wait(app, lambda: False, 0.3, host)
     tuned = snap()["tuned"]
@@ -1307,7 +1307,7 @@ def _native_mixer_checks(rep, app, host, window, bridge, prop) -> None:
               done and st["runs"] >= 2 and bool(st.get("lastTuned")) and tchain[:1] == ["tune"], [st["status"], tchain])
     call("setTuneStrength", 0)
     call("mixerCommand", "unmaster", None)
-    rep.check("quitar el master IA", _wait(app, lambda: not snap()["masterChain"], 5, host), snap()["masterChain"])
+    rep.check("quitar el master automático", _wait(app, lambda: not snap()["masterChain"], 5, host), snap()["masterChain"])
 
 
 def _native_sequencer_checks(rep, app, host, window, prop) -> None:

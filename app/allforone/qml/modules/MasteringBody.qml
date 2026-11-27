@@ -4,7 +4,7 @@ import "../controls"
 import "../state/mixdata.js" as MD
 
 // Inspector › Master: VU, sonoridad en vivo (LUFS, RMS, pico), fader master con medidores L/R del
-// motor, saturación, tono y limitador. Master IA es un dispositivo del master en Efectos y su A/B está
+// motor, saturación, tono y limitador. Master automático es un dispositivo del master en Efectos y su A/B está
 // en la tira MASTER (F6); cada master se guarda como versión, debajo, donde se elige y se exporta.
 Column {
     id: root
@@ -70,7 +70,7 @@ Column {
         NeoButton { text: "Guardar versión"
                     tip: "Guarda el master tal como suena ahora (efectos, fader, saturación, tono, limitador) como versión manual"
                     onClicked: root.mixer.saveVersion("", "manual", null) }
-        NeoButton { text: "Master IA…"; tip: "Abre el dispositivo Master IA del master en Efectos"
+        NeoButton { text: "Master automático…"; tip: "Abre el dispositivo Master automático del master en Efectos"
                     onClicked: root.studio.goTo("mastia") }
     }
     Note {
@@ -78,6 +78,6 @@ Column {
         text: root.st ? "Último master automático: entrada " + (root.st.input_lufs).toFixed(1) + " LUFS → " + root.st.lufs_i.toFixed(1) +
                         " LUFS, pico " + root.st.max_peak_db.toFixed(1) + " dB, techo " + root.st.ceiling_db.toFixed(1) + " dB" +
                         (root.st.compressed ? ", con compresión de master" : "") + ". " + root.st.note
-                      : "Los efectos del master están en Efectos, canal Master, con el dispositivo Master IA. Cada master queda como versión, aquí debajo, para elegirlo y exportarlo."
+                      : "Los efectos del master están en Efectos, canal Master, con el dispositivo Master automático. Cada master queda como versión, aquí debajo, para elegirlo y exportarlo."
     }
 }

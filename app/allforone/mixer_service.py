@@ -4,7 +4,7 @@ Los algoritmos (mixer_engine, scale_tuner, vocal_dsp, vocal_space, mastering_too
 mix_templates, music_analysis…) se usan SIN modificar desde allforone/mixer_v42.
 Este módulo solo sustituye la interfaz Gradio original (app.py): reproduce su
 orquestación de `process()` / `preview_hybrid()` / `confirm_hybrid()` y la expone a
-los paneles Mezcla IA, Afinador, Master IA y Antes/Después.
+los paneles Mezcla automática, Afinador, Master automático y Antes/Después.
 
 Reglas:
   * El trabajo pesado corre en un hilo aparte: nunca en el hilo de la interfaz ni en el de audio.
@@ -165,7 +165,7 @@ class MixerService:
 
     def analyze_async(self, payload: dict) -> dict:
         if not payload.get("stems"):
-            return {"ok": False, "error": "Carga stems instrumentales en Mezcla IA antes de analizar."}
+            return {"ok": False, "error": "Carga stems instrumentales en la mezcla automática antes de analizar."}
         return self._start("analysis", self._analyze, payload)
 
     def _analyze(self, payload):

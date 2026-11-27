@@ -790,7 +790,7 @@ Window {
                                    newTrack(a); return { opened: newBox.opened, page: newBox.page,
                                                          kinds: newBox.kinds.map(function (k) { return k[0] }),
                                                          nav: navZ.tabs.map(function (t) { return t[0] }), view: view } }
-        if (what === "dropTrack") { var dt = sq.trackOf(a); if (!dt) return false        // pista y su fila de la Mezcla IA
+        if (what === "dropTrack") { var dt = sq.trackOf(a); if (!dt) return false        // pista y su fila de la mezcla automática
                                     for (var di = 0; di < mx.items.length; di++) if (mx.items[di].trackId === dt.id) { mx.removeItem(di); break }
                                     removeTrackAt(sq.indexOf(a)); return true }
         if (what === "f4") return { tracks: tracks.map(function (t) {
@@ -898,7 +898,7 @@ Window {
                   drums: "Batería", fx: "Efectos", tono: "Tono", afina: "Afinador", mezcla: "Mezclador" })[id] || id
     }
     function goTo(id) {
-        if (id === "mastia") id = "fxm"                         // F6: Master IA es un dispositivo del master (Efectos)
+        if (id === "mastia") id = "fxm"                         // F6: Master automático es un dispositivo del master (Efectos)
         if (id === "antes") id = "fx"                           // F6: Antes / Después va bajo el rack en Efectos
         if (id === "fxm") { rackTrack = 0; id = "fx" }          // el master es un canal más de Efectos
         if (id === "ia" || id === "lab") { newTrack(id === "ia" ? "gen" : "lab"); return }   // F5: en «Pista nueva»
@@ -1339,7 +1339,7 @@ Window {
         foldTip: folded ? "Mostrar el navegador (Ctrl+B)" : "Plegar el navegador (Ctrl+B)"
         tabs: [["add", "Añadir", "Instrumentos, batería, voz, audio y plugins VST3: cada uno crea su pista"],
                ["fxlist", "Efectos", "Efectos nativos por categoría y VST3: doble clic añade a la pista elegida"],
-               ["audios", "Archivos", "Audios del proyecto: tipo y rol para la Mezcla IA"],
+               ["audios", "Archivos", "Audios del proyecto: tipo y rol para la mezcla automática"],
                ["recent", "Inicio", "Proyectos recientes y la biblioteca (F4)"]]
         current: "add"
         extra: srcToggle
@@ -1365,7 +1365,7 @@ Window {
     }
 
     // Inspector: pista elegida, master (medidores, proceso y versiones) y grabación. Sin Asistente IA (F6):
-    // la mezcla automática es una orden del Mezclador y Master IA un dispositivo del master.
+    // la mezcla automática es una orden del Mezclador y Master automático un dispositivo del master.
     Zone {
         id: inspZ
         z: 4
@@ -1379,8 +1379,8 @@ Window {
         current: "pista"
         extra: srcToggle
         help: ({
-            pista: ["Pista", "Volumen, paneo, Solo y Mute, rol de voz para la Mezcla IA, envíos a los buses Aux y efectos de la pista elegida en el Arreglo o en el Mezclador."],
-            master: ["Master", "VU y sonoridad del master, saturación, tono y limitador. <b>Master IA</b> es un dispositivo del master (Efectos › Master) y su A/B está en la tira MASTER.<br>Versiones del master (Rebobinado). Clic en una versión: se carga en el master y suena al reproducir, para compararlas. Doble clic en el nombre: renombrarla. Se guardan con el proyecto."],
+            pista: ["Pista", "Volumen, paneo, Solo y Mute, rol de voz para la mezcla automática, envíos a los buses Aux y efectos de la pista elegida en el Arreglo o en el Mezclador."],
+            master: ["Master", "VU y sonoridad del master, saturación, tono y limitador. <b>Master automático</b> es un dispositivo del master (Efectos › Master) y su A/B está en la tira MASTER.<br>Versiones del master (Rebobinado). Clic en una versión: se carga en el master y suena al reproducir, para compararlas. Doble clic en el nombre: renombrarla. Se guardan con el proyecto."],
             cinta: ["Grabar", "Grabador de voz: elige la entrada, escucha el monitor y graba tomas en la pista de voz."]
         })
         onFoldedChanged: if (!win.loading) win.saveLayout()
@@ -1458,7 +1458,7 @@ Window {
             drums: ["Batería", "Pads y patrón de 16 pasos de la pista de batería: cada paso encendido suena en ese tiempo del compás."],
             fx: ["Efectos", "La cadena de efectos de la pista elegida o del master, en el orden de la señal. Arrastra una tarjeta para cambiar el orden; A/B compara dos ajustes; el «?» de cada efecto explica qué hace. Los efectos se añaden desde Navegador › Efectos."],
             tono: ["Tono", "<b>Editor de tono (AF-64)</b>: las notas de la toma, una a una. Muévelas en semitonos o cents, enderézalas (quita vibrato y deriva) o llévalas a la escala; «Aplicar» escribe una copia que la pista usa con los mismos clips (Ctrl+Z vuelve). El tiempo no cambia. Clic derecho en un clip › Editar tono lo abre aquí."],
-            afina: ["Afinador", "Afinador AF-60: corrige la afinación de la voz mientras suena y al exportar. Es un efecto de la cadena (también se ajusta en Efectos). Debajo, cómo afina la Mezcla IA."]
+            afina: ["Afinador", "Afinador AF-60: corrige la afinación de la voz mientras suena y al exportar. Es un efecto de la cadena (también se ajusta en Efectos). Debajo, cómo afina la mezcla automática."]
         })
         onFoldedChanged: if (!win.loading) win.saveLayout()
         onPicked: if (!win.loading) win.saveLayout()
@@ -1492,7 +1492,7 @@ Window {
                 width: parent ? parent.width : 860
                 spacing: 10
                 FxBody { id: fxMain; studio: win; shown: fxPage.visible }
-                AutoMasterBox { objectName: "masterIa"; mixer: mx; visible: fxMain.target === 0 }   // F6: Master IA
+                AutoMasterBox { objectName: "masterIa"; mixer: mx; visible: fxMain.target === 0 }   // F6: Master automático
                 Text { text: "Antes / Después"; color: Theme.ink; font.family: Theme.font; font.pixelSize: 13; font.weight: 700 }
                 ReviewBody { mixer: mx; studio: win; shown: fxPage.visible }
             }

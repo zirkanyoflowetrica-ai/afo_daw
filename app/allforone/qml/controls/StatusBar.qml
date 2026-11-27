@@ -68,11 +68,11 @@ Rectangle {
             text: visible ? "● Script «" + root.studio.scriptBusy + "» en marcha…" : ""
             color: Theme.ink; font.family: Theme.font; font.pixelSize: 12; font.weight: 700
         }
-        Text {                                       // F6: mezcla automática o Master IA trabajando
+        Text {                                       // F6: mezcla automática o Master automático trabajando
             readonly property var mx: root.studio.mixer
             anchors.verticalCenter: parent.verticalCenter
             visible: !!mx && (mx.busy || mx.mastering)
-            text: !visible ? "" : mx.mastering ? "● Master IA midiendo la mezcla…"
+            text: !visible ? "" : mx.mastering ? "● Master automático midiendo la mezcla…"
                                                : "● Mezcla automática " + Math.round(mx.progress) + " % · " + mx.status
             elide: Text.ElideRight; width: Math.min(implicitWidth, 460)
             color: Theme.ink; font.family: Theme.font; font.pixelSize: 12; font.weight: 700

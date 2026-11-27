@@ -72,7 +72,7 @@ _A = [
     ("mix.remix", "Volver a mezclar", "Mezcla", 1, "", "Repite la mezcla automática con los ajustes de ahora"),
     ("mix.abA", "Escuchar sin mezcla automática (A)", "Mezcla", 2, "", "Puentea los efectos de la mezcla automática"),
     ("mix.abB", "Escuchar con mezcla automática (B)", "Mezcla", 2, "", "Vuelve a activar los efectos de la mezcla automática"),
-    ("mix.master", "Master IA", "Mezcla", 3, "", "La IA pone la cadena del master midiendo la mezcla (dispositivo del master en Efectos; A/B en la tira MASTER)"),
+    ("mix.master", "Master automático", "Mezcla", 3, "", "La IA pone la cadena del master midiendo la mezcla (dispositivo del master en Efectos; A/B en la tira MASTER)"),
     ("mix.masterFx", "Efectos del master", "Mezcla", 3, "", "Abre la cadena de efectos del master"),
     # Ver
     ("view.arrange", "Arreglo", "Ver", 1, "F5", "Pistas, clips y automatización"),

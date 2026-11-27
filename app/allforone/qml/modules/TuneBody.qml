@@ -6,7 +6,7 @@ import "../controls"
 // Pantalla con la nota que se canta, la aguja de desafinación y la corrección aplicada; gráfica de tono
 // de los últimos segundos (detectado frente a destino); teclado con las notas de la escala.
 // El Editor de tono (AF-64) ya no está aquí: es el modo «Tono» del editor de abajo (PitchEditor, F3).
-// Abajo, cómo afina la Mezcla IA al mezclar: Precisa (PSOLA, copia afinada) o En vivo (este AF-60).
+// Abajo, cómo afina la mezcla automática al mezclar: Precisa (PSOLA, copia afinada) o En vivo (este AF-60).
 Column {
     id: root
     property var mixer
@@ -72,7 +72,7 @@ Column {
     }
     function releaseP(id) { if (fx) studio.autoRelease("fx", fx.id, id, pv(id)) }
     function trackName() { for (var i = 0; i < tracks.length; i++) if (tracks[i].id === trackId) return tracks[i].name; return "" }
-    // Tonalidad del análisis de la Mezcla IA (C… B, «Mayor»…) → parámetros del efecto
+    // Tonalidad del análisis de la mezcla automática (C… B, «Mayor»…) → parámetros del efecto
     function useAnalysis() {
         var src = mixer.tune.confirmed || mixer.tune
         var k = mixer.keys.indexOf(src.key)
@@ -346,7 +346,7 @@ Column {
     }
     Note { width: root.width; visible: !!root.tn.status; text: root.tn.status }
 
-    // ---------------- afinación sin conexión de la Mezcla IA ----------------
+    // ---------------- afinación sin conexión de la mezcla automática ----------------
     Rectangle {
         width: root.width; height: offCol.height + 16
         color: Theme.device; border.width: 1; border.color: Theme.deviceBorder; radius: Theme.radius
@@ -358,7 +358,7 @@ Column {
                          ? "<b>Al mezclar con IA · en vivo</b>: pone este afinador (AF-60) en las voces marcadas con la tonalidad confirmada, la intensidad elegida, velocidad según el tempo y rango según la voz. No toca el audio y se ajusta aquí después."
                          : "<b>Al mezclar con IA · precisa</b>: afina las voces marcadas sin conexión (PSOLA, la más exacta en las pruebas) y pone en su pista una copia <i>_afinada</i>; el original queda intacto."
                    color: Theme.deviceInk; font.family: Theme.font; font.pixelSize: 13 }
-            Row {                              // la Mezcla IA solo afina con una tonalidad confirmada
+            Row {                              // la mezcla automática solo afina con una tonalidad confirmada
                 spacing: 8
                 NeoButton {
                     readonly property bool ok: !!root.tn.confirmed
@@ -367,8 +367,8 @@ Column {
                              : "Confirmar " + (root.noteNames[root.mixer.keys.indexOf(root.tn.key)] || root.tn.key) + " " + root.tn.scale
                                + " · " + Math.round(root.tn.bpm) + " BPM"
                     pressedState: ok; color: ok ? Theme.pc.afina : Theme.button; textColor: ok ? Theme.inkOnColor : Theme.ink
-                    tip: ok ? "Tonalidad confirmada: la Mezcla IA puede afinar. Clic: volver a confirmar"
-                            : "Autoriza a la Mezcla IA a afinar en esta tonalidad (la del análisis; «Detectar tonalidad» la propone)"
+                    tip: ok ? "Tonalidad confirmada: la mezcla automática puede afinar. Clic: volver a confirmar"
+                            : "Autoriza a la mezcla automática a afinar en esta tonalidad (la del análisis; «Detectar tonalidad» la propone)"
                     onClicked: root.mixer.confirmTune()
                 }
                 NeoButton {

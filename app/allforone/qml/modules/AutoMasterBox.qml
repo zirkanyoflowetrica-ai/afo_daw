@@ -2,7 +2,7 @@ import QtQuick
 import "../theme"
 import "../controls"
 
-// Master IA (F6): con el canal Master en Efectos, un dispositivo más con el mismo marco que los otros.
+// Master automático (F6): con el canal Master en Efectos, un dispositivo más con el mismo marco que los otros.
 // El motor mide la sesión en memoria y pone en el master una cadena real (EQ, compresión si hace falta,
 // color y nivel final, cada efecto con la marca «IA») hasta el objetivo del preset. Cada resultado
 // queda como versión (Inspector › Master). Su A/B está también en la tira MASTER del Mezclador.
@@ -20,7 +20,7 @@ Rectangle {
         spacing: 8
         Row {
             spacing: 8
-            Text { text: "Master IA"; color: Theme.deviceInk; font.family: Theme.font; font.pixelSize: 15; font.weight: 700
+            Text { text: "Master automático"; color: Theme.deviceInk; font.family: Theme.font; font.pixelSize: 15; font.weight: 700
                    anchors.verticalCenter: parent.verticalCenter }
             AiMark { anchors.verticalCenter: parent.verticalCenter; tip: "Cadena del master decidida por la IA midiendo la mezcla" }
         }
@@ -44,16 +44,16 @@ Rectangle {
             }
             NeoButton {
                 id: ab
-                text: root.mixer.masterAb === "A" ? "A/B: sin Master IA" : "A/B: con Master IA"
+                text: root.mixer.masterAb === "A" ? "A/B: sin Master automático" : "A/B: con Master automático"
                 enabled: !!root.st; pressedState: root.mixer.masterAb === "A"
                 color: pressedState ? Theme.pressedBg : Theme.button; textColor: pressedState ? Theme.pressedInk : Theme.ink
-                tip: "Escuchar el master con o sin la cadena de Master IA"
+                tip: "Escuchar el master con o sin la cadena de Master automático"
                 onClicked: root.mixer.bypassMaster(root.mixer.masterAb === "A" ? "B" : "A")
             }
             NeoButton {
                 id: un
                 text: "Quitar"; enabled: !!root.st; confirm: "¿Quitar?"
-                tip: "Quita la cadena de Master IA del master (pide confirmación: pulsa otra vez)"
+                tip: "Quita la cadena de Master automático del master (pide confirmación: pulsa otra vez)"
                 onClicked: root.mixer.unmaster()
             }
         }

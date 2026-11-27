@@ -1,7 +1,7 @@
 import QtQuick
 import "../theme"
 
-// Marca «IA» (F6): lo que puso o decide la IA (efectos de la mezcla automática, Master IA, órdenes de
+// Marca «IA» (F6): lo que puso o decide la IA (efectos de la mezcla automática, Master automático, órdenes de
 // IA) lleva esta etiqueta pequeña, siempre la misma; los controles en sí son los normales.
 Rectangle {
     id: root

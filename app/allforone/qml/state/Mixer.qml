@@ -25,7 +25,7 @@ QtObject {
     property bool lastTuned: false
     property var live: ({})                     // por id de pista del motor: decisiones reales del mezclador
     property int workingTrack: -1
-    // Afinación de la Mezcla IA: tonalidad y BPM confirmados antes de afinar; method "live" (por defecto: el
+    // Afinación de la mezcla automática: tonalidad y BPM confirmados antes de afinar; method "live" (por defecto: el
     // afinador nativo AF-60 en la cadena, editable) o "psola" (copia afinada sin conexión)
     property var tune: ({ mode: "Automático", key: "F", scale: "Menor natural", bpm: 91, prefer: true, method: "live",
                           voices: { lead: true, l: false, r: false, b: false }, analysis: null, confirmed: null,
@@ -33,12 +33,12 @@ QtObject {
     property real tuneStrength: 0               // intensidad 0..100 (0 = sin afinación)
     property var keys: ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
     property var scales: ["Cromatica", "Mayor", "Menor natural", "Menor armonica", "Pentatonica mayor", "Pentatonica menor"]
-    // Master IA en vivo
+    // Master automático en vivo
     property int masterSel: 3
     property var masterStats: null              // lo que midió el motor al masterizar
     property bool mastering: false
     property string abState: "B"                // B = con efectos automáticos, A = puenteados
-    property string masterAb: "B"               // A/B del Master IA (tira MASTER y su dispositivo)
+    property string masterAb: "B"               // A/B del Master automático (tira MASTER y su dispositivo)
     property var undoSnap: null                 // F6: cómo estaban las tiras antes de la última mezcla automática
     readonly property var masterNames: data.masters.concat(["Según referencia"])
     // Rebobinado: cada master (automático o manual) queda como versión para escucharla, elegirla y exportarla
@@ -177,7 +177,7 @@ QtObject {
         var r = fail(call("bypass", { bypass: which === "A", track: 0 }))
         if (r.ok) { masterAb = which; studio.refreshRacks() }
     }
-    // Master IA: la mezcla automática decide la cadena del master midiendo la sesión en el motor (sin archivos)
+    // Master automático: la mezcla automática decide la cadena del master midiendo la sesión en el motor (sin archivos)
     function masterAuto(sel) {
         masterSel = sel
         mastering = true
@@ -195,10 +195,10 @@ QtObject {
     }
     function unmaster() {
         var r = fail(call("unmaster"))
-        if (r.ok) { masterStats = null; masterAb = "B"; studio.refreshRacks(); status = "Master IA quitado: el master vuelve a su cadena manual." }
+        if (r.ok) { masterStats = null; masterAb = "B"; studio.refreshRacks(); status = "Master automático quitado: el master vuelve a su cadena manual." }
     }
     // ---------------- versiones de master (Rebobinado) ----------------
-    // stats: lo que midió Master IA; sin stats, el motor mide la sesión (en memoria) para mostrar LUFS y pico
+    // stats: lo que midió Master automático; sin stats, el motor mide la sesión (en memoria) para mostrar LUFS y pico
     function saveVersion(name, kind, stats) {
         var r = studio.call("masterSnapshot", !stats)
         if (!r.ok) { studio.toast(r.error); return -1 }

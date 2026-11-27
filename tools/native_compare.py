@@ -5,7 +5,7 @@ Uso:  python tools/native_compare.py [--out logs/visual_nativo] [--size 1600x900
 Herramienta de desarrollo: dibuja la plantilla con Qt WebEngine (viene con PySide6; la aplicación
 ya no lo usa) y la interfaz QML con datos limpios y el diseño inicial. Mide por separado la
 cabecera (transporte y chips de módulos) y el lienzo, donde AllForOne tiene más módulos que la
-plantilla (Audios, Afinador, Master IA, Antes / Después, Efectos) y pistas reales en vez de la
+plantilla (Audios, Afinador, Master automático, Antes / Después, Efectos) y pistas reales en vez de la
 demo. La fuente Space Grotesk se sirve desde app/allforone/qml/assets/fonts (sin internet).
 Genera plantilla.png, nativo.png, diff.png (en rojo lo que cambia), side_by_side.png y
 native_report.json.

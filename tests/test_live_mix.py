@@ -88,7 +88,7 @@ def test_master_en_vivo_sin_archivos(mixed, tmp_path):
     assert all(e["enabled"] for e in h.engine.effects(0)), "el A/B de Mezcla no toca el master"
     assert not any(e["enabled"] for t in b._auto if t != 0 for e in h.engine.effects(t))
     json.loads(b.mixer("bypass", json.dumps({"bypass": False})))
-    # Quitar el master IA deja el master como estaba
+    # Quitar el master automático deja el master como estaba
     json.loads(b.mixer("unmaster", "{}"))
     assert h.engine.effects(0) == [] and h.engine.master_ceiling() == pytest.approx(-1.0)
 

@@ -108,9 +108,9 @@ Diálogo único, como en Logic: Audio · Instrumento · Batería · **Intérpret
 
 | Hoy | Nuevo sitio |
 |---|---|
-| Inspector › Asistente IA › Mezcla IA | Menú **Mezcla › Mezcla automática…** y botón en la barra del Mezclador; ajustes en un diálogo; el resultado son los efectos «IA» de cada tira |
-| Inspector › Asistente IA › Master IA | **Efecto «Master IA» en la tira MASTER** (como el Mastering Assistant de Logic); su editor sale abajo al elegirlo |
-| Antes / Después | Botón A/B en la tira MASTER y en el editor del Master IA |
+| Inspector › Asistente IA › Mezcla automática | Menú **Mezcla › Mezcla automática…** y botón en la barra del Mezclador; ajustes en un diálogo; el resultado son los efectos «IA» de cada tira |
+| Inspector › Asistente IA › Master automático | **Efecto «Master automático» en la tira MASTER** (como el Mastering Assistant de Logic); su editor sale abajo al elegirlo |
+| Antes / Después | Botón A/B en la tira MASTER y en el editor del Master automático |
 | Versiones del master | Archivo › Versiones del master |
 | Inspector › Grabar (Cinta) | Botón ● de la cabecera de pista + entrada y monitor en el Inspector de la pista |
 | Navegador › IA, › Añadir | Diálogo Pista nueva; el Navegador queda para instrumentos, efectos, sonidos y archivos |
@@ -120,7 +120,7 @@ La cabecera pierde: Crear IA, Restaurar zonas, Tema, Abrir, Inicio (van a Archiv
 ### 3.1 Un solo mezclador, un solo aspecto (petición del usuario, 26-11-2026)
 
 «La mixer de IA no es la misma que la mixer normal, no entiendo». Por debajo ya es la misma: la
-Mezcla IA solo mueve faders, paneo, envíos y pone efectos en las tiras reales. Pero se ve
+Mezcla automática solo mueve faders, paneo, envíos y pone efectos en las tiras reales. Pero se ve
 como otro aparato:
 - perillas «Escalón L/R» y «Espacio vocal» propias;
 - una barra de progreso tipo LCD;
@@ -136,7 +136,7 @@ controles que lo hecho a mano, y lleva solo una marca «IA».
 - Lo que cambia se ve **en las tiras**: fader y paneo movidos, efectos con la marca «IA». Deshacer
   (Ctrl+Z) vuelve a la mezcla de antes.
 - A/B «con / sin mezcla automática» es un conmutador en la barra del Mezclador.
-- Lo mismo para el resto: el Master IA es un efecto con el mismo marco que los demás. Afinar con
+- Lo mismo para el resto: el Master automático es un efecto con el mismo marco que los demás. Afinar con
   IA pone el AF-60 en la cadena. Las tomas generadas son tomas normales. Los instrumentos del
   Intérprete IA son pistas de instrumento normales.
 - Fuera los estilos propios de módulo (LCD, botones gigantes, colores sueltos). Todo sale de
@@ -149,7 +149,7 @@ fuera del hilo de audio (AGENTS.md §2) y con deshacer:
 
 1. **Análisis del proyecto** (al importar audio y bajo demanda): tempo, tonalidad, acordes y
    secciones. Escribe la pista de acordes y los marcadores. Lo usan el Intérprete IA, la afinación,
-   la Mezcla IA y el buscador de sonidos (a la tonalidad del tema, como Splice en Studio One).
+   la mezcla automática y el buscador de sonidos (a la tonalidad del tema, como Splice en Studio One).
 2. **Paleta de órdenes (Ctrl+K)**: un registro único de acciones en Python (`actions.py`) del que
    salen los menús, los clics derechos, los atajos y la paleta. Así cada orden existe una vez y
    está en todas partes. Es lo que arregla el «recorte de cosas».
@@ -169,7 +169,7 @@ fuera del hilo de audio (AGENTS.md §2) y con deshacer:
 | F3 | Editor de abajo que sigue a la selección (audio + modo Tono, MIDI, batería, efecto, cadena) | Elegir clip/efecto/pista cambia el editor; el editor de tono sale del Afinador |
 | F4 | IA sobre el clip: separar, rehacer, versión, alinear, entran como tomas o carpeta | Los botones fijos del Arreglo desaparecen; proyecto completo: separar + rehacer + deshacer |
 | F5 | Pista nueva: Intérprete IA y Generar con IA con tomas; se retiran Navegador › IA y Crear IA | Generar crea tomas en la pista; regenerar desde el Inspector |
-| F6 | Un solo mezclador (§3.1): Mezcla automática como orden del Mezclador, Master IA como efecto del master, A/B en la barra; fuera los estilos propios | Inspector sin Asistente IA; ningún control de IA con aspecto propio; proyectos completos siguen pasando |
+| F6 | Un solo mezclador (§3.1): Mezcla automática como orden del Mezclador, Master automático como efecto del master, A/B en la barra; fuera los estilos propios | Inspector sin Asistente IA; ningún control de IA con aspecto propio; proyectos completos siguen pasando |
 | F7 | Análisis Python: tempo, tonalidad, acordes, secciones → pista de acordes y marcadores | Con `song_factory`, acierta tonalidad y acordes en 4 géneros |
 | F8 | Scripts del usuario (`scripts/`, API `afo`, proceso aparte) + ejemplos | Los ejemplos corren sobre un proyecto completo y se deshacen con Ctrl+Z |
 

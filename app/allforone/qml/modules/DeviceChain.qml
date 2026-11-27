@@ -118,10 +118,10 @@ Rectangle {
                             id: devBtns
                             anchors.right: parent.right; anchors.rightMargin: 4; anchors.verticalCenter: parent.verticalCenter
                             spacing: 0
-                            AiMark {                 // F6: lo puso la IA (mezcla automática o Master IA)
+                            AiMark {                 // F6: lo puso la IA (mezcla automática o Master automático)
                                 visible: !!card.modelData.auto
                                 anchors.verticalCenter: parent.verticalCenter
-                                tip: "Lo puso la IA (mezcla automática o Master IA); puedes cambiarlo"
+                                tip: "Lo puso la IA (mezcla automática o Master automático); puedes cambiarlo"
                             }
                             HelpButton {
                                 id: hbtn

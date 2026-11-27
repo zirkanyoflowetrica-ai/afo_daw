@@ -596,7 +596,7 @@ QtObject {
         generating = true; aiProgress = 0.01; aiMsg = "Preparando…"
     }
     // Parte nueva (guitarra, piano…) acorde al proyecto: tempo del proyecto y la tonalidad confirmada
-    // en el Afinador / Mezcla IA si la hay; ACE-Step escucha lo que ya suena (aiPart en bridge.py)
+    // en el Afinador / Mezcla automática si la hay; ACE-Step escucha lo que ya suena (aiPart en bridge.py)
     function generatePart() {
         if (generating) return
         genKind = "part"

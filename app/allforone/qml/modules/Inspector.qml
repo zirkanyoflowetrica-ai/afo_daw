@@ -4,7 +4,7 @@ import "../controls"
 import "../state/mixdata.js" as MD
 
 // Inspector › Pista (X17, DISENO_DAW §2): los ajustes de la pista elegida en el Arreglo o el Mezclador:
-// volumen, paneo, Solo / Mute, rol de voz para la Mezcla IA, envíos a los buses Aux y su cadena de
+// volumen, paneo, Solo / Mute, rol de voz para la mezcla automática, envíos a los buses Aux y su cadena de
 // efectos. Lo mismo que la tira del Mezclador, pero de una sola pista y siempre a la vista.
 Column {
     id: root
@@ -105,7 +105,7 @@ Column {
             }
             Column {
                 spacing: 4
-                Text { text: "Rol de voz (Mezcla IA)"; color: Theme.ink; font.family: Theme.font; font.pixelSize: 12; font.weight: 600 }
+                Text { text: "Rol de voz (Mezcla automática)"; color: Theme.ink; font.family: Theme.font; font.pixelSize: 12; font.weight: 600 }
                 Select { width: 120; options: MD.ROLES; current: root.mixer ? root.mixer.roleOfTrack(root.tid) : "—"; tip: MD.roleTip()
                          onPicked: function (v) { root.mixer.setTrackRole(root.tid, v) } }
             }

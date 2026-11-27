@@ -1,8 +1,8 @@
 """Proyectos COMPLETOS de varios géneros y voces, de punta a punta como los usaría un productor:
 
 stems de una canción entera (batería, bajo, armonía, voz principal, dobles, laterales o coros) →
-análisis de tonalidad y tempo (Python / IA, solo con los instrumentos) → confirmación → Mezcla IA en
-vivo que afina en vivo con el AF-60 y la tonalidad analizada → master IA
+análisis de tonalidad y tempo (Python / IA, solo con los instrumentos) → confirmación → Mezcla automática en
+vivo que afina en vivo con el AF-60 y la tonalidad analizada → master automático
 → render → guardar y volver a abrir el proyecto. Cada paso se mide; nada se da por bueno sin medir.
 """
 import json
@@ -73,7 +73,7 @@ def test_proyecto_completo(genre, qapp, tmp_path, monkeypatch):
         assert any(abs(bpm * k - g.bpm) / g.bpm < 0.04 for k in (0.5, 1, 2)), (genre, a.get("bpm"), g.bpm)
         assert a.get("key") in (g.key, _relative(g.key, g.minor)), (genre, a.get("key"), a.get("scale"), g.key, g.scale)
 
-        # 2. Confirmar (automático) y 3. Mezcla IA en vivo con la voz principal afinada sin conexión
+        # 2. Confirmar (automático) y 3. Mezcla automática en vivo con la voz principal afinada sin conexión
         c = b.mixsvc.confirm({"stems": stems, "tune": {"mode": "Automático"}})
         if not c["ok"]:                # el automático solo confirma con acuerdo alto; si no, el productor
             assert a.get("key_confidence", 0) < 0.60 or a.get("bpm_confidence", 0) < 0.55, (c, a)   # confirma a mano
@@ -108,7 +108,7 @@ def test_proyecto_completo(genre, qapp, tmp_path, monkeypatch):
         assert "space" in chains[lead["name"]] and not [x for x in eng.sends(lead["trackId"]) if x["db"] > -99]
         print(genre, "buses:", sorted(aux), {s["name"]: [round(x["db"], 1) for x in eng.sends(s["trackId"]) if x["db"] > -99] for s in stems})
 
-        # 4. La Mezcla IA afina EN VIVO: AF-60 el primero de la cadena de la voz, con la tonalidad
+        # 4. La mezcla automática afina EN VIVO: AF-60 el primero de la cadena de la voz, con la tonalidad
         #    confirmada y el rango medido de esa voz (grave / media / aguda), sin tocar el audio
         conf = c["confirmed"]
         assert h.tracks[lead["trackId"]]["source_path"] == lead["path"], "la afinación no sustituye el audio"
@@ -120,7 +120,7 @@ def test_proyecto_completo(genre, qapp, tmp_path, monkeypatch):
         assert (round(vals[0]), round(vals[1]), round(vals[5])) == (F.NOTES.index(conf["key"]), scale, RANGE[genre]), (genre, vals)
         assert abs(vals[4] - STRENGTH[genre]) < 0.5, "intensidad = la elegida"
 
-        # 5. Master IA medido sobre la sesión en vivo
+        # 5. Master automático medido sobre la sesión en vivo
         mr = json.loads(b.mixer("master", json.dumps({"preset": PLATAFORMAS})))
         assert mr["ok"], mr
         st = mr["stats"]
@@ -152,7 +152,7 @@ def test_proyecto_completo(genre, qapp, tmp_path, monkeypatch):
         eng.set_track_solo(lead["trackId"], False)
         assert offline_only > 20.0 and tuned < offline_only * (1.0 - 0.6 * STRENGTH[genre] / 100), (genre, tuned, offline_only)
         # Comparativa con la afinación PSOLA de la mezcla automática (la que se usaba antes, sin conexión): misma voz y
-        # misma intensidad. Por eso «Precisa» (PSOLA) sigue siendo la opción por defecto de la Mezcla IA
+        # misma intensidad. Por eso «Precisa» (PSOLA) sigue siendo la opción por defecto de la mezcla automática
         # y el AF-60 en vivo es la alternativa editable: las dos tienen que afinar de verdad.
         m = mixer_service.load()
         raw = m.eng.load_stem(lead["path"])
