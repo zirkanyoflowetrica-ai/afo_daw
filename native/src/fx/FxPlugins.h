@@ -88,8 +88,20 @@ public:
     juce::String getName() const override              { return juce::String::fromUTF8 (desc.name); }
     juce::String getShortName (int) override           { return getName(); }
     juce::String getSelectableDescription() override   { return getName(); }
-    int getNumOutputChannelsGivenInputs (int n) override { return juce::jmax (2, n); }
+    int getNumOutputChannelsGivenInputs (int n) override { return keyed() ? 2 : juce::jmax (2, n); }
     bool takesAudioInput() override                    { return true; }
+
+    // G4: cadena lateral. Un efecto con keyed() pide a Tracktion una entrada más («Sidechain»): cuando
+    // escucha otra pista (el bombo en el compresor del bajo), su detector usa esa señal y no la propia
+    virtual bool keyed() const { return false; }
+    void getChannelNames (juce::StringArray* ins, juce::StringArray* outs) override
+    {
+        te::Plugin::getChannelNames (ins, outs);
+        if (ins != nullptr && keyed())
+            ins->add ("Sidechain");
+    }
+    // Pico de la señal que escucha desde la última lectura (dBFS; −100 si no escucha otra pista)
+    float readKeyPeak() { return gainToDb (keyPeak.exchange (0.0f)); }
 
     void restorePluginStateFromValueTree (const juce::ValueTree& v) override
     {
@@ -130,6 +142,10 @@ public:
             return;
         float* l = buf.getWritePointer (0, start);
         float* r = chans > 1 ? buf.getWritePointer (1, start) : nullptr;
+        // Con otra pista como fuente, Tracktion suma sus dos canales en el tercero (solo entonces hay más de 2)
+        const float* keyAll = keyed() && chans > 2 && getSidechainSourceID().isValid() ? buf.getReadPointer (2, start) : nullptr;
+        if (keyAll != nullptr)
+            keyPeak.store (juce::jmax (keyPeak.load(), peakOf (keyAll, nullptr, n)));
 
         inPeak.store (juce::jmax (inPeak.load(), peakOf (l, r, n)));
         inScope.push (l, r, n);                     // lo que entra: el «antes» de la cadena
@@ -154,6 +170,7 @@ public:
                 }
                 smooth[i] = desc.params[i].choices != nullptr ? target : smooth[i] + smoothCoef * (target - smooth[i]);
             }
+            key = keyAll != nullptr ? keyAll + off : nullptr;
             if (r != nullptr)
                 processFx (l + off, r + off, m);
             else
@@ -291,6 +308,8 @@ protected:
     }
 
     static constexpr int chunk = 32;
+    const float* key = nullptr;                 // G4: la señal de la cadena lateral en este tramo (nullptr = la propia)
+    std::atomic<float> keyPeak { 0.0f };
     double sampleRate = 48000.0;
     bool initialised = false;
     double songPos = 0.0;                       // segundos de la canción al empezar el tramo de processFx
@@ -821,6 +840,7 @@ class CompressorFx : public FxBase
 public:
     CompressorFx (te::PluginCreationInfo i) : FxBase (i, compDesc()) {}
     AFO_FX_TYPE ("afoFxCompressor", compDesc)
+    bool keyed() const override { return true; }
     std::vector<float> extraMeters() override { return { grMin.exchange (0.0f) }; }
 protected:
     void prepareFx (double sr) override { comp.prepare (sr); }
@@ -831,7 +851,7 @@ protected:
         const bool rms = choice (5) == 1;
         for (int i = 0; i < n; ++i)
         {
-            const float g = comp.next (l[i], r[i], thr, ratio, knee, att, rel, rms) * makeup;
+            const float g = comp.next (key != nullptr ? key[i] : l[i], key != nullptr ? key[i] : r[i], thr, ratio, knee, att, rel, rms) * makeup;
             l[i] *= (1.0f - mix) + mix * g;
             r[i] *= (1.0f - mix) + mix * g;
         }
@@ -957,6 +977,7 @@ class GateFx : public FxBase
 public:
     GateFx (te::PluginCreationInfo i) : FxBase (i, gateDesc()) {}
     AFO_FX_TYPE ("afoFxGate", gateDesc)
+    bool keyed() const override { return true; }
     std::vector<float> extraMeters() override { return { gainToDb (gMin.exchange (1.0f)), gate.open ? 1.0f : 0.0f }; }
 protected:
     void prepareFx (double sr) override { gate.prepare (sr); }
@@ -966,7 +987,7 @@ protected:
         float lo = 1.0f;
         for (int i = 0; i < n; ++i)
         {
-            const float g = gate.next (l[i], r[i], p (0), p (1), p (2), p (3), p (4), p (5));
+            const float g = gate.next (key != nullptr ? key[i] : l[i], key != nullptr ? key[i] : r[i], p (0), p (1), p (2), p (3), p (4), p (5));
             l[i] *= g; r[i] *= g; lo = juce::jmin (lo, g);
         }
         gMin.store (juce::jmin (gMin.load(), lo));

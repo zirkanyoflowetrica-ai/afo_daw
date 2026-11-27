@@ -169,6 +169,15 @@ QtObject {
         })
         var mf = s.call("fxRestore", 0, JSON.stringify(doc.master_fx || []))
         if (!mf.ok) s.toast(mf.error)
+        // G4: cadena lateral (el compresor del bajo escucha el bombo), cuando ya existen todas las pistas
+        ;(doc.tracks || []).map(function (d) { return [idOf[d.uid], d.fx || []] }).concat([[0, doc.master_fx || []]]).forEach(function (tf) {
+            if (tf[0] === undefined) return
+            tf[1].forEach(function (fx, i) {
+                if (!fx.keyFrom || idOf[fx.keyFrom] === undefined) return
+                var k = s.call("fxSidechainRestore", tf[0], i, idOf[fx.keyFrom])
+                if (!k.ok) s.toast(k.error)
+            })
+        })
         s.call("setMasterCeiling", doc.master_ceiling === undefined ? -1 : doc.master_ceiling)
         mx.masterStats = null
         var ai = doc.ai

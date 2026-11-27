@@ -110,6 +110,19 @@ Column {
         if (r.ok) setChain(chain.map(function (e) { return e.id === id ? Object.assign({}, e, { enabled: b }) : e }))
     }
     function patch(e) { chain = chain.map(function (x) { return x.id === e.id ? Object.assign({}, x, e) : x }) }
+    // G4: cadena lateral: el compresor o la puerta escuchan otra pista (0 = su propia señal)
+    property real keyDb: -100
+    readonly property var keySources: [["0", "Su propia señal"]].concat(targets.filter(function (o) { return o[0] !== "0" && o[0] !== String(target) }))
+    function setKey(id, src) {
+        var r = studio.call("fxSidechain", id, src)
+        if (!r.ok) { studio.toast(r.error); return false }
+        setChain(r.chain)
+        keyDb = -100
+        var n = (keySources.filter(function (o) { return o[0] === String(src) })[0] || ["", ""])[1]
+        studio.toast(src ? nameOf(cur || { key: "" }) + " de " + targetName + " escucha «" + n + "»" : nameOf(cur || { key: "" }) + " escucha su propia señal")
+        studio.markDirty()
+        return true
+    }
     function isAuto(pid) { return !!cur && (cur.automated || []).indexOf(pid) >= 0 }
     function pickAutoParam() {                  // el primero ya automatizado, o la salida/mezcla, o el primero
         var a = cur.automated || []
@@ -241,6 +254,7 @@ Column {
                 var r = root.studio.call("fxMeters", cur.id)
                 if (r.ok) root.meters = r.m
                 if (cur.key === "analyzer") { var s = root.studio.call("fxSpectrum", cur.id, 96); if (s.ok) root.spectrum = s.bands }
+                if (cur.sidechain > 0) { var kp = root.studio.call("fxKeyPeak", cur.id); if (kp.ok) root.keyDb = kp.db }
             }
             var live = {}, moved = {}, any = false
             for (var i = 0; i < root.chain.length; i++) {
@@ -396,6 +410,27 @@ Column {
                                 tip: "Asignar la macro a ese parámetro (si ya tenía una, la sustituye)"
                                 onClicked: { if (root.macroFx < 0 || !root.macroParam) root.studio.toast("Elige el efecto y el parámetro")
                                              else root.setMacro(root.macroPick, root.macroFx, root.macroParam, root.macroAmount) } }
+                }
+            }
+            Flow {                              // G4: cadena lateral
+                objectName: "keyRow"
+                visible: !!root.cur && !!root.cur.can_sidechain
+                width: ed.width; spacing: 8
+                Text { text: "Escucha"; height: 28; verticalAlignment: Text.AlignVCenter; color: Theme.deviceInk
+                       font.family: Theme.font; font.pixelSize: 13; font.weight: 700 }
+                Select {
+                    objectName: "keySel"
+                    width: Math.min(230, ed.width * 0.35); fontSize: 12; padY: 4
+                    options: root.keySources
+                    current: String(root.cur ? root.cur.sidechain || 0 : 0)
+                    tip: "Cadena lateral: el detector escucha otra pista y suena esta. El bombo en el compresor del bajo lo hace «respirar» con cada golpe; en la puerta, la abre al ritmo de la otra pista"
+                    onPicked: function (v) { if (root.cur) root.setKey(root.cur.id, Number(v)) }
+                }
+                Text {
+                    visible: !!root.cur && root.cur.sidechain > 0
+                    height: 28; verticalAlignment: Text.AlignVCenter
+                    text: "Lo que oye: " + root.db(root.keyDb) + " dB"
+                    color: Theme.lcd; font.family: Theme.font; font.pixelSize: 12; font.weight: 700
                 }
             }
             Row {                               // presets

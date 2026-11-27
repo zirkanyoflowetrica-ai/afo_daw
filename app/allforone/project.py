@@ -19,18 +19,23 @@ AUDIO_TYPES = ("audio", "voz")
 LAB_PARTS = ("fxlab", "fxlab_b", "fxlab_end")   # FX Lab (AF-62): inicio, «Rama B» y «Fin» en la cadena
 
 
-def chain_of(engine, catalog: list[dict], track_id: int, labels: dict | None = None, auto=()) -> list[dict]:
+def chain_of(engine, catalog: list[dict], track_id: int, labels: dict | None = None, auto=(),
+             uid_of: dict | None = None) -> list[dict]:
     """Cadena de efectos de una pista tal como se guarda (valores por id de parámetro).
-    `labels`/`auto`: nombre y marca de los efectos que puso la mezcla automática."""
+    `labels`/`auto`: nombre y marca de los efectos que puso la mezcla automática. `uid_of` (id → uid):
+    la pista que escucha la cadena lateral se guarda por su uid (los id cambian al abrir)."""
     labels = labels or {}
     out, index_of, effects = [], {}, list(engine.effects(track_id))
     for e in effects:                         # posición en la cadena guardada (los que no se guardan, fuera)
         if e["key"] == "vst3" or any(d["key"] == e["key"] for d in catalog):
             index_of[e["id"]] = len(index_of)
     for e in effects:
+        key_from = (uid_of or {}).get(int(e.get("sidechain") or 0), "")    # G4: la pista que escucha
         if e["key"] == "vst3":               # plugin externo: su id y su estado completo (base64)
             out.append({"key": "vst3", "plugin": e["plugin_id"], "name": e["name"], "enabled": bool(e["enabled"]),
                         "state": engine.effect_state(e["id"])})
+            if key_from:
+                out[-1]["keyFrom"] = key_from
             continue
         desc = next((d for d in catalog if d["key"] == e["key"]), None)
         if desc is None:
@@ -41,6 +46,8 @@ def chain_of(engine, catalog: list[dict], track_id: int, labels: dict | None = N
                 "automation": {k: v for k, v in auto_pts.items() if v}}
         if labels.get(e["id"]):
             item["label"] = labels[e["id"]]
+        if key_from:
+            item["keyFrom"] = key_from
         if e["id"] in auto:
             item["auto"] = True
         if e["key"] == "fxlab" and hasattr(engine, "effect_macros"):
@@ -54,9 +61,11 @@ def chain_of(engine, catalog: list[dict], track_id: int, labels: dict | None = N
     return out
 
 
-def restore_chain(engine, catalog: list[dict], track_id: int, chain: list[dict], on_added=None) -> list[str]:
+def restore_chain(engine, catalog: list[dict], track_id: int, chain: list[dict], on_added=None,
+                  ids_out: list | None = None) -> list[str]:
     """Sustituye la cadena de la pista por la guardada. Devuelve avisos (efectos que ya no existen…).
-    `on_added(id, efecto guardado)` se llama por cada efecto recreado."""
+    `on_added(id, efecto guardado)` se llama por cada efecto recreado; `ids_out` recibe el id nuevo de
+    cada efecto guardado (None si no se pudo crear), para la cadena lateral cuando estén todas las pistas."""
     warnings = []
     for e in engine.effects(track_id):
         engine.remove_effect(e["id"])
@@ -99,6 +108,8 @@ def restore_chain(engine, catalog: list[dict], track_id: int, chain: list[dict],
             if tgt is None or not engine.set_effect_macro(eid, int(m.get("macro", 1)), tgt, str(m.get("param", "")),
                                                           float(m.get("amount", 0.0))):
                 warnings.append(f"FX Lab: una macro apuntaba a un efecto o parámetro que ya no existe; se omite")
+    if ids_out is not None:
+        ids_out[:] = ids
     return warnings
 
 
@@ -117,7 +128,7 @@ def collect(doc: dict, engine, catalog: list[dict], sources: dict[int, str], lab
         t = dict(t)
         tid = int(t.get("id", -1))
         if tid >= 0:
-            t["fx"] = chain_of(engine, catalog, tid, labels, auto.get(tid, ()))
+            t["fx"] = chain_of(engine, catalog, tid, labels, auto.get(tid, ()), uid_of)
             try:                             # envíos a buses Aux: el bus se guarda por su uid (los id cambian al abrir)
                 sends = [{"to": uid_of.get(int(s["aux"]), ""), "db": round(float(s["db"]), 2), "pre": bool(s["pre"])}
                          for s in engine.sends(tid)]
@@ -148,7 +159,7 @@ def collect(doc: dict, engine, catalog: list[dict], sources: dict[int, str], lab
                     pass
         tracks.append(t)
     out["tracks"] = tracks
-    out["master_fx"] = chain_of(engine, catalog, MASTER, labels, auto.get(MASTER, ()))
+    out["master_fx"] = chain_of(engine, catalog, MASTER, labels, auto.get(MASTER, ()), uid_of)
     out["master_ceiling"] = round(engine.master_ceiling(), 2)
     return out
 

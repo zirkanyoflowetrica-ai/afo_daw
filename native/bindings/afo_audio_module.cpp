@@ -69,6 +69,7 @@ py::dict toDict (const afo::EffectInfo& e)
     d["id"] = e.id; d["track_id"] = e.trackId; d["key"] = e.key; d["enabled"] = e.enabled;
     d["values"] = e.values; d["latency_seconds"] = e.latencySeconds; d["automated"] = e.automated;
     d["name"] = e.name; d["plugin_id"] = e.pluginId;
+    d["can_sidechain"] = e.canSidechain; d["sidechain"] = e.sidechainTrack;
     return d;
 }
 
@@ -270,6 +271,8 @@ PYBIND11_MODULE (afo_audio, m)
         .def ("move_effect", &afo::Engine::moveEffect, py::arg ("effect_id"), py::arg ("index"))
         .def ("set_effect_param", &afo::Engine::setEffectParam, py::arg ("effect_id"), py::arg ("param"), py::arg ("value"))
         .def ("set_effect_enabled", &afo::Engine::setEffectEnabled, py::arg ("effect_id"), py::arg ("enabled"))
+        .def ("set_sidechain", &afo::Engine::setSidechain, py::arg ("effect_id"), py::arg ("source_track_id"))
+        .def ("sidechain_peak_db", &afo::Engine::sidechainPeakDb, py::arg ("effect_id"))
         .def ("effects", [] (const afo::Engine& e, int track)
               { py::list l; for (auto& f : e.effects (track)) l.append (toDict (f)); return l; }, py::arg ("track_id"))
         .def ("effect_info", [] (const afo::Engine& e, int id) { return toDict (e.effectInfo (id)); }, py::arg ("effect_id"))

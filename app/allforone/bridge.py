@@ -123,6 +123,7 @@ class Bridge(QObject):
         self._mixer_timer.timeout.connect(self._drain_mixer_events)
         self._mixer_timer.start()
         self._auto: dict[int, list[int]] = {}   # pista (0 = master) -> efectos que puso la mezcla automática
+        self._restored_fx: dict[int, list] = {}         # G4: id nuevo de cada efecto guardado, por pista
         self._fx_labels: dict[int, str] = {}     # efecto -> nombre que le dio la mezcla automática
         self._live_plan: dict | None = None      # última decisión de la mezcla en vivo (bandas para el master)
         self._to_convert: list[str] = []    # audios que el motor no lee y hay que convertir
@@ -834,6 +835,41 @@ class Bridge(QObject):
             return _err(f"Parámetro de pista desconocido: {param}")
         return _ok(points=[[round(t, 4), v] for t, v in self.host.engine.track_automation(int(track_id), param)])
 
+    @Slot(int, int, result=str)
+    @_safe
+    def fxSidechain(self, effect_id: int, source_track_id: int) -> str:
+        """G4: el compresor o la puerta escuchan otra pista (bombo → bajo); 0 = su propia señal."""
+        if (g := self._guard()):
+            return g
+        eng = self.host.engine
+        err = eng.set_sidechain(int(effect_id), int(source_track_id))
+        if err:
+            return _err(err)
+        tid = int(eng.effect_info(int(effect_id))["track_id"])
+        return _ok(chain=self._chain(tid))
+
+    @Slot(int, int, int, result=str)
+    @_safe
+    def fxSidechainRestore(self, track_id: int, index: int, source_track_id: int) -> str:
+        """G4: al abrir un proyecto, cuando ya están todas las pistas: el efecto `index` de la cadena
+        guardada de la pista vuelve a escuchar su fuente."""
+        if (g := self._guard()):
+            return g
+        ids = self._restored_fx.get(int(track_id)) or []
+        eid = ids[index] if 0 <= index < len(ids) else None
+        if eid is None:
+            return _err("La cadena lateral apuntaba a un efecto que no se pudo recuperar")
+        err = self.host.engine.set_sidechain(int(eid), int(source_track_id))
+        return _err(err) if err else _ok()
+
+    @Slot(int, result=str)
+    @_safe
+    def fxKeyPeak(self, effect_id: int) -> str:
+        """G4: pico de lo que escucha la cadena lateral desde la última lectura (dBFS)."""
+        if (g := self._guard()):
+            return g
+        return _ok(db=round(float(self.host.engine.sidechain_peak_db(int(effect_id))), 1))
+
     @Slot(int, result=str)
     @_safe
     def fxInfo(self, effect_id: int) -> str:
@@ -908,7 +944,10 @@ class Bridge(QObject):
                     self._fx_labels[eid] = fx["label"]
                 if fx.get("auto"):
                     self._auto.setdefault(track_id, []).append(eid)
-            warn = project.restore_chain(self.host.engine, self.host.effect_catalog(), track_id, json.loads(chain_json or "[]"), added)
+            ids: list = []
+            warn = project.restore_chain(self.host.engine, self.host.effect_catalog(), track_id, json.loads(chain_json or "[]"),
+                                         added, ids)
+            self._restored_fx[int(track_id)] = ids
             return _ok(chain=self._chain(track_id), warnings=warn)
         except Exception as exc:
             return _err(f"No se pudo recuperar la cadena de efectos: {exc}")

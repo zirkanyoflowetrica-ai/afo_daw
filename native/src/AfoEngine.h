@@ -84,6 +84,8 @@ struct EffectInfo
     double latencySeconds = 0;
     std::string name;                          // nombre a mostrar (plugins externos)
     std::string pluginId;                      // plugin VST3 externo ("" = efecto nativo)
+    bool canSidechain = false;                 // G4: puede escuchar otra pista (compresor, puerta, VST3 con entrada lateral)
+    int sidechainTrack = 0;                    // G4: pista que escucha (0 = la suya)
 };
 
 // FX Lab (AF-62): una macro sobre un parámetro de un efecto de la misma pista
@@ -344,6 +346,9 @@ public:
     bool setEffectParam (int effectId, const std::string& paramId, float value);
     void setEffectEnabled (int effectId, bool enabled);
     std::vector<EffectInfo> effects (int trackId) const;
+    // G4: cadena lateral: el efecto escucha la pista sourceTrackId (0 = su propia señal). "" o el error
+    std::string setSidechain (int effectId, int sourceTrackId);
+    float sidechainPeakDb (int effectId);              // pico de lo que escucha desde la última lectura
     EffectInfo effectInfo (int effectId) const;
     // Automatización de un parámetro: puntos (segundos, valor en su rango) unidos en línea recta.
     // Lista vacía = sin automatización (el parámetro vuelve a su valor fijo).

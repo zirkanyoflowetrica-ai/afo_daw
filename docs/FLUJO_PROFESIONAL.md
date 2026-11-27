@@ -267,7 +267,7 @@ claro y el más oscuro de la imagen bajo cada zona.
 | G1 ✓ | Metrónomo, bucle en la regla, saltar entre secciones | El clic suena por la salida y no entra al exportar; el bucle vuelve al principio sonando; se guarda con el proyecto |
 | G2 ✓ | Entrada MIDI y cuantizar | Un teclado toca la pista armada y sus notas quedan en el piano roll; cuantizar a la rejilla |
 | G3 ✓ | Grabación multipista, punch y tomas | Varias pistas a la vez; punch con el bucle; una toma por pasada |
-| G4 | Sidechain | Compresor y puerta escuchan otra pista |
+| G4 ✓ | Sidechain | Compresor y puerta escuchan otra pista |
 | G5 | Consolidar y congelar | Clips en un audio; pista congelada con sus efectos (menos CPU) |
 | G6 | Grupos y VCA | Un fader mueve varias pistas sin sumar su audio |
 | G7 | MIDI de la IA a la rejilla | La IA escribe notas editables en el piano roll |

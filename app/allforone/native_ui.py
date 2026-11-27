@@ -295,6 +295,42 @@ def _g2_checks(rep, window, host, lay) -> None:
               window.findChild(QObject, "midiBar") is not None and not small, small)
 
 
+def _g4_checks(rep, window, host, lay) -> None:
+    """G4: «Escucha» en el editor del compresor y de la puerta: la cadena lateral a otra pista. Que de
+    verdad suena (el bajo respira con el bombo, la puerta abre al golpe) lo mide tests/test_sidechain.py."""
+    from PySide6.QtCore import QMetaObject, QObject, Q_ARG, Q_RETURN_ARG
+
+    def fx(what, a=None, b=None):
+        v = QMetaObject.invokeMethod(window, "fxCommand", Q_RETURN_ARG("QVariant"),
+                                     Q_ARG("QVariant", what), Q_ARG("QVariant", a), Q_ARG("QVariant", b))
+        v = v.toVariant() if hasattr(v, "toVariant") else v
+        lay("zones")                                       # deja pintar
+        return v
+
+    eng = host.engine
+    a = lay("rec", "add")
+    b = lay("rec", "add")
+    fx("target", a["id"])
+    st = fx("add", "compressor")
+    row, sel = window.findChild(QObject, "keyRow"), window.findChild(QObject, "keySel")
+    srcs = [o[0] for o in st["keySources"]]
+    rep.check("G4: el compresor ofrece «Escucha» con las demás pistas (no la suya ni el master)",
+              st["canKey"] and row is not None and bool(row.property("visible")) and str(b["id"]) in srcs
+              and str(a["id"]) not in srcs and "0" == srcs[0], {"fuentes": st["keySources"]})
+    k = fx("key", b["id"])
+    info = eng.effect_info(k["sel"])
+    off = fx("key", 0)
+    rep.check("G4: elegir una pista en «Escucha» conecta la cadena lateral en el motor y «Su propia señal» la quita",
+              k["key"] == b["id"] and info["sidechain"] == b["id"] and off["key"] == 0
+              and eng.effect_info(k["sel"])["sidechain"] == 0, {"escucha": k["key"], "motor": info["sidechain"]})
+    rep.check("G4: el selector de «Escucha» mide ≥ 24 px", sel is not None and sel.property("height") >= 24,
+              sel.property("height") if sel is not None else None)
+    fx("add", "eq")
+    rep.check("G4: un efecto sin cadena lateral (EQ) no muestra «Escucha»", row is not None and not row.property("visible"))
+    lay("rec", "remove", a["uid"])
+    lay("rec", "remove", b["uid"])
+
+
 def _g3_checks(rep, window, host, lay) -> None:
     """G3: grabar en varias pistas a la vez, punch dentro del tramo del bucle y elegir la toma que suena.
     Que se graba de verdad (dos pistas, punch que conserva lo de fuera, una toma por vuelta) lo mide
@@ -801,6 +837,7 @@ def _native_daw_checks(rep, app, host, window, bridge, track_id) -> None:
     _g1_checks(rep, host, lay)
     _g2_checks(rep, window, host, lay)
     _g3_checks(rep, window, host, lay)
+    _g4_checks(rep, window, host, lay)
     z1 = lay("zones")
     rep.check("tamaño fijo: ninguna zona cambia de tamaño por su contenido", z0 == z1,
               {k: (z0.get(k), z1.get(k)) for k in z1 if z0.get(k) != z1.get(k)})

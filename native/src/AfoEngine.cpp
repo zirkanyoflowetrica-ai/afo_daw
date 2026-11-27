@@ -427,6 +427,16 @@ struct Engine::Impl
         return it->second;
     }
 
+    int sidechainTrackOf (te::Plugin& p) const
+    {
+        const auto src = p.getSidechainSourceID();
+        if (src.isValid())
+            for (auto& [id, s] : slots)
+                if (s->track != nullptr && s->track->itemID == src)
+                    return id;
+        return 0;
+    }
+
     EffectInfo describe (const FxSlot& f) const
     {
         EffectInfo e;
@@ -435,9 +445,13 @@ struct Engine::Impl
         if (f.fx == nullptr)                    // plugin VST3 externo
         {
             e.key = "vst3"; e.name = toStd (f.plugin->getName()); e.pluginId = f.extId;
+            e.canSidechain = f.plugin->canSidechain();
+            e.sidechainTrack = sidechainTrackOf (*f.plugin);
             return e;
         }
         e.key = f.fx->desc.key;
+        e.canSidechain = f.fx->keyed();
+        e.sidechainTrack = sidechainTrackOf (*f.plugin);
         for (auto& p : f.fx->desc.params)
         {
             e.values.push_back (f.fx->value (p.id));
@@ -2496,6 +2510,44 @@ std::vector<EffectInfo> Engine::effects (int trackId) const
     for (auto* f : impl->chain (trackId))
         r.push_back (impl->describe (*f));
     return r;
+}
+
+std::string Engine::setSidechain (int effectId, int sourceTrackId)
+{
+    requireMessageThread();
+    auto& f = impl->fxSlot (effectId);
+    auto& p = *f.plugin;
+    if (sourceTrackId != 0)
+    {
+        if (! p.canSidechain())
+            return "Este efecto no escucha otras pistas: la cadena lateral la tienen el compresor y la puerta";
+        if (sourceTrackId == f.trackId)
+            return "Elige otra pista: escucharse a sí misma es lo normal (sin cadena lateral)";
+        auto it = impl->slots.find (sourceTrackId);
+        if (it == impl->slots.end() || it->second->track == nullptr)
+            return "Esa pista ya no existe";
+    }
+    while (p.getNumWires() > 0)                // los cables de antes fuera; luego los que pide Tracktion
+        if (auto* w = p.getWire (0))
+            p.breakConnection (w->sourceChannelIndex, w->destChannelIndex);
+        else
+            break;
+    if (sourceTrackId == 0)
+        p.setSidechainSourceID ({});
+    else
+    {
+        p.setSidechainSourceID (impl->slots.at (sourceTrackId)->track->itemID);
+        p.guessSidechainRouting();
+    }
+    impl->edit->restartPlayback();               // el grafo se rehace con la fuente nueva
+    return {};
+}
+
+float Engine::sidechainPeakDb (int effectId)
+{
+    requireMessageThread();
+    auto& f = impl->fxSlot (effectId);
+    return f.fx != nullptr ? f.fx->readKeyPeak() : -100.0f;
 }
 
 EffectInfo Engine::effectInfo (int effectId) const
