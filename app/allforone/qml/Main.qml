@@ -145,7 +145,7 @@ Window {
         case "edit.duplicate": case "edit.delete": case "clip.duplicate": case "clip.delete": case "clip.gainUp": case "clip.gainDown":
         case "clip.normalize": case "clip.fadeIn": case "clip.fadeOut": case "clip.noFades": return clipPicked
         case "clip.repaint": case "clip.cover": return clipPicked && !sq.generating
-        case "clip.align": return clipPicked && !!a.alignGuide && !sq.alignUid
+        case "clip.align": return clipPicked && !sq.alignUid
         case "clip.pitch": return clipPicked && !!a.selTrack && a.selTrack.id > 0 && !sq.pitchBusy
         case "clip.stems": return clipPicked && !!a.selTrack && a.selTrack.type === "audio" && !sq.splitting
         case "clip.tempoKey": case "clip.toProjectTempo": case "clip.projectToTempo": case "clip.toProjectKey":
@@ -220,9 +220,10 @@ Window {
         "clip.fadeIn": function () { arrange.fadeSel("in", 0.25) },
         "clip.fadeOut": function () { arrange.fadeSel("out", 0.25) },
         "clip.noFades": function () { arrange.edit(arrange.clipUid, { op: "fades", clip: arrange.clipSel, "in": 0, out: 0 }) },
-        "clip.repaint": function () { sq.repaintClip(arrange.clipUid, arrange.selInfo, "") },
-        "clip.cover": function () { sq.coverClip(arrange.clipUid, arrange.selInfo) },
-        "clip.align": function () { sq.alignTrack(arrange.clipUid, arrange.alignGuide.uid) },
+        // F4: la IA sobre el clip se abre en un cuadro junto al clip (dice dónde quedará el resultado)
+        "clip.repaint": function () { aiBox.openFor("repaint", arrange.clipUid) },
+        "clip.cover": function () { aiBox.openFor("cover", arrange.clipUid) },
+        "clip.align": function () { aiBox.openFor("align", arrange.clipUid) },
         "clip.pitch": function () { var id = arrange.selTrack.id; rackTrack = id; pitchEd.trackId = id; goTo("tono"); sq.pitchAnalyze(id) },
         "clip.stems": function () { sq.splitStems(arrange.selTrack.id) },
         "clip.tempoKey": function () { tempoKey("clip.tempoKey") },
@@ -601,6 +602,22 @@ Window {
         if (what === "arrClip") { arrange.pick(a, b.clip || 0)
                                   var rc = b.op === "split" ? (arrange.splitAt(a, b.clip, b.at), { clips: sq.trackOf(a).aclips }) : arrange.edit(a, b)
                                   return { ok: !!rc, clips: rc ? rc.clips : [], undo: arrange.undoStack.length } }
+        // F4 (autoprueba): órdenes del secuenciador, estado de tomas y carpetas, y el cuadro de IA del clip
+        if (what === "seq") return sq[a].apply(sq, b || [])
+        if (what === "seqSet") { sq[a] = b; return true }
+        if (what === "dropTrack") { var dt = sq.trackOf(a); if (!dt) return false        // pista y su fila de la Mezcla IA
+                                    for (var di = 0; di < mx.items.length; di++) if (mx.items[di].trackId === dt.id) { mx.removeItem(di); break }
+                                    removeTrackAt(sq.indexOf(a)); return true }
+        if (what === "f4") return { tracks: tracks.map(function (t) {
+                                        return { uid: t.uid, id: t.id, name: t.name, takes: (t.takes || []).map(function (k) { return k.name }),
+                                                 take: t.take || 0, folder: t.folder || "", fold: !!t.fold, mute: !!t.mute } }),
+                                    rows: arrange.rows.map(function (t) { return t.uid }), tools: arrange.toolTexts(),
+                                    snap: pj.snapshot().tracks.map(function (x) { return { uid: x.uid, takes: x.takes ? x.takes.length : 0,
+                                                                                            take: x.take, folder: x.folder || "" } }) }
+        if (what === "aiBox") { arrange.pick(b, a === "x" ? 0 : (sq.trackOf(b).aclips[0] || {}).id || 0)
+                                aiBox.openFor(a, b)
+                                var ob = { opened: aiBox.opened, where: aiBox.where[a] || "", can: aiBox.can }
+                                aiBox.close(); return ob }
         if (what === "arrUndo") { arrange.undo(); return { clips: sq.trackOf(a).aclips, redo: arrange.redoStack.length } }
         if (what === "auxRemove") { var ai = sq.indexOf(a); if (ai >= 0) removeTrackAt(ai); return ai >= 0 }
         if (what === "theme") { var ok = setTheme(a, true)
@@ -943,6 +960,7 @@ Window {
     ActionMenu { id: ctxMenu; objectName: "ctxMenu"; studio: win }
     CommandPalette { id: palette; objectName: "palette"; studio: win }
     TempoKeyBox { id: tkBox; objectName: "tempoKeyBox"; studio: win }
+    AiClipBox { id: aiBox; objectName: "aiClipBox"; studio: win }
     // Clic derecho en el Arreglo: el clip (o la pista) ya está elegido; sale su menú donde está el ratón
     function openContext(ctx, item, x, y) { ctxMenu.ctx = ctx; ctxMenu.items = actionsCtx(ctx); ctxMenu.openAt(item, x, y) }
 

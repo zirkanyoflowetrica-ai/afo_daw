@@ -51,6 +51,8 @@ QtObject {
                 return { uid: t.uid, id: t.id, type: t.type, name: t.name, vol: t.vol, pan: t.pan, mute: t.mute, solo: t.solo,
                          cfg: t.cfg || {}, roll: t.roll || {}, pat: t.pat || {}, clips: t.clips || [], start: t.start || 0,
                          midi: t.midi || undefined, midiSrc: t.midiSrc || undefined,
+                         takes: t.takes && t.takes.length ? t.takes : undefined, take: t.takes ? t.take || 0 : undefined,
+                         folder: t.folder || undefined, fold: t.fold || undefined,
                          stem: !!it, mix: it ? { kind: it.kind, role: it.role } : null }
             })
         }
@@ -104,6 +106,7 @@ QtObject {
         var h = doc.hidden || {}
         for (var k in h) if (["inst", "drums", "ia", "cinta"].indexOf(k) >= 0) s.setHidden(k, !!h[k])
         var idOf = {}                                      // uid guardado → id nuevo del motor (envíos a buses Aux)
+        var uidOf = {}                                     // uid guardado → uid nuevo (carpetas, F4)
         ;(doc.tracks || []).forEach(function (d) {
             var id = -1, uid = ""
             if (d.type === "audio") {
@@ -142,11 +145,16 @@ QtObject {
                 if (!f.ok) s.toast(f.error)
             }
             if (id >= 0 && d.uid) idOf[d.uid] = id
+            if (uid && d.uid) uidOf[d.uid] = uid
+            if (uid && (d.takes || d.folder || d.fold))      // F4: tomas y carpeta
+                sq.replace(uid, { takes: d.takes || [], take: d.take || 0, folder: d.folder || "", fold: !!d.fold })
             if (id >= 0) {                                   // automatización del fader / paneo y modo
                 for (var p in (d.trackAuto || {})) s.call("trackAutoSet", id, p, JSON.stringify(d.trackAuto[p]))
                 if (d.autoMode) s.call("autoMode", id, d.autoMode)
             }
         })
+        s.tracks = s.tracks.map(function (t) {              // la carpeta apunta al uid nuevo de su pista
+            return t.folder ? Object.assign({}, t, { folder: uidOf[t.folder] || "" }) : t })
         ;(doc.tracks || []).forEach(function (d) {          // envíos: cuando ya existen todos los buses
             ;(d.sends || []).forEach(function (e) {
                 if (idOf[d.uid] === undefined || idOf[e.to] === undefined) return

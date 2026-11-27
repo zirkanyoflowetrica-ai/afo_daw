@@ -345,10 +345,64 @@ QtObject {
         aiRefresh()
         studio.toast("Perfil del equipo: " + r.profile.name)
     }
+    // ---------------- Tomas y carpetas (F4, FLUJO_PROFESIONAL §3) ----------------
+    // Lo que hace la IA sobre un clip entra en el flujo: «Rehacer» y «Alinear» dejan una toma nueva en la
+    // misma pista (la anterior sigue ahí y se elige en la cabecera de la pista); «Versión» y «Separar»
+    // dejan pistas en la carpeta de la original. Cada toma es un archivo con sus clips.
+    // extra = { now: archivo nuevo, takes, take } para que Ctrl+Z y Ctrl+Y devuelvan también las tomas
+    signal sourceReplaced(string uid, string previous, var clips, var extra)
+    function takeState(t) { return { takes: t && t.takes ? t.takes : [], take: t && t.take ? t.take : 0 } }
+    // Añade la toma que acaba de entrar (la pista ya suena con ella); devuelve el estado de antes
+    function addTake(uid, prevSource, prevClips, name, path, clips) {
+        var t = trackOf(uid)
+        if (!t) return null
+        var before = takeState(t), tk = (t.takes || []).slice()
+        if (!tk.length) tk.push({ name: "Toma 1", source: prevSource, clips: prevClips, ai: false })
+        else tk[t.take || 0] = Object.assign({}, tk[t.take || 0], { clips: prevClips })
+        tk.push({ name: name, source: path, clips: clips, ai: true })
+        replace(uid, { takes: tk, take: tk.length - 1 })
+        return before
+    }
+    function takeName(t, what) {
+        var n = 1
+        ;(t && t.takes || []).forEach(function (k) { if (k.name.indexOf(what) === 0) n++ })
+        return what + " " + n
+    }
+    // Elegir otra toma: la pista suena con su archivo y sus clips (los de la toma que deja se guardan)
+    function useTake(uid, i) {
+        var t = trackOf(uid)
+        if (!t || !t.takes || i < 0 || i >= t.takes.length || i === (t.take || 0)) return false
+        var tk = t.takes.slice()
+        tk[t.take || 0] = Object.assign({}, tk[t.take || 0], { clips: t.aclips || [] })
+        var r = studio.call("clipEdit", t.id, JSON.stringify({ op: "set", source: tk[i].source, clips: tk[i].clips }))
+        if (!r.ok) { studio.toast(r.error); return false }
+        replace(uid, { takes: tk, take: i, aclips: r.clips, peaks: r.peaks || t.peaks })
+        studio.markDirty()
+        studio.toast(t.name + ": suena «" + tk[i].name + "»")
+        return true
+    }
+    // Mete una pista en la carpeta de otra: justo debajo de ella y de las que ya tiene
+    function intoFolder(parentUid, childUid) {
+        var a = studio.tracks.slice(), ci = -1
+        for (var i = 0; i < a.length; i++) if (a[i].uid === childUid) ci = i
+        if (ci < 0 || parentUid === childUid) return
+        var c = Object.assign({}, a[ci], { folder: parentUid })
+        a.splice(ci, 1)
+        var pi = -1
+        for (var j = 0; j < a.length; j++) if (a[j].uid === parentUid) pi = j
+        if (pi < 0) return
+        var at = pi + 1
+        while (at < a.length && a[at].folder === parentUid) at++
+        a.splice(at, 0, c)
+        studio.tracks = a
+        studio.selected = at
+    }
+    function folderKids(uid) { return studio.tracks.filter(function (t) { return t.folder === uid }) }
+    function toggleFold(uid) { var t = trackOf(uid); if (t) replace(uid, { fold: !t.fold }) }
+
     // ---------------- Rehacer con IA una zona de una pista de audio (ACE-Step «repaint») ----------------
     // La zona es el clip elegido (se acota con «Dividir»). El resultado es el archivo entero, igual fuera
-    // de la zona: la pista pasa a usarlo con los mismos clips, y «Deshacer» vuelve al archivo anterior.
-    signal sourceReplaced(string uid, string previous, var clips)
+    // de la zona: entra como toma nueva de la pista con los mismos clips; Ctrl+Z la quita.
     property string repaintUid: ""
     function repaintClip(uid, clip, prompt) {
         var t = trackOf(uid)
@@ -370,10 +424,13 @@ QtObject {
         var r = studio.call("trackSetSource", t.id, ev.path)
         if (!r.ok) { studio.toast(r.error); return }
         replace(uid, { aclips: r.clips, peaks: r.track.peaks || [], len: r.track.length_seconds || t.len })
-        sourceReplaced(uid, r.previous, before)
+        var name = takeName(t, "Rehecha (IA)")
+        var st = addTake(uid, r.previous, before, name, ev.path, r.clips)
+        sourceReplaced(uid, r.previous, before, { now: ev.path, takes: st.takes, take: st.take })
         studio.markDirty()
         aiMsg = ev.message
-        studio.toast("Zona " + ev.repaint.start.toFixed(1) + "–" + ev.repaint.end.toFixed(1) + " s rehecha en " + t.name + " · Ctrl+Z vuelve al original")
+        studio.toast("Zona " + ev.repaint.start.toFixed(1) + "–" + ev.repaint.end.toFixed(1) + " s rehecha: toma «" + name + "» en " + t.name
+                     + " · la anterior sigue en sus tomas · Ctrl+Z la quita")
     }
     // ---------------- Vocal Align (AF-67): una toma se ajusta en el tiempo a una voz guía ----------------
     // El motor C++ escribe en otro hilo un archivo con la toma movida (sin cambiar el tono); al volver,
@@ -400,10 +457,11 @@ QtObject {
         if (!t || t.id !== ev.trackId) { studio.toast("La pista ya no está; el audio alineado queda en " + ev.path); return }
         var before = t.aclips || []
         replace(uid, { aclips: ev.clips, peaks: ev.track.peaks || [], len: ev.track.length_seconds || t.len })
-        sourceReplaced(uid, ev.previous, before)
+        var st = addTake(uid, ev.previous, before, takeName(t, "Alineada"), ev.path, ev.clips)
+        sourceReplaced(uid, ev.previous, before, { now: ev.path, takes: st.takes, take: st.take })
         studio.markDirty()
         alignMsg = t.name + " alineada: se movió " + ev.meanShiftMs + " ms de media (máx. " + ev.maxShiftMs + " ms)"
-        studio.toast(alignMsg + " · Ctrl+Z vuelve a la toma original")
+        studio.toast(alignMsg + " · toma nueva; la original sigue en sus tomas · Ctrl+Z la quita")
     }
     // ---------------- Pitch Editor (AF-64): las notas de una voz, movidas una a una ----------------
     // «Analizar» da las notas y el tono (motor C++, otro hilo); los cambios (semitonos, cents,
@@ -447,7 +505,7 @@ QtObject {
         if (!t) { studio.toast("La pista ya no está; el audio editado queda en " + ev.path); return }
         var before = t.aclips || []
         replace(uid, { aclips: ev.clips, peaks: ev.track.peaks || [], len: ev.track.length_seconds || t.len })
-        if (ev.previous !== ev.path) sourceReplaced(uid, ev.previous, before)
+        if (ev.previous !== ev.path) sourceReplaced(uid, ev.previous, before, { now: ev.path })
         studio.markDirty()
         pitchMsg = ev.edited ? t.name + ": " + ev.edited + (ev.edited === 1 ? " nota editada" : " notas editadas")
                              : t.name + ": de vuelta a la toma analizada"
@@ -455,7 +513,8 @@ QtObject {
     }
     // ---------------- Otra versión con IA de un clip (C13, ACE-Step «cover») ----------------
     // El trozo del clip elegido se vuelve a tocar: «Parecida» guarda melodía y timbre, «Libre» solo la
-    // forma. El resultado va a una pista nueva, en el mismo sitio del clip; el original no se toca.
+    // forma. El resultado va a una pista en la carpeta de la original, en el mismo sitio del clip; el
+    // original no se toca.
     property string coverUid: ""
     property var coverOpts: ({ mode: "Parecida", likeness: 0.5, style: "Libre" })
     function coverClip(uid, clip) {
@@ -473,9 +532,12 @@ QtObject {
         return true
     }
     function applyCover(ev) {
+        var parent = coverUid
         coverUid = ""
         if (!addGenerated(ev.path, ev.title)) return
         var nt = studio.tracks[studio.tracks.length - 1]
+        if (trackOf(parent)) intoFolder(parent, nt.uid)
+        nt = trackOf(nt.uid)
         var cl = studio.clipsOf(nt.id)
         if (cl.length && ev.cover.at > 0) {
             var ce = studio.call("clipEdit", nt.id, JSON.stringify({ op: "range", clip: cl[0].id, start: ev.cover.at,
@@ -483,7 +545,7 @@ QtObject {
             if (ce.ok) replace(nt.uid, { aclips: ce.clips }); else studio.toast(ce.error)
         }
         aiMsg = ev.message
-        studio.toast(ev.message + ": en la pista nueva «" + nt.name + "», debajo del original")
+        studio.toast(ev.message + ": en la pista «" + nt.name + "», en la carpeta de la original")
     }
     function generate() {
         if (generating) return
@@ -613,11 +675,12 @@ QtObject {
             if (ev.phase === "progress") { splitting = true; splitProgress = ev.progress; splitMsg = ev.message + " · " + Math.round(ev.progress * 100) + " %"; return }
             splitting = false; splitProgress = 0
             if (!ev.ok) { splitMsg = ev.cancelled ? ev.message : ev.error; if (!ev.cancelled) studio.toast(ev.error); return }
-            var n = 0
-            ;(ev.stems || []).forEach(function (s) {
+            var n = 0, parent = uidOfId(ev.trackId)
+            ;(ev.stems || []).forEach(function (s) {       // en la carpeta de la original (Studio One)
                 var r = studio.call("addAudioPath", s.path, ev.name + " · " + s.label)
                 if (!r.ok) { studio.toast(r.error); return }
                 studio.addTrack(r.track, true); n++
+                if (parent) intoFolder(parent, "a" + r.track.id)
             })
             var t = studio.tracks.slice()                  // la original queda silenciada (no se borra)
             for (var i = 0; i < t.length; i++) if (t[i].id === ev.trackId && !t[i].mute) {
@@ -625,7 +688,7 @@ QtObject {
             }
             studio.markDirty()
             splitMsg = ev.message
-            studio.toast(ev.message + " · la original queda silenciada")
+            studio.toast(ev.message + " · en la carpeta de la original, que queda silenciada")
             return
         }
         if (ev.type === "aiMidiDownload") {

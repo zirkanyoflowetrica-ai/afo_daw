@@ -23,8 +23,11 @@ Rectangle {
     readonly property int laneH: 58
     readonly property real beat: 60 / Math.max(40, studio ? studio.bpm : 96)
     readonly property var rows: {
-        var t = studio ? studio.tracks : []
-        return t.concat([{ uid: "master", id: 0, type: "master", name: "Master" }])
+        var t = studio ? studio.tracks : [], shut = {}
+        t.forEach(function (k) { if (k.fold) shut[k.uid] = true })
+        // F4: una carpeta plegada esconde sus pistas en el Arreglo (siguen sonando: ocultar ≠ silenciar)
+        return t.filter(function (k) { return !(k.folder && shut[k.folder]) })
+                .concat([{ uid: "master", id: 0, type: "master", name: "Master" }])
     }
     readonly property real songLen: {
         var m = 16 * 4 * beat
@@ -107,10 +110,12 @@ Rectangle {
         var back = { uid: e.uid, clips: t.aclips || [] }
         var op = { op: "set", clips: e.clips }
         if (e.source) op.source = e.source                 // deshacer / rehacer un «Rehacer con IA»
+        if (e.takes !== undefined) { back.takes = t.takes || []; back.take = t.take || 0 }
         var r = studio.call("clipEdit", t.id, JSON.stringify(op))
         if (!r.ok) { studio.toast(r.error); return null }
         if (e.source) { back.now = r.source; back.source = e.now; studio.seq.replace(e.uid, { aclips: r.clips, peaks: r.peaks || [] }) }
         else studio.seq.replace(e.uid, { aclips: r.clips })
+        if (e.takes !== undefined) studio.seq.replace(e.uid, { takes: e.takes, take: e.take })   // F4: la toma se va o vuelve
         clipSel = 0
         return back
     }
@@ -131,6 +136,11 @@ Rectangle {
         if (!c) { studio.toast("El cursor no está sobre un clip de " + (t ? t.name : "la pista")); return }
         edit(uid, { op: "split", clip: c.id, at: at })
     }
+    function toolTexts() {                  // autoprueba (F4): lo que hay en la barra de herramientas
+        var o = []
+        for (var i = 0; i < toolFlow.children.length; i++) { var c = toolFlow.children[i]; if (c.text !== undefined) o.push(String(c.text)) }
+        return o
+    }
     function removeSel() { if (selInfo) edit(clipUid, { op: "remove", clip: clipSel }) }
     function dupSel() { if (selInfo) { var r = edit(clipUid, { op: "dup", clip: clipSel }); if (r) clipSel = r.clips[r.clips.length - 1].id } }
     function gainSel(d) { if (selInfo) edit(clipUid, { op: "gain", clip: clipSel, db: Math.round((selInfo.gain_db + d) * 10) / 10 }) }
@@ -149,8 +159,10 @@ Rectangle {
     // «Rehacer con IA»: la pista cambió de archivo; Deshacer vuelve al anterior con sus clips
     Connections {
         target: root.studio ? root.studio.seq : null
-        function onSourceReplaced(uid, previous, clips) {
-            root.undoStack = root.undoStack.concat([{ uid: uid, clips: clips, source: previous, now: "" }]).slice(-60)
+        function onSourceReplaced(uid, previous, clips, extra) {
+            var e = { uid: uid, clips: clips, source: previous, now: extra && extra.now ? extra.now : "" }
+            if (extra && extra.takes !== undefined) { e.takes = extra.takes; e.take = extra.take }
+            root.undoStack = root.undoStack.concat([e]).slice(-60)
             root.redoStack = []
         }
     }
@@ -312,39 +324,8 @@ Rectangle {
                  onClicked: root.splitAt(root.clipUid, root.clipSel, root.studio.posSec) }
             Tb { text: "Duplicar"; active: !!root.selInfo; tip: "Copia el clip detrás del último de la pista (Ctrl+D)"; onClicked: root.dupSel() }
             Tb { text: "Borrar"; active: !!root.selInfo; tip: "Quita el clip (Supr)"; onClicked: root.removeSel() }
-            Tb { text: root.studio.seq.repaintUid ? "Rehaciendo…" : "Rehacer con IA"; active: !!root.selInfo && !root.studio.seq.generating
-                 tip: "La IA (en tu equipo) vuelve a tocar el trozo del clip elegido con el mismo estilo; el resto de la pista no cambia. Acota el trozo con «Dividir». Ctrl+Z vuelve al original"
-                 onClicked: root.studio.seq.repaintClip(root.clipUid, root.selInfo, "") }
-            Tb { text: root.studio.seq.coverUid ? "Haciendo versión…" : "Versión con IA"; active: !!root.selInfo && !root.studio.seq.generating
-                 tip: "La IA (en tu equipo) vuelve a tocar el clip elegido a su manera y lo pone en una pista nueva; el original no cambia. Acota el trozo con «Dividir»"
-                 onClicked: root.studio.seq.coverClip(root.clipUid, root.selInfo) }
-            Select { objectName: "coverMode"; width: 96; fontSize: 12; padY: 2; options: ["Parecida", "Libre"]; current: root.studio.seq.coverOpts.mode
-                     tip: "Parecida: guarda melodía y timbre. Libre: solo la forma; suena más distinta"
-                     onPicked: function (v) { root.studio.seq.coverOpts = Object.assign({}, root.studio.seq.coverOpts, { mode: v }) } }
-            Select { objectName: "coverStyle"; width: 110; fontSize: 12; padY: 2
-                     options: root.studio.seq.ai.styles && root.studio.seq.ai.styles.length ? root.studio.seq.ai.styles : ["Libre"]
-                     current: root.studio.seq.coverOpts.style
-                     tip: "Estilo de la versión («Libre»: el mismo que el original)"
-                     onPicked: function (v) { root.studio.seq.coverOpts = Object.assign({}, root.studio.seq.coverOpts, { style: v }) } }
             Tb { text: "Normalizar"; active: !!root.selInfo; tip: "Sube o baja el clip para que su pico quede en −1 dBFS"
                  onClicked: root.edit(root.clipUid, { op: "normalize", clip: root.clipSel, target: -1 }) }
-            Sep {}
-            Tb { objectName: "alignRun"; text: root.studio.seq.alignUid ? "Alineando…" : "Alinear voz"
-                 active: !!root.selInfo && !!root.alignGuide && !root.studio.seq.alignUid
-                 tip: "Vocal Align: ajusta el tiempo de la pista del clip elegido (doblaje, coro) a la pista guía, sin cambiar el tono. Ctrl+Z vuelve a la toma original"
-                 onClicked: root.studio.seq.alignTrack(root.clipUid, root.alignGuide ? root.alignGuide.uid : "") }
-            Select { objectName: "alignGuide"; width: 150; fontSize: 12; padY: 2
-                     options: root.alignGuides.length ? root.alignGuides.map(function (t) { return "con " + t.name }) : ["(falta otra pista de audio)"]
-                     current: root.alignGuide ? "con " + root.alignGuide.name : "(falta otra pista de audio)"
-                     tip: "Pista guía: la voz que lleva el tiempo bueno"
-                     onPicked: function (v) {
-                         var g = root.alignGuides.filter(function (t) { return "con " + t.name === v })
-                         if (g.length) root.studio.seq.alignOpts = Object.assign({}, root.studio.seq.alignOpts, { guide: g[0].uid })
-                     } }
-            Select { objectName: "alignStrength"; width: 74; fontSize: 12; padY: 2; options: ["100 %", "75 %", "50 %"]
-                     current: root.studio.seq.alignOpts.strength + " %"
-                     tip: "Fuerza: 100 % la deja en el tiempo de la guía; menos, la acerca y conserva algo de su soltura"
-                     onPicked: function (v) { root.studio.seq.alignOpts = Object.assign({}, root.studio.seq.alignOpts, { strength: parseInt(v) }) } }
             Sep {}
             Tb { text: "Vol −"; active: !!root.selInfo; tip: "Baja 1 dB el clip elegido (también se arrastra su etiqueta de dB)"; onClicked: root.gainSel(-1) }
             Tb { text: "Vol +"; active: !!root.selInfo; tip: "Sube 1 dB el clip elegido"; onClicked: root.gainSel(1) }
@@ -662,11 +643,39 @@ Rectangle {
                                             if (m.button === Qt.RightButton) root.studio.openContext("track", parent, m.x, m.y)
                                         } }
                             Column {
-                                x: 16; y: 6; width: parent.width - 16 - btns.width - 10; spacing: 1
-                                Text { width: parent.width; elide: Text.ElideRight; text: trk.t.name; color: Theme.deviceInk
-                                       font.family: Theme.font; font.pixelSize: 14; font.weight: 800 }
-                                Text { width: parent.width; elide: Text.ElideRight; text: root.kindOf(trk.t); color: Theme.deviceInk
+                                readonly property int kids: trk.master ? 0 : root.studio.seq.folderKids(trk.t.uid).length
+                                id: headCol
+                                x: trk.t.folder ? 30 : 16; y: 6; width: parent.width - x - btns.width - 10; spacing: 1
+                                Row {
+                                    width: parent.width; spacing: 4
+                                    Rectangle {                    // F4: carpeta (Separar, Versión con IA)
+                                        visible: headCol.kids > 0
+                                        objectName: "folderBtn"
+                                        width: 24; height: 20; radius: Theme.radius; anchors.verticalCenter: parent.verticalCenter
+                                        color: fh.hovered ? Theme.s3 : Theme.chip; border.width: 1; border.color: Theme.line
+                                        Text { anchors.centerIn: parent; text: trk.t.fold ? "▸" : "▾"; color: Theme.chipInk
+                                               font.family: Theme.font; font.pixelSize: 12; font.weight: 700 }
+                                        HoverHandler { id: fh; cursorShape: Qt.PointingHandCursor }
+                                        ToolTipLite { text: (trk.t.fold ? "Desplegar" : "Plegar") + " la carpeta: " + headCol.kids + " pistas (siguen sonando)"; show: fh.hovered }
+                                        MouseArea { anchors.fill: parent; onClicked: root.studio.seq.toggleFold(trk.t.uid) }
+                                    }
+                                    Text { width: parent.width - (headCol.kids > 0 ? 28 : 0); elide: Text.ElideRight
+                                           text: (trk.t.folder ? "↳ " : "") + trk.t.name; color: Theme.deviceInk
+                                           font.family: Theme.font; font.pixelSize: 14; font.weight: 800 }
+                                }
+                                Text { visible: !(trk.t.takes && trk.t.takes.length > 1)
+                                       width: parent.width; elide: Text.ElideRight
+                                       text: root.kindOf(trk.t) + (headCol.kids > 0 ? " · carpeta de " + headCol.kids : ""); color: Theme.deviceInk
                                        font.family: Theme.font; font.pixelSize: 11; font.weight: 500 }
+                                Select {                           // F4: tomas (Rehacer y Alinear con IA dejan una nueva)
+                                    objectName: "takeSel"
+                                    visible: !!trk.t.takes && trk.t.takes.length > 1
+                                    width: parent.width; fontSize: 11; padY: 1
+                                    options: (trk.t.takes || []).map(function (k, i) { return (i + 1) + ". " + k.name })
+                                    current: trk.t.takes && trk.t.takes.length > 1 ? ((trk.t.take || 0) + 1) + ". " + trk.t.takes[trk.t.take || 0].name : ""
+                                    tip: "Tomas de la pista: elige cuál suena (las demás se guardan con el proyecto)"
+                                    onPicked: function (v) { root.studio.seq.useTake(trk.t.uid, parseInt(v) - 1) }
+                                }
                                 Text {
                                     width: parent.width; elide: Text.ElideRight; visible: !trk.master || trk.inf.inserts.length
                                     color: Theme.deviceInk; font.family: Theme.font; font.pixelSize: 11; font.weight: 600
@@ -708,11 +717,6 @@ Rectangle {
                                 visible: !trk.master
                                 x: btns.width - width
                                 spacing: 4
-                                NeoButton { visible: trk.t.type === "audio" && trk.t.id >= 0
-                                            text: root.studio.seq.splitting ? "…" : "Separar"; padX: 6; padY: 3; fontSize: 12; shadow: 2
-                                            enabled: !root.studio.seq.splitting
-                                            tip: "Separar en pistas con IA (Demucs, en tu equipo): batería en bombo, caja / clap y platos, bajo, voz, guitarra, piano y otros. La original queda silenciada"
-                                            onClicked: root.studio.seq.splitStems(trk.t.id) }
                                 NeoButton { text: "✕"; padX: 6; padY: 3; fontSize: 12; shadow: 2; confirm: "¿Quitar?"
                                             tip: "Quitar la pista (y su canal y efectos). Pide confirmación"
                                             onClicked: { var i = root.studio.seq.indexOf(trk.t.uid); if (i >= 0) root.studio.removeTrackAt(i) } }

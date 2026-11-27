@@ -36,6 +36,11 @@ ideas comunes son de interacción, no de aspecto: no se copia la apariencia de n
    - Al elegir una pista, el inspector muestra sus ajustes y el panel de abajo su cadena de efectos.
    - Al elegir un efecto de la cadena, se abre su editor grande.
    - Al elegir un clip, se abre su editor (notas o audio).
+   - La IA trabaja sobre el clip, desde su clic derecho (F4), en un cuadro junto al clip que dice
+     dónde quedará el resultado. Rehacer y Alinear dejan una toma nueva en la misma pista (la
+     cabecera de la pista elige cuál suena; Ctrl+Z la quita). Separar y Versión dejan pistas en la
+     carpeta de la original, que se pliega sin silenciarlas. La barra del Arreglo no tiene botones
+     fijos de IA.
    - El usuario nunca busca dónde está algo: está donde está lo seleccionado.
 4. **Cadena de efectos como fila de dispositivos**, en el orden en que suena. Cada uno lleva el
    mismo marco: nombre, encendido/puenteo, preset, A/B y quitar. Se reordena arrastrando. Los

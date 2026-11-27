@@ -64,6 +64,79 @@ def load_fonts() -> list[str]:
     return families
 
 
+def _f4_checks(rep, host, lay, call, track_id: int) -> None:
+    """F4 (FLUJO_PROFESIONAL §3): la IA sobre el clip deja tomas o carpeta, sin botones fijos.
+    Sin IA real: el resultado de la IA se simula con copias del audio de la pista."""
+    import shutil
+    import tempfile
+    uid = "a" + str(track_id)
+    orig = host.tracks[track_id]["originalPath"]
+    tmp = Path(tempfile.mkdtemp(prefix="afo_f4_"))
+    c1, c2 = tmp / "rehecha.wav", tmp / "otra.wav"
+    shutil.copy(orig, c1)
+    shutil.copy(orig, c2)
+
+    def st():
+        return lay("f4")
+
+    def trk(s, u):
+        return next((t for t in s["tracks"] if t["uid"] == u), {})
+
+    s0 = st()
+    rep.check("F4: la barra del Arreglo no tiene botones fijos de IA (Rehacer, Versión, Alinear, Separar)",
+              not any(w in t for t in s0["tools"] for w in ("IA", "Alinear", "Separar", "Versión")), s0["tools"])
+    boxes = {m: lay("aiBox", m, uid) for m in ("repaint", "cover", "align")}
+    rep.check("F4: Rehacer, Versión y Alinear se abren en un cuadro junto al clip que dice dónde va el resultado",
+              all(b["opened"] for b in boxes.values()) and "toma nueva" in boxes["repaint"]["where"]
+              and "carpeta" in boxes["cover"]["where"] and "toma nueva" in boxes["align"]["where"]
+              and boxes["repaint"]["can"] in (True, False), {m: b["opened"] for m, b in boxes.items()})
+
+    # Rehacer → toma nueva en la misma pista; elegir la toma 1 vuelve al archivo; Ctrl+Z quita la toma
+    lay("seqSet", "repaintUid", uid)
+    lay("seq", "applyRepaint", [{"repaint": {"trackId": track_id, "start": 0.0, "end": 2.0}, "path": str(c1),
+                                 "message": "Rehecho (simulado)"}])
+    s1 = st()
+    t1 = trk(s1, uid)
+    src1 = host.tracks[track_id]["originalPath"]
+    lay("seq", "useTake", [uid, 0])
+    src_back = host.tracks[track_id]["originalPath"]
+    lay("seq", "useTake", [uid, 1])
+    snap = next((x for x in st()["snap"] if x["uid"] == uid), {})
+    lay("arrUndo", uid)
+    t_undo = trk(st(), uid)
+    src_undo = host.tracks[track_id]["originalPath"]
+    rep.check("F4: «Rehacer» entra como toma nueva (sin IA real: copia del audio); la toma 1 vuelve al original y Ctrl+Z quita la toma",
+              t1.get("takes") == ["Toma 1", "Rehecha (IA) 1"] and t1.get("take") == 1 and Path(src1) == c1
+              and Path(src_back) == Path(orig) and snap.get("takes") == 2 and snap.get("take") == 1
+              and t_undo.get("takes") == [] and Path(src_undo) == Path(orig),
+              {"tomas": t1.get("takes"), "guardado": snap, "tras Ctrl+Z": t_undo.get("takes")})
+
+    # Separar → pistas en la carpeta de la original (silenciada); Versión → otra pista en la carpeta
+    n0 = len(s0["tracks"])
+    lay("seq", "onAiEvent", [{"type": "stems", "ok": True, "trackId": track_id, "name": "Tono", "message": "Separada (simulado)",
+                              "stems": [{"path": str(c1), "label": "Voz"}, {"path": str(c2), "label": "Resto"}]}])
+    lay("seqSet", "coverUid", uid)
+    lay("seq", "applyCover", [{"path": str(c2), "title": "Versión", "cover": {"at": 1.0}, "message": "Versión (simulada)"}])
+    s2 = st()
+    ix = [t["uid"] for t in s2["tracks"]].index(uid)
+    kids = s2["tracks"][ix + 1:ix + 4]
+    lay("seq", "toggleFold", [uid])
+    s3 = st()
+    rep.check("F4: «Separar» y «Versión» dejan pistas en la carpeta de la original (silenciada al separar); plegarla las oculta sin silenciarlas",
+              len(s2["tracks"]) == n0 + 3 and len(kids) == 3 and all(k["folder"] == uid for k in kids)
+              and trk(s2, uid)["mute"] and not any(k["mute"] for k in kids)
+              and not any(k["uid"] in s3["rows"] for k in kids) and uid in s3["rows"]
+              and all(x["folder"] == uid for x in s2["snap"] if x["uid"] in [k["uid"] for k in kids]),
+              {"carpeta": [k["name"] for k in kids], "filas plegada": len(s3["rows"])})
+    # deja el proyecto como estaba para las comprobaciones siguientes
+    lay("seq", "toggleFold", [uid])
+    for k in kids:
+        lay("dropTrack", k["uid"])
+    lay("seq", "replace", [uid, {"mute": False}])
+    call("syncTrackStates")
+    shutil.rmtree(tmp, ignore_errors=True)
+
+
 def build_native_window(host):
     """Crea la ventana QML. Devuelve (engine, window, bridge)."""
     from PySide6.QtCore import QUrl
@@ -295,7 +368,7 @@ def _native_daw_checks(rep, app, host, window, bridge, track_id) -> None:
     un = lay("arrUndo", uid)
     un = lay("arrUndo", uid)
     eng_clips = json.loads(bridge.clipList(track_id))["clips"]
-    tools = [window.findChild(QObject, n) for n in ("arrSplit", "arrCut", "coverMode", "alignRun", "alignGuide", "alignStrength", "arrToMixer")]
+    tools = [window.findChild(QObject, n) for n in ("arrSplit", "arrCut", "arrToMixer", "aiClipBox", "coverMode", "alignGuide", "alignStrength")]
     rep.check("Arreglo: dividir, fundir y deshacer clips desde la vista (sin pestaña «Clips»)",
               len(sp["clips"]) == 2 and fd.get("ok") and abs(fd["clips"][-1]["fade_in"] - 0.5) < 1e-6
               and len(eng_clips) == 1 and un["redo"] == 2 and None not in tools,
@@ -313,6 +386,7 @@ def _native_daw_checks(rep, app, host, window, bridge, track_id) -> None:
               {"estirado": sc, "deshecho": back})
     rep.check("tempo y tonalidad: tono del proyecto en la cabecera y panel del clic derecho",
               window.findChild(QObject, "songKey") is not None and window.findChild(QObject, "tempoKeyBox") is not None)
+    _f4_checks(rep, host, lay, call, track_id)
     z1 = lay("zones")
     rep.check("tamaño fijo: ninguna zona cambia de tamaño por su contenido", z0 == z1,
               {k: (z0.get(k), z1.get(k)) for k in z1 if z0.get(k) != z1.get(k)})
