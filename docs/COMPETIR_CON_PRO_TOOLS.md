@@ -9,7 +9,7 @@ menos en la primera hora de trabajo va primero.
 | Área | AllForOne hoy |
 |---|---|
 | Motor | Tracktion Engine + JUCE en C++, compensación de latencia de plugins de Tracktion, VST3 (instrumentos y efectos) |
-| Mezcla automática | Mezclador V4.2 en vivo: cadena real por pista, rides de voz, ecos y reverbs lanzados, ducking, barridos, master por objetivo LUFS |
+| Mezcla automática | En vivo: cadena real por pista, rides de voz, ecos y reverbs lanzados, ducking, barridos, master por objetivo LUFS |
 | Edición de clips | mover, cortar, volumen de clip, fundidos, deshacer / rehacer de clips |
 | Medición | pico, RMS, LUFS momentáneo / corto / integrado por pista y en el master |
 | IA local | canciones con voz (ACE-Step) y composición MIDI (MIDI-LLM) sin nube; Pro Tools no tiene nada igual |
@@ -43,7 +43,7 @@ menos en la primera hora de trabajo va primero.
 8. **Ruteo de E/S**: salida de cada pista a bus o a salidas físicas, entradas por pista, más de 2
    canales de salida (cascos, monitores B). Pro Tools vive de su matriz I/O.
 9. **Grupos y VCA**: mover varios faders juntos, solo/mute de grupo.
-10. **Sidechain** en compresor y gate (por ejemplo bombo → bajo: el V4.2 ya lo pide y hoy se salta
+10. **Sidechain** en compresor y gate (por ejemplo bombo → bajo: la mezcla automática ya lo pide y hoy se salta
     como «ducking del bajo con el bombo»).
 11. **Bounce / consolidar / congelar** pistas (freeze) para ahorrar CPU, y exportar stems por pista.
 12. **Time-stretch y edición de tempo** (Elastic Audio): ajustar audio al tempo y cuantizar audio.

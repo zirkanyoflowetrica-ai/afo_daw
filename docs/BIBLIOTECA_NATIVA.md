@@ -23,7 +23,7 @@ existe de verdad y cómo está hecho; el mapa completo del navegador está en
 | Sonoridad BS.1770 (LUFS M/S/I, RMS, pico) por pista y en el master | `native/src/AfoLoudness.h` |
 | Cadena por pista y en el master (insertar, mover, puentear, quitar, medidores, espectro) | `native/src/AfoEngine.cpp` (`addEffect` … `effectSpectrum`) |
 | API Python | `afo_audio.effect_catalog()`, `Engine.add_effect`, `move_effect`, `set_effect_param`, `set_effect_enabled`, `effects`, `effect_info`, `effect_meters`, `effect_spectrum`, `set_effect_automation`, `effect_automation`, `chain_scope` (antes/después de una cadena), `read_levels` (incluye `loud` y `master_loud`), `reset_loudness`, `measure_mix` (sesión procesada en memoria), `set_master_ceiling` |
-| Mezcla y master en vivo | `app/allforone/live_mix.py` (decisiones del V4.2 como cadenas) |
+| Mezcla y master en vivo | `app/allforone/live_mix.py` (decisiones de la mezcla automática como cadenas) |
 | Presets (de fábrica y del usuario) | `app/allforone/fx_presets.py`; los del usuario en `datos/presets/fx/<efecto>.json` |
 | Proyecto `.afo` | `app/allforone/project.py` (efectos, automatización y rutas) y `qml/state/Project.qml` (pistas, tempo, master) |
 | Slots de la interfaz | `bridge.py`: `fxCatalog`, `fxAdd`, `fxList`, `fxMove`, `fxRemove`, `fxParam`, `fxEnable`, `fxMeters`, `fxSpectrum`, `fxInfo`, `fxPresets`, `fxApplyPreset`, `fxSavePreset`, `fxDeletePreset`, `fxAutomation`, `fxSetAutomation`, `fxRestore`, `projectSave`, `projectOpen` |

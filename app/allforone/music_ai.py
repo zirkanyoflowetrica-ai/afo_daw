@@ -1,6 +1,6 @@
-"""Segunda opinión de tonalidad y tempo sobre el análisis del Mezclador V4.2 (que no se reescribe).
+"""Segunda opinión de tonalidad y tempo sobre el análisis de la mezcla automática (que no se reescribe).
 
-El V4.2 vota la tonalidad con perfiles de croma por stem y el tempo con el seguidor de pulsos de
+La mezcla automática vota la tonalidad con perfiles de croma por stem y el tempo con el seguidor de pulsos de
 Librosa. Falla en dos casos habituales: confunde tonalidades **relativas** (Mi menor ↔ Sol mayor: mismas
 notas) y el tempo de patrones **sincopados** (bombo de trap). Aquí:
 
@@ -12,7 +12,7 @@ notas) y el tempo de patrones **sincopados** (bombo de trap). Aquí:
   graves pesan más en la tónica); entre la mejor tonalidad y su **relativa** decide el **bajo**: la
   tónica es la nota en la que más se apoya (duración y primeros tiempos de compás).
 
-Devuelve votos que `mixer_service` combina con los del V4.2. Solo usa numpy, scipy y librosa (local).
+Devuelve votos que `mixer_service` combina con los de la mezcla automática. Solo usa numpy, scipy y librosa (local).
 """
 from __future__ import annotations
 
@@ -38,7 +38,7 @@ def _load(path: str, seconds: float = 30.0):
 
 
 def _kind(path: str) -> str:
-    """Tipo del stem con las reglas del V4.2 (por nombre)."""
+    """Tipo del stem con las reglas de la mezcla automática (por nombre)."""
     from mixer_engine import guess_type, is_backing_voice
     name = Path(path).name
     if is_backing_voice(name):
@@ -173,11 +173,11 @@ MAJOR_STEPS, MINOR_STEPS = (0, 2, 4, 5, 7, 9, 11), (0, 2, 3, 5, 7, 8, 10)
 
 
 def combine(v42: dict, ai: dict) -> dict:
-    """Une el análisis del V4.2 y esta segunda opinión en una sola decisión, explicada.
+    """Une el análisis de la mezcla automática y esta segunda opinión en una sola decisión, explicada.
 
-    Tonalidad: para cada una de las 24, perfil armónico + voto del V4.2 (a ella y a su relativa) + cuánto se apoya
+    Tonalidad: para cada una de las 24, perfil armónico + voto de la mezcla automática (a ella y a su relativa) + cuánto se apoya
     el bajo en esa tónica − notas del bajo fuera de esa escala. Tempo: si coinciden (o son doble / mitad)
-    manda el V4.2; si no, el que tenga más acuerdo, prefiriendo la periodicidad de los ataques.
+    manda la mezcla automática; si no, el que tenga más acuerdo, prefiriendo la periodicidad de los ataques.
     """
     out = dict(v42)
     notes = []
@@ -189,7 +189,7 @@ def combine(v42: dict, ai: dict) -> dict:
         for (t, mode), corr in scores.items():
             steps = MAJOR_STEPS if mode == "Mayor" else MINOR_STEPS
             sc = corr
-            # el V4.2 acierta el conjunto de notas pero no distingue la relativa: su voto vale para las dos
+            # la mezcla automática acierta el conjunto de notas pero no distingue la relativa: su voto vale para las dos
             if vk and vs in ("Mayor", "Menor natural"):
                 vt = NOTES.index(vk)
                 rel = ((vt + 9) % 12, "Menor natural") if vs == "Mayor" else ((vt + 3) % 12, "Mayor")
@@ -203,7 +203,7 @@ def combine(v42: dict, ai: dict) -> dict:
         ordered = sorted(total.values(), reverse=True)
         key, scale = NOTES[best[0]], best[1]
         if (key, scale) != (vk, vs):
-            notes.append(f"Tonalidad: {key} {scale} (V4.2 decía {vk or 'sin conclusión'} {vs or ''}); {ai.get('detail', '')}")
+            notes.append(f"Tonalidad: {key} {scale} (el análisis de la mezcla decía {vk or 'sin conclusión'} {vs or ''}); {ai.get('detail', '')}")
         out.update(key=key, scale=scale, key_confidence=round(float(np.clip((ordered[0] - ordered[1]) * 2 + 0.3, 0, 1)), 3))
     vb, ab = v42.get("bpm"), ai.get("bpm")
     if ab:
@@ -211,6 +211,6 @@ def combine(v42: dict, ai: dict) -> dict:
         if not same:
             out["bpm"] = ab
             out["bpm_confidence"] = round(float(ai.get("bpm_agree") or 0), 3)
-            notes.append(f"Tempo: {ab:.1f} BPM por la periodicidad de los ataques (V4.2 decía {vb or 'nada'})")
+            notes.append(f"Tempo: {ab:.1f} BPM por la periodicidad de los ataques (el análisis de la mezcla decía {vb or 'nada'})")
     out["ai_notes"] = notes
     return out

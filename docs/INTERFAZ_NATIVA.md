@@ -4,7 +4,7 @@ AllForOne es una app de escritorio 100 % nativa que conserva la imagen y el func
 `templates/AllForOne/PLANTILLA_DAW.html`, la **referencia visual**. Desde la fase 5 es la única interfaz: la
 versión web (Qt WebEngine + QWebChannel) se retiró.
 
-Se conserva tal cual: motor C++ (`native/`), `EngineHost`, el Mezclador V4.2 y su adaptador, la
+Se conserva tal cual: motor C++ (`native/`), `EngineHost`, la mezcla automática y su adaptador, la
 importación de audio y el `Bridge` de Python (sus métodos son slots de Qt: QML los llama
 directamente, igual que antes JavaScript por QWebChannel). Solo cambió la capa que dibuja.
 
@@ -51,7 +51,7 @@ Encuadre inicial: zoom 0,6157 (web 0,6159).
 
 ## Fase 1: cómo se hizo
 
-- `Mixer.qml` + `mixdata.js`: el estado del Mezclador V4.2 (antes `AFO_MX` en `afo_panels.js`):
+- `Mixer.qml` + `mixdata.js`: el estado de la mezcla automática (antes `AFO_MX` en `afo_panels.js`):
   fichas de audio, tipo y rol de voz, plantilla, escalón L/R, espacio vocal, progreso, historial y
   las decisiones reales por tira. Habla con Python por el mismo `afo.mixer(...)`.
 - `AudiosBody.qml`: contador, zona para soltar, + Audios / + Referencia / ⇢ Crear pistas / Vaciar,
@@ -249,11 +249,11 @@ ventana. La autoprueba abre la ventana, la captura (`logs/selftest_doble_flujo.p
 ## Mezcla y master en vivo (sin WAVs)
 
 - **Mezcla:** `mixer_service._live` (hilo del mezclador) llama a `live_mix.plan`: las mismas
-  medidas y criterios del V4.2 (`analyze`, `TYPES`, `_adaptive_chain`, `pitch_profile`, escalón de
+  medidas y criterios de la mezcla automática (`analyze`, `TYPES`, `_adaptive_chain`, `pitch_profile`, escalón de
   `_blend_backing`, `vocal_space.PROFILES`, aire de `enhance_vocal`) dan por pista ganancia, paneo y
   una cadena de la Biblioteca con sus valores. El puente (`Bridge._apply_plan`, hilo principal)
   la pone en el motor, sustituyendo solo los efectos que puso la mezcla anterior, y la consola
-  coloca faders y paneos. Lo que el V4.2 hace sobre el audio y una cadena no reproduce (ducking
+  coloca faders y paneos. Lo que la mezcla automática hace sobre el audio y una cadena no reproduce (ducking
   bombo→bajo, enmascaramiento dinámico, balance por secciones, EQ dinámica de la voz, compresión
   paralela por bus) se informa en el estado, no se finge. Solo se escribe audio
   con la afinación «Precisa» (PSOLA): una copia afinada por voz elegida, que sustituye al audio de
@@ -270,7 +270,7 @@ ventana. La autoprueba abre la ventana, la captura (`logs/selftest_doble_flujo.p
   - **Reverb lanzada:** +22 en la mezcla del espacio antes de los huecos ≥ 1,8 s (uno cada 8 s).
 - **Reverbs compartidas** (`live_mix.shared_reverbs`, como en una consola): la mezcla automática crea
   (o reutiliza por nombre) dos buses Aux, «Sala instrumentos (IA)» y «Reverb voces (IA)», con una
-  sola Space al 100 % cada uno. Los instrumentos con reverb del V4.2 y los dobles / coros / L-R / _B
+  sola Space al 100 % cada uno. Los instrumentos con reverb de la mezcla automática y los dobles / coros / L-R / _B
   dejan su reverb y envían a su bus con 20·log10(mezcla) dB (la Space mezcla en lineal: misma
   cantidad de reverb). La voz principal conserva la suya porque lleva la reverb lanzada y el motor
   aún no automatiza envíos. Al remezclar sin ese uso, los envíos se quitan.
@@ -284,7 +284,7 @@ ventana. La autoprueba abre la ventana, la captura (`logs/selftest_doble_flujo.p
   (los efectos llevan «∿»); en **Mezcla** la tira marca «∿» y su ayuda dice qué se automatizó, y el
   estado resume rides, lanzamientos, ducking y barridos. Las curvas se editan en la línea de
   automatización del efecto y se guardan con el proyecto.
-- **Master IA:** `live_mix.apply_master` reproduce `master()` del V4.2 con medidas del motor:
+- **Master IA:** `live_mix.apply_master` reproduce `master()` de la mezcla automática con medidas del motor:
   `Engine::measureMix()` procesa la sesión entera en memoria (un `RenderTask` propio con los
   plugins del master, sin archivo) y devuelve LUFS integrada, RMS y pico del master y de cada
   pista. Primero mide con la cadena a −24 dB (el limitador no actúa y el pico se lee a la entrada),
@@ -325,7 +325,7 @@ tiene; el chip de Efectos va en la primera fila para no añadir otra fila de chi
   `tools/visual_compare.py` y `docs/CAMBIOS_PLANTILLA.md`. El paquete ya no lleva Chromium
   (`package.ps1` falla si aparece `QtWebEngineProcess.exe`).
 - Una sola autoprueba, `--selftest`: extensión nativa, motor, render del tono a 440 Hz y después
-  toda la interfaz QML con el motor real (las comprobaciones del Mezclador V4.2 que hacía la web
+  toda la interfaz QML con el motor real (las comprobaciones de la mezcla automática que hacía la web
   pasaron aquí; desde la mezcla en vivo comprueban cadenas, master y que no se escriban WAVs).
 - QML ordenado: `Main.qml` y `theme/` (Theme, singleton), `controls/` (NeoButton, Knob, Fader,
   Meter, Lcd, Select, ModulePanel…), `modules/` (un cuerpo por módulo y el diálogo de audio),

@@ -82,7 +82,7 @@ $Exe = Join-Path $Root 'EXE'
 
 Step "Nuitka standalone (AllForOne $Version)"
 foreach ($d in @($Out, (Join-Path $Dist 'AllForOne.dist'))) { if (Test-Path $d) { Remove-Item -Recurse -Force $d } }
-# Los modulos del Mezclador V4.2 se importan por su nombre (mixer_engine, scale_tuner...):
+# Los modulos de la mezcla automática se importan por su nombre (mixer_engine, scale_tuner...):
 # se compilan como modulos de primer nivel desde su carpeta.
 $MixerDir = Join-Path $Root 'app\allforone\mixer_v42'
 $env:PYTHONPATH = (Join-Path $Root 'app') + ';' + $MixerDir

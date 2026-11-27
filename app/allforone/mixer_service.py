@@ -1,4 +1,4 @@
-"""Adaptador del Mezclador Automático V4.2 para los paneles de AllForOne.
+"""Adaptador de la mezcla automática para los paneles de AllForOne.
 
 Los algoritmos (mixer_engine, scale_tuner, vocal_dsp, vocal_space, mastering_tools,
 mix_templates, music_analysis…) se usan SIN modificar desde allforone/mixer_v42.
@@ -9,7 +9,7 @@ los paneles Mezcla IA, Afinador, Master IA y Antes/Después.
 Reglas:
   * El trabajo pesado corre en un hilo aparte: nunca en el hilo de la interfaz ni en el de audio.
   * Los originales del usuario no se modifican.
-  * La mezcla y el master son EN VIVO (live_mix.py): el V4.2 decide y sus decisiones se aplican
+  * La mezcla y el master son EN VIVO (live_mix.py): la mezcla automática decide y sus decisiones se aplican
     como fader, paneo y cadenas de efectos reales del motor. No se renderizan WAVs.
 """
 from __future__ import annotations
@@ -61,7 +61,7 @@ def load():
         return _loaded
     except Exception as exc:  # dependencias que falten se informan, no se simulan
         _load_error = f"{type(exc).__name__}: {exc}"
-        log.exception("No se pudo cargar el Mezclador V4.2")
+        log.exception("No se pudo cargar la mezcla automática")
         raise
 
 
@@ -148,7 +148,7 @@ class MixerService:
         try:
             m = load()
         except Exception:
-            return {"ok": False, "error": f"Mezclador V4.2 no disponible: {_load_error}"}
+            return {"ok": False, "error": f"La mezcla automática no está disponible: {_load_error}"}
         return {"ok": True, "version": VERSION,
                 "profiles": [[k, v["name"], v.get("tag", "")] for k, v in m.tpl.PROFILES.items()],
                 "modes": list(m.tpl.GUIDE_MODES), "keys": list(m.tuner.KEYS), "scales": list(m.tuner.SCALES),
@@ -185,7 +185,7 @@ class MixerService:
             if data.get("ai_notes"):
                 notes = "".join("\n • " + n for n in data["ai_notes"])
                 summary += "\nSegunda opinión (AllForOne):" + notes
-        except Exception:                      # el análisis del V4.2 sigue valiendo por sí solo
+        except Exception:                      # el análisis de la mezcla automática sigue valiendo por sí solo
             log.exception("music_ai")
         data["source_signature"] = m.confirm.signature(paths_, None, flags)
         self.analysis = data
@@ -249,7 +249,7 @@ class MixerService:
         return {"ok": True, "started": kind}
 
     def _live(self, payload):
-        """Decide la mezcla (V4.2) en este hilo; el puente la aplica en el motor desde el hilo principal.
+        """Decide la mezcla en este hilo; el puente la aplica en el motor desde el hilo principal.
 
         No se renderiza nada: solo se escribe audio con la afinación precisa (PSOLA, una copia afinada
         por voz elegida); la afinación en vivo es un efecto del motor (AF-60).
@@ -281,7 +281,7 @@ class MixerService:
                           tune_right=bool(voices.get("r", False)), tune_center_backings=bool(voices.get("b", False)))
             # "live" (por defecto): el afinador nativo AF-60 del motor en la cadena (no escribe audio;
             # al remezclar con 0 % desaparece), velocidad según el tempo y rango según la voz.
-            # "psola": copia afinada sin conexión con el PSOLA de V4.2 (algo más exacta, escribe audio).
+            # "psola": copia afinada sin conexión con el PSOLA de la mezcla automática (algo más exacta, escribe audio).
             live = tune.get("method", "live") != "psola"
             dest = paths.user_data_dir() / "afinadas"
             for t in result["tracks"]:
@@ -308,7 +308,7 @@ class MixerService:
             result["reference_lufs"] = lufs if math.isfinite(lufs) else None
         result["seconds"] = round(time.monotonic() - t0, 2)
         result["profile_name"] = tpl.PROFILES[opts["profile"]]["name"]
-        # La plantilla en «Solo guía» no cambia el audio (V4.2): se dice y se da su guía de escucha
+        # La plantilla en «Solo guía» no cambia el audio: se dice y se da su guía de escucha
         prof = tpl.PROFILES[opts["profile"]]
         trims = sum(1 for t in result["tracks"] if any(n.startswith("guía de estilo") for n in t.get("notes", [])))
         result["template_note"] = (f"Plantilla «{prof['name']}» solo como guía (no cambia el sonido): {prof['voice'].rstrip('.')}"

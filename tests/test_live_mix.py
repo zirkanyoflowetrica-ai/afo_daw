@@ -1,4 +1,4 @@
-"""Mezcla y mastering automáticos EN VIVO: las decisiones del V4.2 quedan como fader, paneo y cadenas
+"""Mezcla y mastering automáticos EN VIVO: las decisiones de la mezcla automática quedan como fader, paneo y cadenas
 de efectos reales del motor, el master se decide midiendo la sesión en memoria y no se escribe audio."""
 import json
 import time
@@ -98,7 +98,7 @@ def test_proyecto_conserva_la_mezcla_automatica(mixed):
     voz = next(s for s in stems if s["kind"] == "Voz principal")["trackId"]
     doc = project.collect({"tracks": [{"id": voz, "type": "audio"}]}, h.engine, h.effect_catalog(), {}, b._fx_labels, b._auto)
     saved = doc["tracks"][0]["fx"]
-    assert saved[0]["label"] == "EQ (V4.2)" and all(fx.get("auto") for fx in saved)
+    assert saved[0]["label"] == "EQ (auto)" and all(fx.get("auto") for fx in saved)
     r = json.loads(b.fxRestore(voz, json.dumps(saved)))
     assert r["ok"] and [e["label"] for e in r["chain"]] == [fx["label"] for fx in saved]
     assert all(e["auto"] for e in r["chain"])

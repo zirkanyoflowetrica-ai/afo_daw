@@ -382,7 +382,7 @@ Column {
                     readonly property bool on: root.tn.method === "psola"
                     text: "Copia precisa (PSOLA)"; fontSize: 12; padX: 8; padY: 3; pressedState: on
                     color: on ? Theme.pc.afina : Theme.button; textColor: on ? Theme.inkOnColor : Theme.ink
-                    tip: "Afinación sin conexión (PSOLA de V4.2): algo más exacta, escribe una copia afinada de la voz"
+                    tip: "Afinación sin conexión (PSOLA de la mezcla automática): algo más exacta, escribe una copia afinada de la voz"
                     onClicked: root.mixer.setTune({ method: "psola" })
                 }
             }

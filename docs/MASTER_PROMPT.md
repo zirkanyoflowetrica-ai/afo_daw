@@ -74,7 +74,7 @@ No transformes los elementos existentes en controles Qt genéricos.
 
 ## B. Mezclador_Automatico.zip
 
-Contiene el mezclador automático V4.2.
+Contiene la mezcla automática.
 
 Incluye, entre otros:
 
@@ -199,7 +199,7 @@ Tecnologías:
 - PySide6.
 - NumPy.
 - SoundFile.
-- Bibliotecas existentes del mezclador V4.2.
+- Bibliotecas existentes de la mezcla automática.
 - Otras dependencias justificadas.
 
 Python se encargará de:
@@ -960,7 +960,7 @@ Permitir:
 
 ---
 
-# 9. INTEGRACIÓN TOTAL DEL MEZCLADOR V4.2
+# 9. INTEGRACIÓN TOTAL DE LA MEZCLA AUTOMÁTICA
 
 El mezclador original no debe convertirse en un sistema aislado que requiera abrir otra aplicación.
 
@@ -1021,7 +1021,7 @@ Incorporar los procesos correspondientes al panel de mezcla automática y a las 
 
 Reutilizar `mix_templates.py`.
 
-Conservar las nueve guías disponibles en V4.2:
+Conservar las nueve guías disponibles en la mezcla automática:
 
 1. Trap oscuro y contundente.
 2. Trap melódico y atmosférico.
@@ -1375,7 +1375,7 @@ Cada versión debe incluir varios componentes relacionados y entregar un resulta
 
 ## V0.5 — INTEGRACIÓN DEL MEZCLADOR AUTOMÁTICO
 
-- Incorporación de V4.2.
+- Incorporación de la mezcla automática.
 - Clasificación por pista.
 - Análisis musical.
 - Mezcla automática.
@@ -1537,7 +1537,7 @@ NO crear una interfaz Qt diferente sin autorización.
 
 NO crear módulos visualmente incompatibles.
 
-NO sustituir el mezclador V4.2 sin analizarlo.
+NO sustituir la mezcla automática sin analizarla.
 
 NO presentar botones decorativos como funciones terminadas.
 

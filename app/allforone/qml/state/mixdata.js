@@ -1,5 +1,5 @@
 .pragma library
-// Datos y reglas del Mezclador V4.2 en la interfaz (mismos que afo_panels.js). Los valores reales
+// Datos y reglas de la mezcla automática en la interfaz (mismos que afo_panels.js). Los valores reales
 // (plantillas, tipos, masters) llegan de Python con mixer('info'); estos son los de arranque.
 
 var D = {

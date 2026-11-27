@@ -139,7 +139,7 @@ def check_mix_run(rep, bridge, st, since: float) -> None:
     rep.check("la voz principal lleva EQ, de-esser, saturación, espacio y eco",
               all(k in vchain for k in ("eq", "deesser", "saturator", "space", "delay")), vchain)
     m = st.get("master") or {}
-    # Como master() del V4.2: llega al objetivo, o se queda corto si la mezcla es tan dinámica que
+    # Como master() de la mezcla automática: llega al objetivo, o se queda corto si la mezcla es tan dinámica que
     # haría falta limitar más de lo permitido (la ganancia final queda en el presupuesto)
     reached = abs(m.get("lufs_i", 0) - m.get("target_lufs", -14)) < 1.5
     capped = abs(m.get("final_gain_db", 0) - m.get("limit_budget_db", 99)) < 0.05

@@ -446,7 +446,7 @@ def render_mix(tracks, reverb_amount=None, start=0., dur=0., progress=None,
     kick_signal = np.zeros((2, n), dtype=np.float32)
     lead_monitor = np.zeros((2, n), dtype=np.float32)
     derived = {}
-    report = ["MEZCLA AUTOMATICA V4.2 | Plantillas orientativas + afinacion individual", "",
+    report = ["MEZCLA AUTOMATICA | Plantillas orientativas + afinacion individual", "",
               f"GUIA ELEGIDA: {PROFILES[mix_template]['name']} | {template_mode}",
               "Los criterios estilisticos no sustituyen la escucha ni aplican EQ o compresores fijos.", "",
               "Paneo: SOLO _L/_R; excepcion _B: centro o _B_L/_B_R al 50%; voces laterales a nivel secundario.",

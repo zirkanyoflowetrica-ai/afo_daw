@@ -7,7 +7,7 @@ import "../state/mixdata.js" as MD
 // de voz, inserts en orden de la señal, envíos a los buses Aux, paneo, fader con medidor estéreo del
 // motor en dB de pico, LUFS o RMS, Solo y Mute) y la tira del master con sus inserts. Clic en el nombre
 // de una tira = su rack en Efectos (el master es un canal más); doble clic en un insert lo abre ahí.
-// Inserts y envíos se leen del motor (puente: dawLanes). La mezcla automática (V4.2) es una orden de su barra (F6).
+// Inserts y envíos se leen del motor (puente: dawLanes). La mezcla automática es una orden de su barra (F6).
 Column {
     id: root
     property var studio

@@ -83,7 +83,7 @@ def audio_files(items) -> list[str]:
 class Bridge(QObject):
     stateChanged = Signal(str)
     pluginScanEvent = Signal(str)   # búsqueda de VST3 en otro proceso: avance y resultado
-    mixerEvent = Signal(str)   # progreso y resultados del Mezclador V4.2 (desde su hilo de trabajo)
+    mixerEvent = Signal(str)   # progreso y resultados de la mezcla automática (desde su hilo de trabajo)
     aiEvent = Signal(str)      # IA local: avance de descargas de modelos y de generaciones
 
     def __init__(self, host: EngineHost, parent_widget: QWidget | None = None):
@@ -2069,7 +2069,7 @@ class Bridge(QObject):
         from ._native import afo_audio
         return _ok(path=path, measure=afo_audio.measure_file(path))
 
-    # --- Mezclador V4.2 (paneles Mezcla IA, Afinador, Master IA, Antes/Después) ---------------
+    # --- mezcla automática (paneles Mezcla IA, Afinador, Master IA, Antes/Después) ---------------
     @Slot(str, str, result=str)
     @_safe
     def mixer(self, cmd: str, payload: str) -> str:
@@ -2197,7 +2197,7 @@ class Bridge(QObject):
         return ids
 
     def _apply_plan(self, plan: dict) -> None:
-        """Hilo principal: las decisiones del V4.2 pasan a la consola y a las cadenas del motor."""
+        """Hilo principal: las decisiones de la mezcla automática pasan a la consola y a las cadenas del motor."""
         from . import live_mix
         eng = self.host.engine
         applied = 0
@@ -2241,7 +2241,7 @@ class Bridge(QObject):
                                 "automation": plan.get("automation") or {}, "template_note": plan.get("template_note", "")})
 
     def _master_target(self, preset: str):
-        """El preset elegido; «Según referencia» = Comercial con el objetivo de la referencia (como el V4.2)."""
+        """El preset elegido; «Según referencia» = Comercial con el objetivo de la referencia (como la mezcla automática)."""
         if preset != REF_LABEL:
             return preset, None
         ref = (self._live_plan or {}).get("reference_lufs")

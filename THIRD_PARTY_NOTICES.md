@@ -25,7 +25,7 @@ el repositorio y etiquetando cada versión.
 | VST3 SDK (incluido en JUCE) | — | GPLv3 / MIT según versión del SDK en JUCE | Hosting VST3 |
 | Steinberg ASIO SDK | 2.3.4 (2025-10-15) | Doble licencia: propietaria de Steinberg **o GPLv3** (`LICENSE.txt` del SDK); aquí se usa bajo **GPLv3**, compatible con la AGPLv3 de AllForOne | Drivers ASIO (ASIO4ALL, los de cada interfaz…). Se descarga al compilar (`cmake/deps.cmake`, SHA-256 fijado); no se guarda en el repositorio |
 
-Mezclador Automático V4.2 (se integra en V0.5): `pedalboard` (GPLv3), `praat-parselmouth` (GPLv3),
+Mezcla automática (se integra en V0.5): `pedalboard` (GPLv3), `praat-parselmouth` (GPLv3),
 `pyloudnorm` (MIT), `scipy` (BSD), `librosa` (ISC). Los pesos opcionales de DrumSep tienen términos
 no aclarados y no se distribuirán. ASIO está activado con el SDK de Steinberg bajo GPLv3 (ver la
 tabla); también se usan WASAPI y DirectSound. «ASIO» es una marca de Steinberg Media Technologies

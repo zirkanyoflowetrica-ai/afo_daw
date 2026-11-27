@@ -2,7 +2,7 @@
 PySide6==6.12.0
 numpy==2.5.4
 soundfile==0.14.0
-# Mezclador Automatico V4.2 (mismas versiones que su requirements-tested.txt; librosa dentro de su rango)
+# Mezcla automatica (mismas versiones que su requirements-tested.txt; librosa dentro de su rango)
 pedalboard==0.9.26
 pyloudnorm==0.2.0
 scipy==1.18.1

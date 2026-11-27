@@ -6,7 +6,7 @@ import "../controls"
 // Mezcla automática (F6, FLUJO_PROFESIONAL §3.1): una orden del Mezclador, como «Normalizar» o
 // «Exportar». Se abre desde la barra del Mezclador o el menú Mezcla; aquí solo van sus ajustes. Lo que
 // hace se ve en las tiras (fader, paneo y efectos con la marca «IA»), el progreso en la barra de estado,
-// el A/B en la barra del Mezclador y Ctrl+Z (en el Mezclador) la deshace. Mezcla IA V4.2 por debajo.
+// el A/B en la barra del Mezclador y Ctrl+Z (en el Mezclador) la deshace. Mezcla IA por debajo.
 B.Popup {
     id: root
     property var studio

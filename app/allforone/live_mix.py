@@ -1,6 +1,6 @@
-"""Mezcla y mastering automáticos EN VIVO: las decisiones del Mezclador V4.2 como efectos reales.
+"""Mezcla y mastering automáticos EN VIVO: las decisiones de la mezcla automática como efectos reales.
 
-El V4.2 (mixer_v42/, sin cambios) analiza cada stem y decide ganancia, paneo, EQ, compresión,
+La mezcla automática (mixer_v42/, sin cambios) analiza cada stem y decide ganancia, paneo, EQ, compresión,
 procesos de voz, espacio y master; luego renderiza WAVs. Aquí se reutilizan sus mismas mediciones
 y criterios (analyze, TYPES, _adaptive_chain, perfiles de espacio vocal, MASTERS…) pero el
 resultado es un PLAN: por pista, fader, paneo y una cadena de efectos de la Biblioteca nativa con
@@ -9,7 +9,7 @@ sus valores; el motor C++ los procesa en tiempo real y la consola los muestra. N
 Lo que cambia con el tiempo se escribe como AUTOMATIZACIÓN de esos efectos (curvas de Tracktion que
 el motor sigue al reproducir y que las perillas muestran moviéndose): rides de la voz principal
 frase a frase, ecos y reverbs lanzados al final de las frases, ducking de la música mientras canta
-la voz y barridos de filtro antes de que entre la voz (`automate`). Lo demás que el V4.2 hace con
+la voz y barridos de filtro antes de que entre la voz (`automate`). Lo demás que la mezcla automática hace con
 audio variable (ducking del bajo con el bombo, enmascaramiento dinámico, balance por secciones, EQ
 dinámica de cuerpo y dureza) se informa en `skipped`, no se finge.
 
@@ -61,13 +61,13 @@ def _compressor(plugins):
     from pedalboard import Compressor
     for p in plugins:
         if isinstance(p, Compressor):
-            return _fx("compressor", "Compresión (V4.2)", threshold=p.threshold_db, ratio=p.ratio, attack=p.attack_ms,
+            return _fx("compressor", "Compresión (auto)", threshold=p.threshold_db, ratio=p.ratio, attack=p.attack_ms,
                        release=p.release_ms, knee=0, detector=0, makeup=0, mix=100)
     return None
 
 
 def _vocal_space(role, amount, bpm):
-    """Perfil de espacio vocal del V4.2 (vocal_space.PROFILES) como Space + Delay en la cadena."""
+    """Perfil de espacio vocal de la mezcla automática (vocal_space.PROFILES) como Space + Delay en la cadena."""
     import vocal_space as vs
     prof = vs.PROFILES[role]
     scale = min(1.65, max(0.0, amount) / 45.0)
@@ -86,7 +86,7 @@ def _vocal_space(role, amount, bpm):
 
 
 def plan_track(m, stem: dict, opts: dict, lead: dict | None = None) -> dict:
-    """Decisiones del V4.2 para un stem, como fader, paneo y cadena de efectos."""
+    """Decisiones de la mezcla automática para un stem, como fader, paneo y cadena de efectos."""
     import numpy as np
     eng = m.eng
     from vocal_dsp import VOCALS, band, envelope, pitch_profile
@@ -160,7 +160,7 @@ def plan_track(m, stem: dict, opts: dict, lead: dict | None = None) -> dict:
             extra["lpf"] = 18500
     eqv, eqn = _eq_from_plugins(plugins, extra)
     if eqv:
-        chain.append(_fx("eq", "EQ (V4.2)", **eqv))
+        chain.append(_fx("eq", "EQ (auto)", **eqv))
         notes += eqn
     if kind in VOCALS:
         # De-esser: la banda 4,5–10 kHz que vigila dynamic_cut, con umbral relativo al nivel de la voz
@@ -169,7 +169,7 @@ def plan_track(m, stem: dict, opts: dict, lead: dict | None = None) -> dict:
         ref_db = _db(np.percentile(loud, 80)) if loud.size else -30.0
         sib = envelope(band(x, eng.SR, 4500, 10000), eng.SR)
         strength = float(np.percentile(sib[full > 1e-5] / np.maximum(full[full > 1e-5], 1e-8), 95)) if loud.size else 0.0
-        chain.append(_fx("deesser", "De-Esser (V4.2)", freq=6700, q=1.2, threshold=ref_db + _db(.35),
+        chain.append(_fx("deesser", "De-Esser (auto)", freq=6700, q=1.2, threshold=ref_db + _db(.35),
                          range=-4.0, mode=0, listen=0))
         notes.append(f"de-esser 4,5–10 kHz hasta 4 dB (sibilancia relativa {strength:.2f})")
     comp = _compressor(plugins)
@@ -180,15 +180,15 @@ def plan_track(m, stem: dict, opts: dict, lead: dict | None = None) -> dict:
         wet = .10 if kind == "Voz principal" else .06
         rms_db = _db(a.rms)
         if a.crest_db >= 9:
-            chain.append(_fx("compressor", "Compresión paralela (V4.2)", threshold=float(np.clip(rms_db + 3, -36, -10)), ratio=3,
+            chain.append(_fx("compressor", "Compresión paralela (auto)", threshold=float(np.clip(rms_db + 3, -36, -10)), ratio=3,
                              attack=18, release=100, knee=0, detector=0, makeup=3, mix=wet * 100))
-        chain.append(_fx("saturator", "Saturación (V4.2)", drive=6, character=1, tone=0, bias=0,
+        chain.append(_fx("saturator", "Saturación (auto)", drive=6, character=1, tone=0, bias=0,
                          mix=(8 if kind == "Voz principal" else 4.5), output=0))
         if kind in SPACE_ROLE:
             chain += _vocal_space(SPACE_ROLE[kind], opts.get("space", 45.0), opts.get("bpm", 0.0))
     elif spec["send"] is not None:
         mix = 60 * 10 ** (spec["send"] / 20)
-        chain.append(_fx("space", "Reverb de instrumentos (V4.2)", mode=0, size=38, predelay=10, decay=1.2, diffusion=70,
+        chain.append(_fx("space", "Reverb de instrumentos (auto)", mode=0, size=38, predelay=10, decay=1.2, diffusion=70,
                          damping=8500, lowcut=250, early=40, width=100, mix=mix))
         notes.append(f"reverb {spec['send']} dB")
     return {"path": path, "name": name, "kind": kind, "role": role, "position": position,
@@ -199,7 +199,7 @@ def plan_track(m, stem: dict, opts: dict, lead: dict | None = None) -> dict:
 
 def plan(m, stems: list[dict], opts: dict, progress=None) -> dict:
     """Plan de toda la mezcla. La voz principal se decide primero: los acompañamientos se escalonan con ella."""
-    from vocal_dsp import VOCALS  # noqa: F401  (comprueba que el V4.2 está cargado)
+    from vocal_dsp import VOCALS  # noqa: F401  (comprueba que la mezcla automática está cargada)
     order = sorted(range(len(stems)), key=lambda i: 0 if (stems[i].get("role") == "P" or stems[i].get("kind") == "Voz principal") else 1)
     out, lead = [None] * len(stems), None
     for n, i in enumerate(order):
@@ -222,7 +222,7 @@ def plan(m, stems: list[dict], opts: dict, progress=None) -> dict:
 
 
 # Reverbs compartidas por envío, como en una consola: una sala para los instrumentos (el «send» en dB
-# del V4.2) y una reverb para dobles y coros. La voz principal conserva la suya en la cadena porque
+# de la mezcla automática) y una reverb para dobles y coros. La voz principal conserva la suya en la cadena porque
 # lleva «reverb lanzada» automatizada al final de frase (el motor aún no automatiza envíos).
 BUSES = {"sala": ("Sala instrumentos (IA)", "Reverb de instrumentos"),
          "voces": ("Reverb voces (IA)", "Espacio vocal")}
@@ -451,7 +451,7 @@ def automate(m, tracks: list[dict], opts: dict) -> dict:
 
 
 def master_chain(m, preset: str, bands: dict, crest_db: float, pre_gain_db: float) -> list[dict]:
-    """La cadena de master() del V4.2 como efectos: entrada a −18 LUFS, EQ, compresión, color, nivel final
+    """La cadena de master() de la mezcla automática como efectos: entrada a −18 LUFS, EQ, compresión, color, nivel final
     y el limitador (AFO Limiter, con el techo del preset: su reducción se ve en la tarjeta)."""
     p = m.eng.MASTERS[preset]
     eq = {"hpf": 24}
@@ -460,11 +460,11 @@ def master_chain(m, preset: str, bands: dict, crest_db: float, pre_gain_db: floa
     if bands.get("air", 1.0) < .01:
         eq.update(highFreq=9500, highGain=.5)
     chain = [_fx("gain", "Entrada del master (−18 LUFS)", input=pre_gain_db, output=0),
-             _fx("eq", "EQ del master (V4.2)", **eq)]
+             _fx("eq", "EQ del master (auto)", **eq)]
     if crest_db > 13:
-        chain.append(_fx("compressor", "Compresión del master (V4.2)", threshold=-15, ratio=p["ratio"], attack=35, release=175,
+        chain.append(_fx("compressor", "Compresión del master (auto)", threshold=-15, ratio=p["ratio"], attack=35, release=175,
                          knee=0, detector=0, makeup=0, mix=100))
-    chain.append(_fx("saturator", "Color del master (V4.2)", drive=4, character=1, tone=0, bias=0, mix=2.5, output=0))
+    chain.append(_fx("saturator", "Color del master (auto)", drive=4, character=1, tone=0, bias=0, mix=2.5, output=0))
     chain.append(_fx("gain", "Nivel final del master", input=0, output=0))
     chain.append(_fx("limiter", "Limitador del master", input=0, ceiling=float(p["tp"]), release=120))
     return chain
@@ -501,7 +501,7 @@ def _measure(eng):
 
 
 def apply_master(eng, m, preset: str, bands: dict, old_ids: list[int], target_lufs: float | None = None):
-    """master() del V4.2 en vivo: mide la mezcla en el motor (en memoria) y ajusta la cadena del master
+    """master() de la mezcla automática en vivo: mide la mezcla en el motor (en memoria) y ajusta la cadena del master
     hasta el objetivo de LUFS sin pasar del presupuesto de limitación ni del techo.
     Devuelve (ids de los efectos, estadísticas, cadena)."""
     import numpy as np

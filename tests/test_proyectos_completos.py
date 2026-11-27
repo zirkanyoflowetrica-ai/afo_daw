@@ -151,13 +151,13 @@ def test_proyecto_completo(genre, qapp, tmp_path, monkeypatch):
             b.fxEnable(i, True)
         eng.set_track_solo(lead["trackId"], False)
         assert offline_only > 20.0 and tuned < offline_only * (1.0 - 0.6 * STRENGTH[genre] / 100), (genre, tuned, offline_only)
-        # Comparativa con la afinación PSOLA de V4.2 (la que se usaba antes, sin conexión): misma voz y
+        # Comparativa con la afinación PSOLA de la mezcla automática (la que se usaba antes, sin conexión): misma voz y
         # misma intensidad. Por eso «Precisa» (PSOLA) sigue siendo la opción por defecto de la Mezcla IA
         # y el AF-60 en vivo es la alternativa editable: las dos tienen que afinar de verdad.
         m = mixer_service.load()
         raw = m.eng.load_stem(lead["path"])
         psola, _ = m.tuner.tune_to_scale(raw, m.eng.SR, conf["key"], conf["scale"], STRENGTH[genre])
-        psola_err = F.pitch_error_cents(np.asarray(psola).T, g, m.eng.SR)    # V4.2: (canales, muestras)
+        psola_err = F.pitch_error_cents(np.asarray(psola).T, g, m.eng.SR)    # mezcla automática: (canales, muestras)
         print(f"{genre}: sin afinar {offline_only:.1f} c · PSOLA {psola_err:.1f} c · AF-60 {tuned:.1f} c")
         assert psola_err < offline_only * 0.5 and psola_err <= tuned + 1.0, (genre, tuned, psola_err)
 

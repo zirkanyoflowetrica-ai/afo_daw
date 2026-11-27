@@ -1,4 +1,4 @@
-"""V4.2: plantillas orientativas, sin cambios accidentales en el motor."""
+"""Mezcla automática: plantillas orientativas, sin cambios accidentales en el motor."""
 import json
 import sys
 from pathlib import Path

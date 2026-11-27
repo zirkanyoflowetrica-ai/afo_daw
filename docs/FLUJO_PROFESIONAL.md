@@ -120,7 +120,7 @@ La cabecera pierde: Crear IA, Restaurar zonas, Tema, Abrir, Inicio (van a Archiv
 ### 3.1 Un solo mezclador, un solo aspecto (petición del usuario, 26-11-2026)
 
 «La mixer de IA no es la misma que la mixer normal, no entiendo». Por debajo ya es la misma: la
-Mezcla IA (V4.2) solo mueve faders, paneo, envíos y pone efectos en las tiras reales. Pero se ve
+Mezcla IA solo mueve faders, paneo, envíos y pone efectos en las tiras reales. Pero se ve
 como otro aparato:
 - perillas «Escalón L/R» y «Espacio vocal» propias;
 - una barra de progreso tipo LCD;

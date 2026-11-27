@@ -2,7 +2,7 @@
 
 DAW modular gratuito para Windows: la interfaz original `templates/AllForOne/PLANTILLA_DAW.html` convertida en una
 aplicación de escritorio nativa (Qt Quick, sin navegador interno) con motor de audio nativo C++ (JUCE + Tracktion Engine), lógica en Python
-y el Mezclador Automático V4.2 integrado por fases.
+y la mezcla automática integrado por fases.
 
 **Versión actual: 0.3.0 (beta).** La interfaz nativa (sin navegador interno) se describe en `docs/INTERFAZ_NATIVA.md`.
 
@@ -10,7 +10,7 @@ y el Mezclador Automático V4.2 integrado por fases.
 
 1. Doble clic en **`build_and_run.bat`**: prepara todo dentro de esta carpeta (Python portátil en
    `.toolchains` si hace falta, `.venv`, JUCE y Tracktion en `.deps`), compila el motor, ejecuta las
-   pruebas (incluidas las 27 originales del Mezclador V4.2) y abre AllForOne.
+   pruebas (incluidas las 27 originales de la mezcla automática) y abre AllForOne.
 2. Doble clic en **`package_windows.bat`**: genera el programa en **`EXE\AllForOne.exe`**, crea el
    acceso directo `AllForOne.lnk` en esta carpeta y el ZIP para publicar en `release\`.
    Tus mezclas y ajustes quedan en `EXE\datos` y se conservan al actualizar.
@@ -32,7 +32,7 @@ muestra el lienzo con los aparatos y sus cables; «Tema» cambia a AllForOne (cl
 2. Ajusta el **rol de voz** (P, B, L, R, B_L, B_R) donde te venga mejor: en Audios, en Pistas o en
    la tira de la consola.
 3. En **Mezcla** elige la plantilla trap/rap y pulsa **MEZCLAR AUTOMÁTICAMENTE**. La mezcla es
-   **en vivo**: el Mezclador V4.2 decide y deja en cada pista su fader, su paneo y una cadena de
+   **en vivo**: la mezcla automática decide y deja en cada pista su fader, su paneo y una cadena de
    efectos real (EQ, de-esser, compresión, saturación, espacio, eco) que puedes abrir y ajustar en
    **Efectos**, con **automatizaciones** que se mueven al reproducir: ride de la voz frase a frase,
    ecos y reverbs lanzados al final de las frases, ducking de la música bajo la voz y barridos de
@@ -98,7 +98,7 @@ native/tests/               pruebas nativas (ctest)
 app/allforone/              aplicación Python (PySide6): coordina motor, mezclador e interfaz
 app/allforone/qml/          interfaz Qt Quick: Main.qml y theme/, controls/, modules/, state/, assets/
 tests/                      pruebas Python (pytest)
-app/allforone/mixer_v42/    Mezclador Automático V4.2 original (sin cambios)
+app/allforone/mixer_v42/    mezcla automática original (sin cambios)
 app/allforone/mixer_service.py  adaptador del mezclador para los paneles
 app/allforone/audio_import.py    formatos que el motor no lee (WAV de 64 bits): copia convertida
 app/allforone/project.py    proyecto .afo (guardar / abrir); fx_presets.py: presets de efectos

@@ -37,7 +37,7 @@ def write(path, y):
 
 
 def test_frases_rides_lanzamientos_ducking_y_barridos():
-    mixer_service.load()                       # pone el V4.2 (vocal_dsp…) al alcance
+    mixer_service.load()                       # pone la mezcla automática (vocal_dsp…) al alcance
     y = voice()
     lv, segs = live_mix.vocal_activity(np.stack([y, y]), SR)
     assert len(segs) == 4

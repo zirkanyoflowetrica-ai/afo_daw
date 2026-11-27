@@ -24,7 +24,7 @@ Especificación completa: `docs/MASTER_PROMPT.md`. Resumen de lo que no se negoc
    de JUCE; en Linux `EngineHost.pump()` los procesa.
 4. **Nada falso:** ni medidores aleatorios, ni "IA" con clips aleatorios sin la etiqueta DEMO, ni
    botones decorativos presentados como terminados, ni pruebas no ejecutadas dadas por buenas.
-5. **Mezclador V4.2** (`app/allforone/mixer_v42/`): se reutiliza, no se reescribe. Sus 27 pruebas deben
+5. **Mezcla automática** (`app/allforone/mixer_v42/`): se reutiliza, no se reescribe. Sus 27 pruebas deben
    seguir pasando.
 6. Ocultar ≠ silenciar ≠ desconectar.
 7. **Interfaz amigable:** cada cambio de interfaz pasa la lista de `docs/GUIA_DISENO_INTERFAZ.md`

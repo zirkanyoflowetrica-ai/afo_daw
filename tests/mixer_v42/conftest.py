@@ -1,4 +1,4 @@
-"""Ejecuta las pruebas ORIGINALES del Mezclador V4.2 contra los módulos integrados en AllForOne.
+"""Ejecuta las pruebas ORIGINALES de la mezcla automática contra los módulos integrados en AllForOne.
 
 Los archivos de prueba se copiaron sin cambios. Las que importan `app` (la interfaz Gradio
 original) solo se ejecutan si Gradio está instalado; AllForOne no lo necesita.

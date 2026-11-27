@@ -2,9 +2,9 @@ import QtQuick
 import "../theme"
 import "mixdata.js" as MD
 
-// Estado del Mezclador Automático V4.2 en la interfaz nativa.
+// Estado de la mezcla automática en la interfaz nativa.
 // Un audio = una ficha (`items`) = una pista del motor = una tira de la consola.
-// La mezcla y el master son EN VIVO: el V4.2 decide y sus decisiones quedan como fader, paneo y
+// La mezcla y el master son EN VIVO: la mezcla automática decide y sus decisiones quedan como fader, paneo y
 // cadenas de efectos reales del motor (racks de Efectos: cada pista y el master). No se generan WAVs.
 QtObject {
     id: mx
@@ -177,7 +177,7 @@ QtObject {
         var r = fail(call("bypass", { bypass: which === "A", track: 0 }))
         if (r.ok) { masterAb = which; studio.refreshRacks() }
     }
-    // Master IA: el V4.2 decide la cadena del master midiendo la sesión en el motor (sin archivos)
+    // Master IA: la mezcla automática decide la cadena del master midiendo la sesión en el motor (sin archivos)
     function masterAuto(sel) {
         masterSel = sel
         mastering = true

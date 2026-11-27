@@ -350,7 +350,7 @@ def _f7_checks(rep, app, host, lay) -> None:
 def _f6_checks(rep, app, host, window, call, snap) -> None:
     """F6: un solo mezclador. La mezcla automática es una orden del Mezclador (diálogo con sus ajustes,
     A/B en la barra, marca «IA» en los efectos, Ctrl+Z la deshace) y Master IA un dispositivo del
-    master con su A/B en la tira MASTER; el Inspector ya no tiene Asistente IA. Mezcla real del V4.2."""
+    master con su A/B en la tira MASTER; el Inspector ya no tiene Asistente IA. Mezcla real, en vivo."""
     from PySide6.QtCore import QMetaObject, Q_ARG, Q_RETURN_ARG
 
     from .selftest import _wait
