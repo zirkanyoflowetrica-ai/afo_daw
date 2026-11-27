@@ -12,7 +12,10 @@ Item {
     readonly property var zone: parent ? parent.parent : null
     readonly property bool shown: !!zone && zone.current === zid && !zone.folded
     default property alias body: content.data
-    anchors.fill: parent
+    // la zona dice dónde va (con secciones, debajo del título de la abierta)
+    x: 0; y: zone ? zone.pageY : 0
+    width: parent ? parent.width : 0
+    height: zone ? zone.pageH : (parent ? parent.height : 0)
     visible: shown
 
     Rectangle { anchors.fill: parent; color: Theme.panelColor(root.tint, Theme.pc[root.tint] || Theme.sidebar) }

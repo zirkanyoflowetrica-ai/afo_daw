@@ -355,8 +355,24 @@ def _native_daw_checks(rep, app, host, window, bridge, track_id) -> None:
         _wait(app, lambda: False, 0.2, host)
         opened = bool(shown[0].property("opened")) and len(shown[0].property("text") or "") > 40
         QMetaObject.invokeMethod(shown[0], "hide")
-    rep.check("ayuda «?»: cada zona explica su pestaña y se abre al pulsar",
-              len(shown) == 3 and opened, {"zonas": [o.objectName() for o in shown], "abre": opened})
+    # F2: en el Inspector y el Navegador cada sección lleva su «?»; el detalle, el de su pestaña
+    sx = lay("sections", "ia")
+    side_help = [r["id"] for r in sx["nav"]["rows"] + sx["insp"]["rows"] if r["help"]]
+    rep.check("ayuda «?»: cada zona explica su pestaña o sección y se abre al pulsar",
+              len(shown) >= 1 and opened and sx["nav"]["opened"] and len(side_help) >= 6,
+              {"detalle": [o.objectName() for o in shown], "secciones": side_help, "abre": [opened, sx["nav"]["opened"]]})
+    # F2: Inspector a la izquierda, Navegador a la derecha y, en los lados, secciones plegables en vez
+    # de pestañas: una fila por página, la abierta debajo de su título y las demás apiladas abajo
+    zz = lay("zones")
+    pages = lay("pages")
+    rows = sx["nav"]["rows"] + sx["insp"]["rows"]
+    stacked = all(r["y"] + r["h"] <= sx[z]["pageY"] or r["y"] >= sx[z]["pageY"] + sx[z]["pageH"]
+                  for z in ("nav", "insp") for r in sx[z]["rows"])
+    rep.check("Inspector a la izquierda y Navegador a la derecha, con secciones plegables (sin pestañas)",
+              zz["inspector"]["x"] < zz["principal"]["x"] < zz["navegador"]["x"] and stacked
+              and {r["id"] for r in rows} == set(pages) - {"piano", "inst", "drums", "fx", "afina"},
+              {"x": {k: zz[k]["x"] for k in ("inspector", "principal", "navegador")},
+               "secciones": [r["id"] for r in rows], "sin solaparse": stacked})
     tracks = call("mixerSnapshot")["tracks"]
     i_drum = next((i for i, t in enumerate(tracks) if t["type"] == "drum"), -1)
     i_tone = next((i for i, t in enumerate(tracks) if t["id"] == track_id), -1)
@@ -682,6 +698,12 @@ def run_native_selftest(app, host, report_path: str | None, screenshot_path: str
     _native_project_checks(rep, app, host, window)
     _native_dual_checks(rep, app, host, window, prop)
 
+    # F2: captura de la ventana en cada tema de la familia
+    for name in ("Oscuro", "Grafito", "Claro"):
+        QMetaObject.invokeMethod(window, "setTheme", Q_ARG("QVariant", name), Q_ARG("QVariant", True))
+        _wait(app, lambda: False, 0.3, host)
+        window.grabWindow().save(str(paths.logs_dir() / f"selftest_tema_{name}.png"))
+    rep.add("capturas en los tres temas (Oscuro, Grafito, Claro)", "INFO", str(paths.logs_dir()))
     QMetaObject.invokeMethod(window, "setDark", Q_ARG("QVariant", True))
     QMetaObject.invokeMethod(window, "saveLayout")
     saved = json.loads((paths.user_data_dir() / LAYOUT_FILE).read_text(encoding="utf-8"))

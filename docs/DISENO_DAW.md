@@ -13,11 +13,15 @@ Se revisaron Ableton Live, Bitwig Studio, Logic Pro, Studio One, Cubase, FL Stud
 ideas comunes son de interacción, no de aspecto: no se copia la apariencia de ninguno.
 
 1. **Una sola ventana con zonas fijas.** Nada flota ni se solapa. Arriba van el transporte y el
-   estado. A la izquierda, el navegador. En el centro, la vista principal. Abajo, el detalle de lo
-   seleccionado. Las zonas se pliegan, pero no se cambian de sitio: la memoria espacial es lo que
+   estado. A la izquierda, el inspector; a la derecha, el navegador (F2, noviembre 2026, como Logic y
+   Cubase: los ajustes de lo elegido junto a sus pistas, el catálogo junto al lado donde se suelta). En
+   el centro, la vista principal. Abajo, el detalle de lo seleccionado. Inspector y navegador no
+   tienen pestañas: cada página es una sección plegable (la abierta ocupa el sitio y las demás quedan
+   como títulos con su «?»). La cabecera lleva solo vistas, transporte, tempo, tono y audio; abrir,
+   guardar, Inicio y Crear IA están en los menús Archivo y Ver. Las zonas se pliegan, pero no se cambian de sitio: la memoria espacial es lo que
    hace rápido el uso diario.
    El reparto se ajusta a la pantalla (F12, noviembre 2026), sin huecos:
-   - los laterales miden el 21 % y el 25 % del ancho, con un máximo de 390 y 460 px;
+   - el navegador y el inspector miden el 21 % y el 25 % del ancho, con un máximo de 390 y 460 px;
    - el panel de abajo toma el alto del usuario hasta el 36 % del alto;
    - la cabecera pasa a dos filas antes que salirse;
    - las pestañas se estrechan;

@@ -496,6 +496,7 @@ Window {
         if (what === "zones") return zoneRects()
         if (what === "fit") return fitReport()
         if (what === "fxhelp") return fxMain.helpTexts()
+        if (what === "sections") return { nav: navZ.sectionInfo(a), insp: inspZ.sectionInfo(a), detTabs: !detZ.sections }
         if (what === "actions") { loadActions()
                                   return { ids: actionsReg.map(function (x) { return x.id }),
                                            missing: actionsReg.filter(function (x) { return actionHandlers[x.id] === undefined }).map(function (x) { return x.id }),
@@ -926,19 +927,6 @@ Window {
             Row {                                   // .transport
                 spacing: 6
                 NeoButton {
-                    text: "Inicio"; tip: "Inicio: tus artistas, álbumes y canciones, y los proyectos recientes (F4)"
-                    pressedState: win.view === "home"
-                    color: win.view === "home" ? Theme.pressedBg : Theme.button; textColor: win.view === "home" ? Theme.pressedInk : Theme.ink
-                    onClicked: win.view = "home"
-                }
-                NeoButton {
-                    text: "☰"; tip: "Mostrar u ocultar el navegador: añadir instrumentos y efectos, IA y archivos (Ctrl+B)"
-                    readonly property bool on: !navZ.folded
-                    pressedState: on
-                    color: on ? Theme.pressedBg : Theme.button; textColor: on ? Theme.pressedInk : Theme.ink
-                    onClicked: navZ.folded = !navZ.folded
-                }
-                NeoButton {
                     text: "Arreglo"; tip: "Vista Arreglo: pistas con sus clips y curvas de automatización (F5; Tab cambia de vista)"
                     pressedState: win.view === "arrange"
                     color: win.view === "arrange" ? Theme.pressedBg : Theme.button; textColor: win.view === "arrange" ? Theme.pressedInk : Theme.ink
@@ -949,12 +937,6 @@ Window {
                     pressedState: win.view === "mixer"
                     color: win.view === "mixer" ? Theme.pressedBg : Theme.button; textColor: win.view === "mixer" ? Theme.pressedInk : Theme.ink
                     onClicked: win.view = "mixer"
-                }
-                NeoButton {
-                    text: "Crear IA"; tip: "Vista Crear IA: el laboratorio de instrumentales por piezas, con variantes y preescucha (F8)"
-                    pressedState: win.view === "lab"
-                    color: win.view === "lab" ? Theme.pressedBg : Theme.button; textColor: win.view === "lab" ? Theme.pressedInk : Theme.ink
-                    onClicked: win.view = "lab"
                 }
                 NeoButton {
                     text: "⧉"; tip: win.dualWindow ? "Cerrar la ventana del Arreglo (F7)"
@@ -976,14 +958,6 @@ Window {
                         if (!win.engineOk) { win.toast("Motor nativo no disponible"); return }
                         var r = win.call("togglePlay"); if (!r.ok) win.toast(r.error)
                     }
-                }
-                NeoButton {
-                    text: "Abrir"; tip: "Abrir un proyecto .afo (Ctrl+O)"
-                    onClicked: pj.open("")
-                }
-                NeoButton {
-                    text: "Guardar"; tip: "Guardar el proyecto con pistas, efectos y automatización (Ctrl+S; Ctrl+Mayús+S: guardar como)"
-                    onClicked: pj.save(false)
                 }
                 Rectangle {                         // .time
                     width: timeLbl.implicitWidth + 26; height: 35
@@ -1064,8 +1038,8 @@ Window {
     Zone {
         id: navZ
         z: 4
-        title: "Navegador"; vertical: true
-        anchors { top: header.bottom; bottom: detZ.top; left: parent.left }
+        title: "Navegador"; vertical: true; sections: true
+        anchors { top: header.bottom; bottom: detZ.top; right: parent.right }
         width: folded ? 34 : win.navW
         foldTip: folded ? "Mostrar el navegador (Ctrl+B)" : "Plegar el navegador (Ctrl+B)"
         tabs: [["add", "Añadir", "Instrumentos, batería, voz, audio y plugins VST3: cada uno crea su pista"],
@@ -1087,7 +1061,7 @@ Window {
         SideMenu {
             id: sideMenu
             studio: win
-            anchors.fill: parent
+            x: 0; y: navZ.pageY; width: parent.width; height: navZ.pageH
             showTabs: false
             tab: 1
             visible: navZ.current === "add" && !navZ.folded
@@ -1102,8 +1076,8 @@ Window {
     Zone {
         id: inspZ
         z: 4
-        title: "Inspector"; vertical: true
-        anchors { top: header.bottom; bottom: detZ.top; right: parent.right }
+        title: "Inspector"; vertical: true; sections: true
+        anchors { top: header.bottom; bottom: detZ.top; left: parent.left }
         width: folded ? 34 : win.inspW
         foldTip: folded ? "Mostrar el inspector (Ctrl+I)" : "Plegar el inspector (Ctrl+I)"
         tabs: [["pista", "Pista", "Volumen, paneo, envíos y efectos de la pista elegida"],
@@ -1141,7 +1115,7 @@ Window {
     Item {
         id: mainArea
         z: 3
-        anchors { top: header.bottom; left: navZ.right; right: inspZ.left; bottom: detZ.top }
+        anchors { top: header.bottom; left: inspZ.right; right: navZ.left; bottom: detZ.top }
         clip: true
         ArrangeView {
             id: arrange

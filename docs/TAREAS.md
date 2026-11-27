@@ -83,7 +83,7 @@ C→X: siguen tuyas X2, X6, X7, X8, X9, en ese orden. No esperes respuesta para 
 | ID | dueño | estado | archivos | hecho cuando |
 |---|---|---|---|---|
 | F1 | C | ✓ | `actions.py`, `bridge.py`, `Main.qml`, `controls/` (menús, paleta) | Todas las órdenes en menú, paleta Ctrl+K y clic derecho con atajo; prueba recorre el registro |
-| F2 | C | · | `Main.qml`, `controls/Zone.qml` | Inspector izq., Navegador der., cabecera limpia, sin pestañas; selftest en 3 temas |
+| F2 | C | ✓ | `Main.qml`, `controls/Zone.qml`, `ZonePage.qml` | Inspector izq., Navegador der., cabecera limpia, secciones plegables en los lados; selftest en 3 temas (las pestañas del detalle se van en F3) |
 | F3 | C | · | `Main.qml`, `modules/ArrangeView.qml`, `modules/TuneBody.qml`, editor nuevo | El editor de abajo sigue a la selección; el editor de tono sale del Afinador |
 | F4 | C | · | `modules/ArrangeView.qml`, `state/Sequencer.qml`, `bridge.py` | IA sobre el clip (separar, rehacer, versión, alinear) como tomas o carpeta; sin botones fijos |
 | F5 | C | · | `modules/IaBody.qml`, `modules/LabView.qml`, `state/Lab.qml`, diálogo Pista nueva | Intérprete IA y Generar con IA con tomas; fuera Navegador › IA y Crear IA |
