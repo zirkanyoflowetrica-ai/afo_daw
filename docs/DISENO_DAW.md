@@ -51,6 +51,8 @@ ideas comunes son de interacción, no de aspecto: no se copia la apariencia de n
      Inspector ya no tiene Asistente IA.
    - Análisis del proyecto (F7): Editar › Analizar el proyecto escribe, bajo la regla del Arreglo,
      las secciones (A, B, A…) y la pista de acordes, y la tonalidad del proyecto. Ctrl+Z lo deshace.
+   - Fondo (F10): Ver › Fondo… pone una imagen o capas de parallax detrás de las zonas (apagado de
+     fábrica); los controles y los textos siguen sobre su superficie.
    - Scripts (F8): menú Scripts y Ctrl+K; cada script de `scripts/` corre aparte y un Ctrl+Z en el
      Arreglo deshace todo lo que hizo (`docs/SCRIPTS.md`).
    - El usuario nunca busca dónde está algo: está donde está lo seleccionado.

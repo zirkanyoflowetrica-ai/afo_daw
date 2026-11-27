@@ -230,7 +230,9 @@ superficie; el nombre va en el texto del tema.
 - Se copian a la carpeta de usuario (`fondos/`); el programa no trae ni descarga imágenes.
 
 **Ajustes:** intensidad del movimiento (0 = quieto), oscurecer (0–80 %) y transparencia de las
-zonas (0–15 %).
+zonas (0–15 %). Hecho en F10: «oscurecer» es «Atenuar» (mezcla la imagen con el fondo del tema, así
+también vale en el tema Claro) y la transparencia de las zonas se queda en lo que deja el texto
+≥ 4,5:1 con el píxel más oscuro y el más claro de la imagen.
 
 **Cómo se mueve.** Las capas se desplazan con el scroll horizontal y el zoom del Arreglo; la de
 atrás se mueve menos (de 0,05 a 0,3 según la profundidad). Es un movimiento suave, no sigue al

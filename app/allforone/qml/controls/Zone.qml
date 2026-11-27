@@ -43,7 +43,7 @@ Rectangle {
         }
         return { rows: out, opened: opened, pageY: pageY, pageH: pageH }
     }
-    color: Theme.panelColor("", Theme.sidebar)
+    color: Theme.veil(Theme.panelColor("", Theme.sidebar))   // F10: con fondo, deja ver un poco
     clip: true
     border.width: 0
 

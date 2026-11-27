@@ -1027,6 +1027,35 @@ class Bridge(QObject):
         threading.Thread(target=work, name="afo-analisis", daemon=True).start()
         return _ok(started=True, clips=len(parts))
 
+    # --- F10: fondo opcional (imagen o parallax), preparado una vez en backdrop.py ------------
+    @Slot(str, result=str)
+    @_safe
+    def backdropPick(self, mode: str) -> str:
+        """Ver › Fondo…: elige una imagen (o una carpeta de capas) y la deja preparada en datos/fondos."""
+        from . import backdrop
+        if mode == "parallax":
+            src = QFileDialog.getExistingDirectory(self.parent_widget, "Carpeta con las capas del parallax (1.png … n.png)", str(Path.home()))
+        else:
+            src, _ = QFileDialog.getOpenFileName(self.parent_widget, "Imagen de fondo", str(Path.home()),
+                                                 "Imágenes (*.png *.jpg *.jpeg *.webp *.bmp)")
+        if not src:
+            return json.dumps({"ok": False, "cancelled": True})
+        return _json(backdrop.prepare(mode, src))
+
+    @Slot(str, str, result=str)
+    @_safe
+    def backdropUse(self, mode: str, src: str) -> str:
+        """Lo mismo sin diálogo (autoprueba y proyectos de prueba)."""
+        from . import backdrop
+        return _json(backdrop.prepare(mode, src))
+
+    @Slot(str, result=str)
+    @_safe
+    def backdropCheck(self, layers_json: str) -> str:
+        """Al arrancar: ¿siguen ahí las capas del fondo guardado?"""
+        missing = [p for p in json.loads(layers_json or "[]") if not Path(p).is_file()]
+        return _ok(missing=missing)
+
     # --- F8: scripts del usuario (scripts/*.py con la API afo, en un proceso aparte) -------------
     @Slot(result=str)
     @_safe

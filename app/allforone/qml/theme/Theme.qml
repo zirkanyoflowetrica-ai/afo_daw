@@ -159,6 +159,10 @@ QtObject {
         var k = Qt.color(c)
         return Qt.tint(cl.panelBody, Qt.rgba(k.r, k.g, k.b, st.bodyTint))
     }
+    // F10: con un fondo puesto, las superficies de las zonas dejan ver un poco (0–15 %) de la imagen.
+    // Los controles, clips, tiras y textos no usan esto: siguen opacos.
+    property real surfaceAlpha: 1
+    function veil(c) { var k = Qt.color(c); return surfaceAlpha >= 1 ? k : Qt.rgba(k.r, k.g, k.b, surfaceAlpha) }
     function tint(c) { var k = Qt.color(c); return Qt.tint(cl.button, Qt.rgba(k.r, k.g, k.b, dark ? 0.35 : 0.45)) }
     // Color del módulo a partir de su id (las instancias extra «fx~2» usan el de su tipo)
     function pcOf(id) { return pc[String(id).split("~")[0]] || cl.accent }

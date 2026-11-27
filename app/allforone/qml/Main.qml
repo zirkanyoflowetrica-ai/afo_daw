@@ -186,6 +186,7 @@ Window {
         case "view.mixer": return view === "mixer"
         case "view.lab": return newBox.opened && newBox.page === "lab"
         case "view.dual": return dualWindow
+        case "view.backdrop": return backdrop.mode !== "none"
         case "view.nav": return !navZ.folded
         case "view.insp": return !inspZ.folded
         case "view.detail": return !detZ.folded
@@ -261,6 +262,7 @@ Window {
         "view.insp": function () { inspZ.folded = !inspZ.folded },
         "view.detail": function () { detZ.folded = !detZ.folded },
         "view.reset": function () { resetLayout() },
+        "view.backdrop": function () { backdropBox.open() },
         "view.themeOscuro": function () { setTheme("Oscuro") },
         "view.themeGrafito": function () { setTheme("Grafito") },
         "view.themeClaro": function () { setTheme("Claro") },
@@ -676,6 +678,20 @@ Window {
                                            menus: actionMenus, clip: actionsCtx("clip").map(function (x) { return x.id }),
                                            track: actionsCtx("track").map(function (x) { return x.id }) } }
         if (what === "run") return { ok: runAction(a), enabled: actionEnabled(a), checked: actionChecked(a) }
+        if (what === "arrangeScroll") {          // F10: lleva el scroll del Arreglo a una fracción (0..1)
+            arrange.scrollTo(a); return arrange.scrollProgress > 0 || a === 0 }
+        if (what === "backdrop") {               // F10: poner (a = modo, b = ruta), ajustar y medir
+            if (a === "set") setBackdrop(b)
+            else if (a) chooseBackdrop(a, b)
+            var zs = [["zona", Theme.panelColor("", Theme.sidebar)], ["Inicio", Theme.canvas], ["Arreglo", Theme.device],
+                      ["Mezclador", Theme.panelColor("mezcla", Theme.pc.mezcla)]]
+            return { state: backdrop, on: backdropView.on, visible: backdropView.visible, alpha: Theme.surfaceAlpha, zoneAlpha: backdropZoneAlpha,
+                     bg: String(Theme.bg), ink: String(Theme.ink), inkDim: String(Theme.inkDim),
+                     surfaces: zs.map(function (z) { return [z[0], String(z[1]), Theme.veil(z[1]).a] }),
+                     zoneColorA: navZ.color.a, emptyBelow: arrange.emptyBelow(), surfaceVisible: arrange.backdropOn,
+                     layerX: backdropView.children.filter(function (c) { return c.source !== undefined }).map(function (c) { return c.x }),
+                     progress: arrange.scrollProgress }
+        }
         if (what === "script") {                 // F8: lanzar, estado y deshacer
             if (a === "undo") arrange.undo()
             else if (a) return runScript(a)
@@ -799,11 +815,59 @@ Window {
     // Conectar / desconectar una fuente (sus pistas dejan de sonar y de grabar; nada se borra)
     function setHidden(id, b) { var h = Object.assign({}, hidden); h[id] = !!b; hidden = h }
 
+    // ---------------- F10: fondo opcional (FLUJO_PROFESIONAL §7), apagado de fábrica ----------------
+    readonly property var backdropFactory: ({ mode: "none", layers: [], dir: "", name: "", dark: "", light: "",
+                                              intensity: 50, atten: 50, zoneAlpha: 8, reduce: false })
+    property var backdrop: backdropFactory
+    Binding { target: Theme; property: "surfaceAlpha"; value: win.backdrop.mode === "none" ? 1 : 1 - win.backdropZoneAlpha / 100 }
+    // La transparencia de las zonas se queda en lo que permite el contraste (≥ 4,5:1 del texto y del texto
+    // secundario) con el píxel más oscuro y el más claro de la imagen, ya atenuada: nunca se pasa de ahí.
+    function lumOf(c) {
+        c = Qt.color(c)
+        var f = function (x) { return x <= 0.04045 ? x / 12.92 : Math.pow((x + 0.055) / 1.055, 2.4) }
+        return 0.2126 * f(c.r) + 0.7152 * f(c.g) + 0.0722 * f(c.b)
+    }
+    function mixC(a, b, t) { a = Qt.color(a); b = Qt.color(b); return Qt.rgba(a.r + (b.r - a.r) * t, a.g + (b.g - a.g) * t, a.b + (b.b - a.b) * t, 1) }
+    function ratioOf(f, b) { var x = lumOf(f), y = lumOf(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05) }
+    function backdropSurfaces() { return [Theme.panelColor("", Theme.sidebar), Theme.canvas, Theme.device, Theme.panelColor("mezcla", Theme.pc.mezcla)] }
+    function backdropContrastOk(pct) {
+        var px = [backdrop.dark, backdrop.light].filter(function (p) { return !!p }), ss = backdropSurfaces()
+        for (var i = 0; i < px.length; i++) {
+            var under = mixC(px[i], Theme.bg, backdrop.atten / 100)
+            for (var j = 0; j < ss.length; j++) {
+                var eff = mixC(ss[j], under, pct / 100)
+                if (ratioOf(Theme.ink, eff) < 4.5 || ratioOf(Theme.inkDim, eff) < 4.5) return false
+            }
+        }
+        return true
+    }
+    readonly property real backdropZoneAlpha: {
+        if (backdrop.mode === "none") return 0
+        for (var a = backdrop.zoneAlpha; a > 0; a -= 0.5) if (backdropContrastOk(a)) return a
+        return 0
+    }
+    function setBackdrop(ch) {
+        var b = Object.assign({}, backdrop, ch)
+        b.intensity = Math.max(0, Math.min(100, b.intensity)); b.atten = Math.max(0, Math.min(80, b.atten))
+        b.zoneAlpha = Math.max(0, Math.min(15, b.zoneAlpha))
+        backdrop = b
+        if (!loading) saveLayout()
+    }
+    // Ninguno / Imagen / Parallax: elegir el archivo o la carpeta (o, sin diálogo, `src` en la autoprueba)
+    function chooseBackdrop(mode, src) {
+        if (mode === "none") { setBackdrop({ mode: "none", layers: [], dir: "", name: "", dark: "", light: "" }); toast("Sin fondo"); return true }
+        var r = src ? call("backdropUse", mode, src) : call("backdropPick", mode)
+        if (!r.ok) { if (!r.cancelled) toast(r.error); return false }
+        setBackdrop({ mode: r.mode, layers: r.layers, dir: r.dir, name: r.name, dark: r.dark, light: r.light })
+        toast("Fondo: «" + r.name + "» (" + r.layers.length + (r.layers.length === 1 ? " capa" : " capas") + "), copiado a datos/fondos")
+        return true
+    }
+
     // ---------------- diseño guardado ----------------
     function saveLayout() {
         layoutStore.save(JSON.stringify({ v: layoutVersion, theme: Theme.name, view: view === "home" ? "arrange" : view, look2: 3, detailH: detailH,
                                           fold: { nav: navZ.folded, insp: inspZ.folded, detail: detZ.folded },
-                                          tab: { nav: navZ.current, insp: inspZ.current, detail: detZ.current } }))
+                                          tab: { nav: navZ.current, insp: inspZ.current, detail: detZ.current }, backdrop: backdrop }))
     }
     // Versión de la distribución: un diseño guardado de otra versión no se aplica; solo
     // se conserva el tema
@@ -811,7 +875,7 @@ Window {
     property var savedLayout: {
         var d
         try { d = JSON.parse(layoutStore.load()) } catch (e) { return {} }
-        return d.v === layoutVersion ? d : { theme: d.theme, look2: d.look2 }
+        return d.v === layoutVersion ? d : { theme: d.theme, look2: d.look2, backdrop: d.backdrop }
     }
     function resetLayout() {
         navZ.folded = false; inspZ.folded = false; detZ.folded = false; detailH = 360
@@ -1350,7 +1414,7 @@ Window {
             id: mixPage
             anchors.fill: parent
             visible: win.view === "mixer"
-            Rectangle { anchors.fill: parent; color: Theme.panelColor("mezcla", Theme.pc.mezcla) }
+            Rectangle { anchors.fill: parent; color: Theme.veil(Theme.panelColor("mezcla", Theme.pc.mezcla)) }
             Flickable {
                 id: mixFlick
                 x: 12; y: 10; width: parent.width - 24; height: parent.height - 20
@@ -1477,6 +1541,27 @@ Window {
     }
 
     // Inicio (F4): la biblioteca encima de las zonas; sale al arrancar sin proyecto abierto
+    // F10: el fondo va detrás de las zonas (z 3–8), encima del color de la ventana. En el Inicio (que tapa
+    // las zonas) se recorta a su hueco y sube justo debajo de él; la imagen no se mueve de sitio.
+    Item {
+        id: backdropFrame
+        readonly property bool home: win.view === "home"
+        z: home ? 7.5 : 1
+        x: home ? homeView.x : 0; y: home ? homeView.y : 0
+        width: home ? homeView.width : win.width; height: home ? homeView.height : win.height
+        clip: true
+    Backdrop {
+        id: backdropView
+        objectName: "backdrop"
+        x: -backdropFrame.x; y: -backdropFrame.y
+        width: win.width; height: win.height
+        mode: win.backdrop.mode; layers: win.backdrop.layers
+        intensity: win.backdrop.intensity; atten: win.backdrop.atten; reduce: win.backdrop.reduce
+        active: win.active
+        progress: arrange.scrollProgress
+    }
+    }
+    BackdropBox { id: backdropBox; objectName: "backdropBox"; studio: win }
     HomeView {
         id: homeView
         studio: win
@@ -1524,6 +1609,12 @@ Window {
                      "Professional": "Grafito", "Sobrio": "Oscuro" })
         if (!tn || ((savedLayout.look2 || 0) < 3 && old[tn])) tn = old[tn] || "Oscuro"
         if (!setTheme(tn, true)) setTheme("Oscuro", true)
+        var sb = savedLayout.backdrop                 // F10: el fondo guardado, si sus capas siguen ahí
+        if (sb && sb.mode && sb.mode !== "none") {
+            var ck = call("backdropCheck", JSON.stringify(sb.layers || []))
+            if (ck.ok && !ck.missing.length) backdrop = Object.assign({}, backdropFactory, sb)
+            else Qt.callLater(function () { toast("El fondo guardado ya no está en datos/fondos: sin fondo") })
+        }
 
         var info = call("hello")
         engineOk = !!info.engine

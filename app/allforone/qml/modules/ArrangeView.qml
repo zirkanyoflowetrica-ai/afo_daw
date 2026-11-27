@@ -13,7 +13,17 @@ import "../state/mixdata.js" as MD
 Rectangle {
     id: root
     property var studio
-    color: Theme.device
+    // F10: con un fondo puesto, la imagen se ve entera bajo la última pista y un poco (las zonas) en lo ocupado
+    readonly property bool backdropOn: !!studio && studio.backdrop.mode !== "none"
+    readonly property real scrollProgress: flick.contentWidth > flick.width ? flick.contentX / (flick.contentWidth - flick.width) : 0
+    color: backdropOn ? "transparent" : Theme.device
+    Rectangle {
+        objectName: "arrangeSurface"
+        visible: root.backdropOn
+        width: parent.width
+        height: Math.min(parent.height, flick.y + Math.max(0, col.height - flick.contentY))
+        color: Theme.veil(Theme.device)
+    }
 
     property var lanes: ({})                  // id de pista (0 = master) → {inserts, lanes}
     property var closed: ({})                 // uid → carriles de automatización plegados
@@ -106,6 +116,11 @@ Rectangle {
     // F7: el análisis del proyecto se deshace como una edición más (acordes, secciones y tonalidad)
     function songState() { return { song: true, chords: studio.chords, markers: studio.markers, key: studio.songKey } }
     function pushSong() { undoStack = undoStack.concat([songState()]).slice(-60); redoStack = [] }
+    function scrollTo(f) {                  // autoprueba (F10): con zoom para que haya recorrido
+        if (flick.contentWidth <= flick.width + 10) pps = Math.min(120, pps * Math.max(2, (flick.width * 3) / Math.max(1, flick.contentWidth - root.headW)))
+        flick.contentX = Math.max(0, flick.contentWidth - flick.width) * f
+    }
+    function emptyBelow() { return Math.max(0, height - (flick.y + Math.max(0, col.height - flick.contentY))) }   // autoprueba (F10)
     function songLaneInfo() {               // autoprueba (F7)
         return { visible: songLane.visible, height: songLane.height, chords: chordRep.count, markers: markRep.count,
                  flickTop: flick.y - songLane.y - songLane.height }

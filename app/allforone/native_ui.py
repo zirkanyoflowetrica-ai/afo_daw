@@ -181,6 +181,111 @@ def _f5_checks(rep, host, lay, track_id: int) -> None:
     shutil.rmtree(tmp, ignore_errors=True)
 
 
+def _backdrop_images(folder) -> tuple[str, str]:
+    """Imagen de peor caso (negro puro a blanco puro) y una carpeta de parallax de 3 capas."""
+    import numpy as np
+    from PySide6.QtGui import QImage
+    folder.mkdir(parents=True, exist_ok=True)
+
+    def save(a, p):
+        a = np.ascontiguousarray(a, dtype=np.uint8)
+        h, w = a.shape[:2]
+        QImage(a.tobytes(), w, h, 4 * w, QImage.Format.Format_RGBA8888).copy().save(str(p))
+    w, h = 1600, 900
+    g = np.zeros((h, w, 4), np.uint8)
+    g[..., :3] = np.linspace(0, 255, w).astype(np.uint8)[None, :, None]
+    g[:, :200, :3] = 0                                      # zonas planas: el desenfoque no las toca
+    g[:, -200:, :3] = 255
+    g[..., 3] = 255
+    save(g, folder / "peor_caso.png")
+    par = folder / "capas"
+    par.mkdir(exist_ok=True)
+    save(g, par / "1.png")
+    for i, col in ((2, (40, 90, 160)), (3, (200, 120, 40))):
+        c = np.zeros((h, w, 4), np.uint8)
+        c[h - 120 * i:, :, :3] = col
+        c[h - 120 * i:, :, 3] = 255
+        save(c, par / f"{i}.png")
+    return str(folder / "peor_caso.png"), str(par)
+
+
+def _f10_checks(rep, app, host, lay) -> None:
+    """F10: fondo opcional (imagen o parallax), apagado de fábrica. Con el fondo puesto el texto de las
+    zonas sigue ≥ 4,5:1 en los tres temas, medido con el píxel más oscuro y el más claro de la imagen
+    (aquí negro y blanco puros, el peor caso, sin atenuar y con la transparencia de zonas al máximo)."""
+    import tempfile
+    from pathlib import Path
+    from .selftest import _wait
+
+    def blend(a, b, t):                     # a con un t de b (mezcla en sRGB, como el compositor de Qt)
+        x, y = [int(a.lstrip("#")[-6:][i:i + 2], 16) for i in (0, 2, 4)], [int(b.lstrip("#")[-6:][i:i + 2], 16) for i in (0, 2, 4)]
+        return "#%02x%02x%02x" % tuple(round(p + (q - p) * t) for p, q in zip(x, y))
+
+    s0 = lay("backdrop")
+    rep.check("F10: de fábrica no hay fondo (zonas opacas, nada detrás)",
+              s0["state"]["mode"] == "none" and not s0["visible"] and s0["alpha"] == 1 and s0["zoneAlpha"] == 0
+              and s0["zoneColorA"] == 1, {"estado": s0["state"]["mode"], "alfa": s0["alpha"]})
+    img, par = _backdrop_images(Path(tempfile.mkdtemp(prefix="afo_fondo_")))
+    lay("view", "arrange")
+    lay("backdrop", "image", img)
+    s1 = lay("backdrop", "set", {"zoneAlpha": 15, "atten": 0, "reduce": True})
+    st = s1["state"]
+    copied = all(Path(p).is_file() and Path(p).parent.parent.name == "fondos" for p in st["layers"])
+    rep.check("F10: «Imagen» copia la imagen preparada a datos/fondos y se ve detrás (también bajo las pistas)",
+              s1["on"] and s1["visible"] and copied and len(st["layers"]) == 1 and st["dark"] == "#000000" and st["light"] == "#ffffff"
+              and s1["surfaceVisible"], {"capas": st["layers"], "extremos": [st["dark"], st["light"]], "hueco bajo las pistas": s1["emptyBelow"]})
+    worst, alphas = [], {}
+    for name in ("Oscuro", "Grafito", "Claro"):
+        lay("theme", name)
+        s = lay("backdrop")
+        a = 1 - s["alpha"]
+        alphas[name] = round(100 * a, 1)
+        for what, surf, _ in s["surfaces"]:
+            for px in (st["dark"], st["light"]):
+                eff = blend(surf, blend(px, s["bg"], st["atten"] / 100), a)
+                for ink in (s["ink"], s["inkDim"]):
+                    worst.append((round(contrast_ratio(ink, eff), 2), name, what, px, ink, eff))
+    worst.sort()
+    rep.check("F10: con el fondo puesto el texto de las zonas sigue ≥ 4,5:1 en los tres temas (peor caso: negro y blanco puros)",
+              worst and worst[0][0] >= 4.5 and all(0 <= v <= 15 for v in alphas.values()),
+              {"peor": worst[0], "transparencia de zonas %": alphas})
+    lay("theme", "Oscuro")
+    # Parallax: 3 capas, la de delante se mueve más con el scroll del Arreglo; quieto con «Reducir movimiento»
+    lay("backdrop", "parallax", par)
+    lay("backdrop", "set", {"reduce": False, "intensity": 100, "atten": 50, "zoneAlpha": 8})
+    p0 = lay("backdrop")
+    moved = lay("arrangeScroll", 1.0)
+    _wait(app, lambda: False, 0.5, host)
+    p1 = lay("backdrop")
+    xs0, xs1 = p0["layerX"], p1["layerX"]
+    shift = [round(b - a, 1) for a, b in zip(xs0, xs1)]
+    lay("arrangeScroll", 0.0)
+    _wait(app, lambda: False, 0.4, host)
+    lay("backdrop", "set", {"reduce": True})
+    lay("arrangeScroll", 1.0)
+    _wait(app, lambda: False, 0.4, host)
+    p2 = lay("backdrop")
+    lay("arrangeScroll", 0.0)
+    # capturas con el fondo puesto (Arreglo e Inicio), para mirarlas
+    from . import paths
+    win = max((w for w in app.topLevelWindows() if w.isVisible()), key=lambda w: w.width() * w.height(), default=None)
+    if win is not None:
+        lay("backdrop", "set", {"atten": 35, "zoneAlpha": 15})
+        for v in ("arrange", "home"):
+            lay("view", v)
+            _wait(app, lambda: False, 0.6, host)
+            win.grabWindow().save(str(paths.logs_dir() / f"selftest_fondo_{v}.png"))
+        lay("view", "arrange")
+    rep.check("F10: «Parallax» con 3 capas: con el scroll del Arreglo la de delante se mueve más que la de atrás; con «Reducir movimiento» se quedan quietas",
+              len(p1["state"]["layers"]) == 3 and moved is True and p1["progress"] > 0.9 and len(shift) == 3
+              and shift[0] < 0 and shift[2] < shift[1] < shift[0] and p2["layerX"] == xs0,
+              {"desplazamiento px": shift, "quieto": p2["layerX"], "scroll": p1["progress"]})
+    lay("backdrop", "none")
+    s3 = lay("backdrop")
+    rep.check("F10: «Ninguno» quita el fondo y las zonas vuelven a ser opacas",
+              s3["state"]["mode"] == "none" and not s3["visible"] and s3["alpha"] == 1, {"estado": s3["state"]["mode"]})
+
+
 def _f8_checks(rep, app, host, lay) -> None:
     """F8: los scripts de scripts/ salen en el menú Scripts, corren en otro proceso sobre el proyecto y
     sus cambios quedan como un solo paso de Ctrl+Z. (Lo que hace cada script se mide en
@@ -539,6 +644,7 @@ def _native_daw_checks(rep, app, host, window, bridge, track_id) -> None:
     _f5_checks(rep, host, lay, track_id)
     _f7_checks(rep, app, host, lay)
     _f8_checks(rep, app, host, lay)
+    _f10_checks(rep, app, host, lay)
     z1 = lay("zones")
     rep.check("tamaño fijo: ninguna zona cambia de tamaño por su contenido", z0 == z1,
               {k: (z0.get(k), z1.get(k)) for k in z1 if z0.get(k) != z1.get(k)})

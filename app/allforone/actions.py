@@ -84,6 +84,7 @@ _A = [
     ("view.insp", "Mostrar u ocultar el inspector", "Ver", 3, "Ctrl+I", "Pliega la zona del inspector"),
     ("view.detail", "Mostrar u ocultar el panel de abajo", "Ver", 3, "Ctrl+E", "Pliega el panel de detalle"),
     ("view.reset", "Restaurar zonas", "Ver", 3, "Ctrl+Shift+R", "Vuelve a la distribución de fábrica"),
+    ("view.backdrop", "Fondo…", "Ver", 4, "", "Ninguno (de fábrica), una imagen tuya o capas de parallax detrás de la ventana"),
     ("view.themeOscuro", "Tema Oscuro", "Ver", 4, "", "Carbón cálido (de fábrica)"),
     ("view.themeGrafito", "Tema Grafito", "Ver", 4, "", "Gris medio, mismos colores"),
     ("view.themeClaro", "Tema Claro", "Ver", 4, "", "Fondo claro, mismos colores"),

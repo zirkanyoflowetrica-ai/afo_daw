@@ -10,7 +10,7 @@ Rectangle {
     id: root
     property var studio
     readonly property var pj: studio ? studio.project : null
-    color: Theme.canvas
+    color: Theme.veil(Theme.canvas)            // F10: con fondo, deja ver un poco
 
     property var tree: []
     property var recent: []
