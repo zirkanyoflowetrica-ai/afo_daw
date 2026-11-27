@@ -294,6 +294,8 @@ Rectangle {
         Row {
             id: barBtns
             anchors.right: parent.right; anchors.rightMargin: 12; anchors.verticalCenter: parent.verticalCenter; spacing: 6
+            NeoButton { objectName: "arrNewTrack"; text: "+ Pista"; tip: "Pista nueva: audio, instrumento, batería, voz, Intérprete IA o Generar con IA"
+                        onClicked: root.studio.newTrack("") }
             NeoButton { text: "+ Aux"; tip: "Nuevo bus Aux (reverb o eco compartidos): las pistas le mandan señal con sus envíos"
                         enabled: root.studio.engineOk; onClicked: root.addAux() }
             NeoButton { text: "Curvas: todas"; tip: "Desplegar los carriles de automatización de todas las pistas"

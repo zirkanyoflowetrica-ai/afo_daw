@@ -12,6 +12,7 @@ import "../controls"
 Column {
     id: root
     property var seq
+    property bool showModes: true             // F5: en «Pista nueva» el modo lo da el botón elegido
     readonly property var studio: seq.studio
     readonly property var ai: seq.ai
     readonly property var c: seq.draftIa
@@ -31,6 +32,7 @@ Column {
 
     // ---------------- modo: canción en audio o solo MIDI ----------------
     Row {
+        visible: root.showModes
         width: root.width; spacing: 6
         NeoButton { text: "Canción (audio)"; pressedState: !root.midiMode
                     color: !root.midiMode ? Theme.pressedBg : Theme.button; textColor: !root.midiMode ? Theme.pressedInk : Theme.ink

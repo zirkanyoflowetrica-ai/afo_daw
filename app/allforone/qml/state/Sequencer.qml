@@ -127,10 +127,9 @@ QtObject {
         return r.track.id
     }
     function addTrack(type) {
-        if (type === "ia") {           // la IA no crea pistas vacías: genera audio en su módulo
+        if (type === "ia") {           // la IA no crea pistas vacías: «Pista nueva › Generar con IA» (F5)
             if (studio.hidden.ia) studio.setHidden("ia", false)
-            studio.goTo("ia"); aiRefresh()
-            studio.toast("Describe la instrumental y pulsa «Generar»: entra como pista de audio")
+            studio.newTrack("gen"); aiRefresh()
             return null
         }
         var n = studio.tracks.filter(function (x) { return x.type === type }).length + 1
@@ -372,6 +371,7 @@ QtObject {
     function useTake(uid, i) {
         var t = trackOf(uid)
         if (!t || !t.takes || i < 0 || i >= t.takes.length || i === (t.take || 0)) return false
+        if (t.lab && t.takes[i].vid && studio.lab) { studio.lab.choose(t.lab, t.takes[i].vid); return true }   // F5: variante del laboratorio
         var tk = t.takes.slice()
         tk[t.take || 0] = Object.assign({}, tk[t.take || 0], { clips: t.aclips || [] })
         var r = studio.call("clipEdit", t.id, JSON.stringify({ op: "set", source: tk[i].source, clips: tk[i].clips }))
@@ -547,8 +547,47 @@ QtObject {
         aiMsg = ev.message
         studio.toast(ev.message + ": en la pista «" + nt.name + "», en la carpeta de la original")
     }
+    // F5: lo generado recuerda cómo se hizo (gen) y «Regenerar» pone otra versión como toma de su pista
+    property string genUid: ""          // pista que recibe la próxima generación como toma ("" = pista nueva)
+    property string genKind: "song"     // song | part
+    function regenerate(uid) {
+        var t = trackOf(uid)
+        if (!t || !t.gen) { studio.toast("Esa pista no salió de «Generar con IA»"); return false }
+        if (generating) { studio.toast("Ya hay un trabajo de IA en marcha"); return false }
+        draftIa = Object.assign({}, draftIa, t.gen.cfg || {})
+        genUid = uid
+        if (t.gen.kind === "part") generatePart(); else generate()
+        if (!generating) { genUid = ""; return false }
+        studio.toast("Regenerando " + t.name + ": entrará como toma nueva")
+        return true
+    }
+    function applyGenerated(ev) {
+        var cfg = Object.assign({}, draftIa), kind = genKind, t = trackOf(genUid)
+        genUid = ""
+        aiMsg = ev.message
+        if (!t) {
+            if (!addGenerated(ev.path, ev.title)) return
+            var nt = studio.tracks[studio.tracks.length - 1]
+            replace(nt.uid, { gen: { kind: kind, cfg: cfg } })
+            studio.toast(ev.message + ": pista «" + nt.name + "» · «Regenerar» en el Inspector pone otra versión como toma")
+            return
+        }
+        var before = t.aclips || []
+        var r = studio.call("trackSetSource", t.id, ev.path)
+        if (!r.ok) { studio.toast(r.error); return }
+        var at = before.length ? before[0].start : 0, len = r.track.length_seconds || t.len
+        var ce = studio.call("clipEdit", t.id, JSON.stringify({ op: "set", clips: [{ start: at, length: len, offset: 0 }] }))
+        var clips = ce.ok ? ce.clips : r.clips
+        replace(t.uid, { aclips: clips, peaks: ce.peaks || r.track.peaks || [], len: len, gen: { kind: kind, cfg: cfg } })
+        var name = takeName(t, "Generada")
+        var st = addTake(t.uid, r.previous, before, name, ev.path, clips)
+        sourceReplaced(t.uid, r.previous, before, { now: ev.path, takes: st.takes, take: st.take })
+        studio.markDirty()
+        studio.toast(ev.message + ": toma «" + name + "» en " + t.name + " · la anterior sigue en sus tomas · Ctrl+Z la quita")
+    }
     function generate() {
         if (generating) return
+        genKind = "song"
         var c = draftIa
         var r = studio.call("aiGenerate", JSON.stringify({
             prompt: c.prompt, style: c.style, duration: c.dur, key: c.key, instrumental: c.inst, lyrics: c.lyrics,
@@ -560,6 +599,7 @@ QtObject {
     // en el Afinador / Mezcla IA si la hay; ACE-Step escucha lo que ya suena (aiPart en bridge.py)
     function generatePart() {
         if (generating) return
+        genKind = "part"
         var c = draftIa, conf = studio.mixer ? studio.mixer.tune.confirmed : null
         var key = conf ? conf.key + (conf.scale.indexOf("Menor") === 0 ? " minor" : " major") : c.key
         var r = studio.call("aiPart", JSON.stringify({ part: c.part || "Guitarra", style: c.style, prompt: c.partPrompt || "",
@@ -719,10 +759,8 @@ QtObject {
                 generating = false; aiProgress = 0
                 if (ev.ok && ev.repaint) applyRepaint(ev)
                 else if (ev.ok && ev.cover) applyCover(ev)
-                else if (ev.ok) {
-                    aiMsg = ev.message
-                    if (addGenerated(ev.path, ev.title)) studio.toast(ev.message + ": añadida a Pistas")
-                } else { repaintUid = ""; coverUid = ""; aiMsg = ev.cancelled ? ev.message : ev.error; if (!ev.cancelled) studio.toast(ev.error) }
+                else if (ev.ok) applyGenerated(ev)
+                else { repaintUid = ""; coverUid = ""; genUid = ""; aiMsg = ev.cancelled ? ev.message : ev.error; if (!ev.cancelled) studio.toast(ev.error) }
                 aiRefresh()
             }
         }

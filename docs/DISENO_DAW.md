@@ -41,6 +41,10 @@ ideas comunes son de interacción, no de aspecto: no se copia la apariencia de n
      cabecera de la pista elige cuál suena; Ctrl+Z la quita). Separar y Versión dejan pistas en la
      carpeta de la original, que se pliega sin silenciarlas. La barra del Arreglo no tiene botones
      fijos de IA.
+   - Pista nueva (F5) es un solo diálogo: Audio, Instrumento, Batería, Voz, Intérprete IA, Generar
+     con IA y Por piezas. Lo generado entra como pista y se regenera desde el Inspector como toma
+     nueva; las variantes del laboratorio son las tomas de su pista. El Navegador ya no tiene IA y
+     no hay vista Crear IA.
    - El usuario nunca busca dónde está algo: está donde está lo seleccionado.
 4. **Cadena de efectos como fila de dispositivos**, en el orden en que suena. Cada uno lleva el
    mismo marco: nombre, encendido/puenteo, preset, A/B y quitar. Se reordena arrastrando. Los

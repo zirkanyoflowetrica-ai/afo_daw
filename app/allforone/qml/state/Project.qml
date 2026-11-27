@@ -52,7 +52,7 @@ QtObject {
                          cfg: t.cfg || {}, roll: t.roll || {}, pat: t.pat || {}, clips: t.clips || [], start: t.start || 0,
                          midi: t.midi || undefined, midiSrc: t.midiSrc || undefined,
                          takes: t.takes && t.takes.length ? t.takes : undefined, take: t.takes ? t.take || 0 : undefined,
-                         folder: t.folder || undefined, fold: t.fold || undefined,
+                         folder: t.folder || undefined, fold: t.fold || undefined, gen: t.gen || undefined,
                          stem: !!it, mix: it ? { kind: it.kind, role: it.role } : null }
             })
         }
@@ -146,8 +146,8 @@ QtObject {
             }
             if (id >= 0 && d.uid) idOf[d.uid] = id
             if (uid && d.uid) uidOf[d.uid] = uid
-            if (uid && (d.takes || d.folder || d.fold))      // F4: tomas y carpeta
-                sq.replace(uid, { takes: d.takes || [], take: d.take || 0, folder: d.folder || "", fold: !!d.fold })
+            if (uid && (d.takes || d.folder || d.fold || d.gen))   // F4: tomas y carpeta; F5: cómo se generó
+                sq.replace(uid, { takes: d.takes || [], take: d.take || 0, folder: d.folder || "", fold: !!d.fold, gen: d.gen || null })
             if (id >= 0) {                                   // automatización del fader / paneo y modo
                 for (var p in (d.trackAuto || {})) s.call("trackAutoSet", id, p, JSON.stringify(d.trackAuto[p]))
                 if (d.autoMode) s.call("autoMode", id, d.autoMode)

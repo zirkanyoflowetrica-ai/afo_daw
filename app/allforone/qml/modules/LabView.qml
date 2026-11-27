@@ -89,7 +89,7 @@ Item {
             Column {
                 id: lcol
                 width: parent.width; spacing: 6
-                Text { text: "CREAR IA"; color: Theme.ink; font.family: Theme.font; font.pixelSize: 15; font.weight: 700; font.letterSpacing: 0.6 }
+                Text { text: "POR PIEZAS"; color: Theme.ink; font.family: Theme.font; font.pixelSize: 15; font.weight: 700; font.letterSpacing: 0.6 }
                 Text { width: parent.width; wrapMode: Text.Wrap; color: Theme.ink; font.family: Theme.font; font.pixelSize: 12
                        text: root.st && root.ctx ? "Sesión «" + root.st.name + "» · " + root.ctx.style + " · " + root.ctx.bpm + " BPM · "
                                        + root.ctx.key + " · " + root.ctx.bars + " compases de " + root.ctx.beats

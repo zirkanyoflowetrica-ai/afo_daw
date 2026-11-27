@@ -154,6 +154,7 @@ Window {
         case "track.solo": case "track.mute": case "track.remove": return !!t
         case "track.effects": return !!t && t.id > 0
         case "track.stems": return !!t && t.type === "audio" && t.id >= 0 && !sq.splitting
+        case "track.regenerate": return !!t && !!t.gen && !sq.generating
         case "track.newAux": return engineOk
         case "mix.auto": case "mix.remix": return mx.items.length > 0 && !mx.busy
         case "mix.abA": case "mix.abB": return engineOk
@@ -174,7 +175,7 @@ Window {
         case "mix.abB": return mx.abState === "B"
         case "view.arrange": return view === "arrange"
         case "view.mixer": return view === "mixer"
-        case "view.lab": return view === "lab"
+        case "view.lab": return newBox.opened && newBox.page === "lab"
         case "view.dual": return dualWindow
         case "view.nav": return !navZ.folded
         case "view.insp": return !inspZ.folded
@@ -205,7 +206,10 @@ Window {
         "track.newDrum": function () { addMore("drums") },
         "track.newVoice": function () { addMore("cinta") },
         "track.newAux": function () { arrange.addAux() },
-        "track.generate": function () { sq.addTrack("ia") },
+        "track.new": function () { newTrack("") },
+        "track.generate": function () { newTrack("gen") },
+        "track.interp": function () { newTrack("interp") },
+        "track.regenerate": function () { sq.regenerate(selTrackObj.uid) },
         "track.solo": function () { toggleTrackFlag(selTrackObj.uid, "solo") },
         "track.mute": function () { toggleTrackFlag(selTrackObj.uid, "mute") },
         "track.stems": function () { sq.splitStems(selTrackObj.id) },
@@ -241,7 +245,7 @@ Window {
         "view.arrange": function () { if (dualWindow) flowWin.raise(); else view = "arrange" },
         "view.mixer": function () { view = "mixer" },
         "view.toggle": function () { view = view === "mixer" ? "arrange" : "mixer" },
-        "view.lab": function () { view = "lab" },
+        "view.lab": function () { newTrack("lab") },
         "view.dual": function () { dualWindow = !dualWindow },
         "view.nav": function () { navZ.folded = !navZ.folded },
         "view.insp": function () { inspZ.folded = !inspZ.folded },
@@ -377,7 +381,8 @@ Window {
     Shortcut { sequence: "F5"; onActivated: win.view = "arrange" }
     Shortcut { sequence: "F6"; onActivated: win.view = "mixer" }
     Shortcut { sequence: "F7"; onActivated: win.dualWindow = !win.dualWindow }
-    Shortcut { sequence: "F8"; onActivated: win.view = "lab" }
+    Shortcut { sequence: "F8"; onActivated: win.newTrack("lab") }
+    Shortcut { sequence: "Ctrl+Shift+N"; enabled: !win.typing; onActivated: win.newTrack("") }
     property alias arrangeView: arrange
     // Para la autoprueba: guardar y abrir proyectos sin diálogo
     // Para la autoprueba: Inicio (biblioteca). a/b según la acción
@@ -468,7 +473,8 @@ Window {
                  tracks: tracks.map(function (t) { return { uid: t.uid, id: t.id, type: t.type, name: t.name, vol: t.vol, pan: t.pan,
                                                              len: t.len || 0, peaks: (t.peaks || []).length,
                                                              notes: Object.keys(t.roll || {}).length + Object.keys(t.pat || {}).length,
-                                                             midi: (t.midi || []).length, sub: sq.sub(t) } }),
+                                                             midi: (t.midi || []).length, sub: sq.sub(t),
+                                                             takes: (t.takes || []).map(function (k) { return { name: k.name } }), take: t.take || 0 } }),
                  act: sq.act, voice: sq.active("inst") ? sq.active("inst").cfg.v : -1 }
     }
     // Para la autoprueba: la pista de batería activa (patrón del Step Sequencer y ajustes)
@@ -588,7 +594,7 @@ Window {
             }
             return out2
         }
-        if (what === "view") { if (a) view = a
+        if (what === "view") { if (a === "lab") newTrack("lab"); else { if (a) view = a; newBox.close() }
                                return { view: view, lanes: arrange.laneCount, inserts: arrange.insertCount, rows: arrange.rows.length,
                                         visible: arrange.visible, modules: mixPage.visible,
                                         auxes: mixBody.auxes.length, sends: mixBody.sendCount, sendsH: mixBody.sendsH,
@@ -605,15 +611,19 @@ Window {
         // F4 (autoprueba): órdenes del secuenciador, estado de tomas y carpetas, y el cuadro de IA del clip
         if (what === "seq") return sq[a].apply(sq, b || [])
         if (what === "seqSet") { sq[a] = b; return true }
+        if (what === "newTrack") { if (a === "close") { newBox.close(); return true }
+                                   newTrack(a); return { opened: newBox.opened, page: newBox.page,
+                                                         kinds: newBox.kinds.map(function (k) { return k[0] }),
+                                                         nav: navZ.tabs.map(function (t) { return t[0] }), view: view } }
         if (what === "dropTrack") { var dt = sq.trackOf(a); if (!dt) return false        // pista y su fila de la Mezcla IA
                                     for (var di = 0; di < mx.items.length; di++) if (mx.items[di].trackId === dt.id) { mx.removeItem(di); break }
                                     removeTrackAt(sq.indexOf(a)); return true }
         if (what === "f4") return { tracks: tracks.map(function (t) {
                                         return { uid: t.uid, id: t.id, name: t.name, takes: (t.takes || []).map(function (k) { return k.name }),
-                                                 take: t.take || 0, folder: t.folder || "", fold: !!t.fold, mute: !!t.mute } }),
+                                                 take: t.take || 0, folder: t.folder || "", fold: !!t.fold, mute: !!t.mute, gen: !!t.gen } }),
                                     rows: arrange.rows.map(function (t) { return t.uid }), tools: arrange.toolTexts(),
                                     snap: pj.snapshot().tracks.map(function (x) { return { uid: x.uid, takes: x.takes ? x.takes.length : 0,
-                                                                                            take: x.take, folder: x.folder || "" } }) }
+                                                                                            take: x.take, folder: x.folder || "", gen: !!x.gen } }) }
         if (what === "aiBox") { arrange.pick(b, a === "x" ? 0 : (sq.trackOf(b).aclips[0] || {}).id || 0)
                                 aiBox.openFor(a, b)
                                 var ob = { opened: aiBox.opened, where: aiBox.where[a] || "", can: aiBox.can }
@@ -654,19 +664,20 @@ Window {
     // ---------------- ir a una página ----------------
     // Cada cuerpo de módulo vive en una página de una zona fija (DISENO_DAW §2). goTo abre su zona y su
     // pestaña; la consola es la vista Mezclador.
-    readonly property var pageZone: ({ ia: "nav", audios: "nav", add: "nav", fxlist: "nav", recent: "nav",
+    readonly property var pageZone: ({ audios: "nav", add: "nav", fxlist: "nav", recent: "nav",
                                        pista: "insp", asist: "insp", master: "insp", cinta: "insp",
                                        inst: "detail", piano: "detail", drums: "detail",
                                        fx: "detail", tono: "detail", afina: "detail" })
     function zoneOf(id) { return ({ nav: navZ, insp: inspZ, detail: detZ })[pageZone[id]] || null }
     function titleOf(id) {
-        return ({ ia: "IA", audios: "Archivos", add: "Añadir", fxlist: "Efectos", recent: "Inicio", pista: "Pista", asist: "Asistente IA",
+        return ({ audios: "Archivos", add: "Añadir", fxlist: "Efectos", recent: "Inicio", pista: "Pista", asist: "Asistente IA",
                   master: "Versiones", cinta: "Grabar", pistas: "Arreglo", inst: "Instrumento", piano: "Piano roll",
                   drums: "Batería", fx: "Efectos", tono: "Tono", afina: "Afinador", mezcla: "Mezclador" })[id] || id
     }
     function goTo(id) {
         if (id === "mastia" || id === "antes") id = "asist"     // Master IA y A/B están en el Asistente IA (X17)
         if (id === "fxm") { rackTrack = 0; id = "fx" }          // el master es un canal más de Efectos
+        if (id === "ia" || id === "lab") { newTrack(id === "ia" ? "gen" : "lab"); return }   // F5: en «Pista nueva»
         currentId = id
         if (id === "mezcla") { if (!dualWindow) view = "mixer"; return }
         if (id === "pistas") { view = dualWindow ? "mixer" : "arrange"; return }   // los clips se editan en el Arreglo
@@ -961,6 +972,9 @@ Window {
     CommandPalette { id: palette; objectName: "palette"; studio: win }
     TempoKeyBox { id: tkBox; objectName: "tempoKeyBox"; studio: win }
     AiClipBox { id: aiBox; objectName: "aiClipBox"; studio: win }
+    // F5: Pista nueva (Audio, Instrumento, Batería, Voz, Intérprete IA, Generar con IA, Por piezas)
+    NewTrackBox { id: newBox; objectName: "newTrackBox"; studio: win }
+    function newTrack(page) { newBox.openFor(page || "") }
     // Clic derecho en el Arreglo: el clip (o la pista) ya está elegido; sale su menú donde está el ratón
     function openContext(ctx, item, x, y) { ctxMenu.ctx = ctx; ctxMenu.items = actionsCtx(ctx); ctxMenu.openAt(item, x, y) }
 
@@ -1099,7 +1113,6 @@ Window {
         foldTip: folded ? "Mostrar el navegador (Ctrl+B)" : "Plegar el navegador (Ctrl+B)"
         tabs: [["add", "Añadir", "Instrumentos, batería, voz, audio y plugins VST3: cada uno crea su pista"],
                ["fxlist", "Efectos", "Efectos nativos por categoría y VST3: doble clic añade a la pista elegida"],
-               ["ia", "IA", "Canción, MIDI y partes con IA, en tu equipo"],
                ["audios", "Archivos", "Audios del proyecto: tipo y rol para la Mezcla IA"],
                ["recent", "Inicio", "Proyectos recientes y la biblioteca (F4)"]]
         current: "add"
@@ -1107,7 +1120,6 @@ Window {
         help: ({
             add: ["Añadir", "Cada fila crea su pista: instrumento (sintetizador del motor o VST3), batería, voz, audio o un plugin. Con «+» añades otra pista de ese tipo."],
             fxlist: ["Efectos", "Efectos nativos por categoría y tus VST3. Clic: ves qué hace. Doble clic o «Añadir a…»: lo pone al final de la cadena de la pista elegida (o del master)."],
-            ia: ["IA", "Todo se genera en tu equipo, sin internet: una canción con o sin voz (ACE-Step), MIDI para una pista de instrumento o una parte nueva que encaja con lo que ya suena. Los modelos se descargan una sola vez desde aquí."],
             audios: ["Archivos", "Cada audio crea su <b>pista</b> y su <b>tira en la consola</b>. Tipo y rol se deducen del nombre (_L, _R, _B…) y se corrigen aquí, en el Arreglo o en el Mezclador.<br><br>Quitar un audio de esta lista no borra nada de tu disco; si borras su pista, el audio sigue aquí y puedes volver a crearla."],
             recent: ["Inicio", "Proyectos recientes y la biblioteca: artista → álbum o single → canción. Doble clic para abrir; F4 abre Inicio en grande."]
         })
@@ -1123,7 +1135,6 @@ Window {
         }
         ZonePage { zid: "fxlist"; tint: "fx"; minWidth: 246; Browser { id: fxBrowser; studio: win } }
         ZonePage { zid: "recent"; tint: "pistas"; minWidth: 246; Browser { studio: win; mode: "home" } }
-        ZonePage { zid: "ia"; tint: "ia"; minWidth: 246; IaBody { seq: sq } }
         ZonePage { zid: "audios"; tint: "audios"; minWidth: 246; AudiosBody { mixer: mx; studio: win } }
     }
 
@@ -1191,7 +1202,6 @@ Window {
                 MixBody { id: mixBody; width: Math.max(mixFlick.width, 700); fitHeight: mixFlick.height; mixer: mx; studio: win }
             }
         }
-        LabView { id: labView; objectName: "labView"; studio: win; anchors.fill: parent; visible: win.view === "lab" }
         DropArea {                                  // arrastrar audios desde el Explorador
             anchors.fill: parent
             z: 11

@@ -31,12 +31,15 @@ _A = [
     ("edit.toolMove", "Herramienta Mover", "Editar", 3, "", "Arrastra clips para moverlos y sus bordes para recortarlos"),
     ("edit.toolCut", "Herramienta Cortar", "Editar", 3, "", "Clic en un clip lo divide en ese punto"),
     # Pista
+    ("track.new", "Pista nueva…", "Pista", 1, "Ctrl+Shift+N", "Audio, instrumento, batería, voz, Intérprete IA o Generar con IA"),
     ("track.newAudio", "Pista nueva de audio…", "Pista", 1, "", "Importa audio en una pista nueva"),
     ("track.newInst", "Pista nueva de instrumento", "Pista", 1, "", "Pista MIDI con el sintetizador o un VST3"),
     ("track.newDrum", "Pista nueva de batería", "Pista", 1, "", "Pista de patrón de batería"),
     ("track.newVoice", "Pista nueva de voz", "Pista", 1, "", "Pista para grabar voz"),
     ("track.newAux", "Bus Aux nuevo", "Pista", 1, "", "Bus de efectos compartidos (reverb, delay)"),
-    ("track.generate", "Generar con IA…", "Pista", 2, "", "Canción o parte nueva con ACE-Step, en tu equipo"),
+    ("track.generate", "Generar con IA…", "Pista", 2, "", "Canción o parte nueva con ACE-Step, en tu equipo; entra como pista"),
+    ("track.interp", "Intérprete IA…", "Pista", 2, "", "La IA escribe las notas: pistas de instrumento normales, editables"),
+    ("track.regenerate", "Regenerar con IA", "Pista", 2, "", "Otra versión de la pista generada; entra como toma nueva"),
     ("track.solo", "Solo", "Pista", 3, "", "Escucha solo la pista elegida"),
     ("track.mute", "Silenciar", "Pista", 3, "", "Silencia la pista elegida"),
     ("track.stems", "Separar en pistas", "Pista", 4, "", "Demucs: batería, bajo, voz, guitarra, piano y otros, en la carpeta de la original, que queda silenciada"),
@@ -74,7 +77,7 @@ _A = [
     ("view.arrange", "Arreglo", "Ver", 1, "F5", "Pistas, clips y automatización"),
     ("view.mixer", "Mezclador", "Ver", 1, "F6", "La consola: una tira por pista y el master"),
     ("view.toggle", "Cambiar Arreglo ⇄ Mezclador", "Ver", 1, "Tab", "Pasa de una vista a la otra"),
-    ("view.lab", "Crear IA (laboratorio)", "Ver", 1, "F8", "Instrumentales por piezas con variantes"),
+    ("view.lab", "Instrumental por piezas…", "Pista", 2, "F8", "Familias (batería, bajo…) con variantes como tomas de su pista"),
     ("view.dual", "Doble flujo (Arreglo en otra ventana)", "Ver", 2, "F7", "El Arreglo en un segundo monitor y el Mezclador aquí"),
     ("view.nav", "Mostrar u ocultar el navegador", "Ver", 3, "Ctrl+B", "Pliega la zona del navegador"),
     ("view.insp", "Mostrar u ocultar el inspector", "Ver", 3, "Ctrl+I", "Pliega la zona del inspector"),
@@ -91,12 +94,12 @@ CTX_CLIP = ("clip.split", "clip.duplicate", "clip.delete", "clip.gainUp", "clip.
             "clip.fadeIn", "clip.fadeOut", "clip.noFades", "clip.repaint", "clip.cover", "clip.align",
             "clip.pitch", "clip.stems", "clip.tempoKey", "clip.toProjectTempo", "clip.projectToTempo",
             "clip.toProjectKey", "clip.projectToKey", "clip.original")
-CTX_TRACK = ("track.solo", "track.mute", "track.effects", "track.stems", "track.generate", "track.newAudio",
-             "track.newInst", "track.newDrum", "track.remove")
+CTX_TRACK = ("track.solo", "track.mute", "track.effects", "track.stems", "track.regenerate", "track.new", "track.generate",
+             "track.interp", "track.newAudio", "track.newInst", "track.newDrum", "track.remove")
 # Órdenes que borran: piden un segundo clic en la misma fila (confirmación en el sitio, guía de diseño)
 CONFIRM = {"track.remove": "¿Quitar la pista? Clic otra vez", "clip.delete": "¿Borrar el clip? Clic otra vez",
            "edit.delete": "¿Borrar el clip? Clic otra vez"}
-AI = {"clip.tempoKey", "track.generate", "track.stems", "clip.repaint", "clip.cover", "clip.align", "clip.pitch", "clip.stems",
+AI = {"clip.tempoKey", "track.generate", "track.interp", "track.regenerate", "view.lab", "track.stems", "clip.repaint", "clip.cover", "clip.align", "clip.pitch", "clip.stems",
       "mix.auto", "mix.remix", "mix.master"}
 
 

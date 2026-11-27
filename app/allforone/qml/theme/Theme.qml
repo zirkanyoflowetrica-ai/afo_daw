@@ -122,6 +122,7 @@ QtObject {
     readonly property color s1: cl.s1
     readonly property color s2: cl.s2
     readonly property color s3: cl.s3
+    readonly property color panelBody: cl.panelBody     // cuerpo de los paneles (Navegador, Inicio, laboratorio)
     readonly property color inkDim: cl.inkDim
     readonly property color inkOnAccent: cl.inkOnAccent
     readonly property color inkOnColor: cl.inkOnColor

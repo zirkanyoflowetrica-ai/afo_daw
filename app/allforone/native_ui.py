@@ -137,6 +137,50 @@ def _f4_checks(rep, host, lay, call, track_id: int) -> None:
     shutil.rmtree(tmp, ignore_errors=True)
 
 
+def _f5_checks(rep, host, lay, track_id: int) -> None:
+    """F5: «Pista nueva» reúne la IA (fuera Navegador › IA y la vista Crear IA) y lo regenerado entra
+    como toma. Sin IA real: la generación se simula con copias del audio de una pista."""
+    import shutil
+    import tempfile
+    nb = lay("newTrack", "")
+    lab = lay("newTrack", "lab")
+    lay("newTrack", "close")
+    rep.check("F5: un diálogo «Pista nueva» con Audio, Instrumento, Batería, Voz, Intérprete IA, Generar con IA y Por piezas; sin Navegador › IA ni vista Crear IA",
+              nb["opened"] and nb["kinds"] == ["audio", "inst", "drum", "voz", "interp", "gen", "lab"]
+              and "ia" not in nb["nav"] and lab["opened"] and lab["page"] == "lab" and lab["view"] != "lab",
+              {"tipos": nb["kinds"], "navegador": nb["nav"], "por piezas": [lab["page"], lab["view"]]})
+    orig = host.tracks[track_id]["originalPath"]
+    tmp = Path(tempfile.mkdtemp(prefix="afo_f5_"))
+    c1, c2 = tmp / "generada.wav", tmp / "regenerada.wav"
+    shutil.copy(orig, c1)
+    shutil.copy(orig, c2)
+    n0 = len(lay("f4")["tracks"])
+    lay("seqSet", "genUid", "")
+    lay("seqSet", "genKind", "song")
+    lay("seq", "onAiEvent", [{"type": "aiGenerate", "phase": "done", "ok": True, "path": str(c1), "title": "Prueba F5",
+                              "message": "Generada (simulado)"}])
+    s1 = lay("f4")
+    new = s1["tracks"][-1] if len(s1["tracks"]) == n0 + 1 else {}
+    uid = new.get("uid", "")
+    lay("seqSet", "genUid", uid)
+    lay("seq", "onAiEvent", [{"type": "aiGenerate", "phase": "done", "ok": True, "path": str(c2), "title": "Prueba F5",
+                              "message": "Regenerada (simulado)"}])
+    s2 = lay("f4")
+    again = next((t for t in s2["tracks"] if t["uid"] == uid), {})
+    src = host.tracks[new["id"]]["originalPath"] if new else ""
+    snap = next((x for x in s2["snap"] if x["uid"] == uid), {})
+    lay("arrUndo", uid)
+    undone = next((t for t in lay("f4")["tracks"] if t["uid"] == uid), {})
+    rep.check("F5: lo generado entra como pista que recuerda cómo se hizo y «Regenerar» pone otra versión como toma de esa pista (sin IA real: copias del audio)",
+              bool(new) and new.get("gen") and len(s2["tracks"]) == n0 + 1 and again.get("takes") == ["Toma 1", "Generada 1"]
+              and again.get("take") == 1 and Path(src) == c2 and snap.get("gen") and snap.get("takes") == 2
+              and undone.get("takes") == [],
+              {"pista": new.get("name"), "tomas": again.get("takes"), "tras Ctrl+Z": undone.get("takes")})
+    if uid:
+        lay("dropTrack", uid)
+    shutil.rmtree(tmp, ignore_errors=True)
+
+
 def build_native_window(host):
     """Crea la ventana QML. Devuelve (engine, window, bridge)."""
     from PySide6.QtCore import QUrl
@@ -387,6 +431,7 @@ def _native_daw_checks(rep, app, host, window, bridge, track_id) -> None:
     rep.check("tempo y tonalidad: tono del proyecto en la cabecera y panel del clic derecho",
               window.findChild(QObject, "songKey") is not None and window.findChild(QObject, "tempoKeyBox") is not None)
     _f4_checks(rep, host, lay, call, track_id)
+    _f5_checks(rep, host, lay, track_id)
     z1 = lay("zones")
     rep.check("tamaño fijo: ninguna zona cambia de tamaño por su contenido", z0 == z1,
               {k: (z0.get(k), z1.get(k)) for k in z1 if z0.get(k) != z1.get(k)})
@@ -430,7 +475,7 @@ def _native_daw_checks(rep, app, host, window, bridge, track_id) -> None:
         opened = bool(shown[0].property("opened")) and len(shown[0].property("text") or "") > 40
         QMetaObject.invokeMethod(shown[0], "hide")
     # F2: en el Inspector y el Navegador cada sección lleva su «?»; el detalle, el de su pestaña
-    sx = lay("sections", "ia")
+    sx = lay("sections", "fxlist")
     side_help = [r["id"] for r in sx["nav"]["rows"] + sx["insp"]["rows"] if r["help"]]
     rep.check("ayuda «?»: cada zona explica su pestaña o sección y se abre al pulsar",
               len(shown) >= 1 and opened and sx["nav"]["opened"] and len(side_help) >= 6,
@@ -560,6 +605,10 @@ def _native_lab_checks(rep, app, host, window, bridge) -> None:
     rep.check("Instrumental Lab: elegir otra variante cambia el audio de la misma pista",
               same is not None and len(tracks()) == before + 2 and host.tracks[same["id"]]["originalPath"].endswith(f"_{v2}.wav"),
               same and host.tracks[same["id"]]["originalPath"])
+    tk = next((x for x in tracks() if drum and x["id"] == drum["id"]), {})
+    rep.check("F5: las variantes de cada familia son las tomas de su pista borrador (la elegida suena)",
+              [k["name"] for k in tk.get("takes") or []] == ["V1", "V2"] and tk.get("take") == 1,
+              {"tomas": [k["name"] for k in tk.get("takes") or []], "suena": tk.get("take")})
     # Vista Crear IA (X18): discos dibujados de cada variante y arrastrar uno a una pista nueva
     from PySide6.QtQuick import QQuickItem
     QMetaObject.invokeMethod(window, "layoutCommand", Q_RETURN_ARG("QVariant"), Q_ARG("QVariant", "view"),
@@ -752,7 +801,7 @@ def run_native_selftest(app, host, report_path: str | None, screenshot_path: str
                                   Q_ARG("QVariant", None), Q_ARG("QVariant", None))
     ids = sorted((pv.toVariant() if hasattr(pv, "toVariant") else pv) or [])
     rep.check("cada módulo tiene su sitio: páginas en las zonas y la consola como vista Mezclador",
-              ids == sorted(["add", "fxlist", "ia", "audios", "recent", "pista", "asist", "master", "cinta", "piano",
+              ids == sorted(["add", "fxlist", "audios", "recent", "pista", "asist", "master", "cinta", "piano",
                              "inst", "drums", "fx", "tono", "afina"]), ids)
     rep.check("motor conectado desde QML", bool(prop("engineOk")))
     _native_home_checks(rep, app, host, window, bridge, startup=True)   # lo demás de Inicio, al final: deja el proyecto vacío
@@ -1272,7 +1321,11 @@ def _native_sequencer_checks(rep, app, host, window, prop) -> None:
 
     n = len(snap()["tracks"])
     cmd("add", "ia")
-    rep.check("+ IA abre el generador y no crea pistas vacías", len(snap()["tracks"]) == n and
+    box = window.findChild(QObject, "newTrackBox")
+    shown = bool(box and box.property("opened")) and box.property("page") == "gen"
+    if box:
+        QMetaObject.invokeMethod(box, "close")
+    rep.check("+ IA abre «Pista nueva › Generar con IA» y no crea pistas vacías", shown and len(snap()["tracks"]) == n and
               not [t for t in snap()["tracks"] if t["type"] == "ia"], f"{n} pistas")
 
     # IA en modo «Solo MIDI»: un .mid entra como una pista por instrumento (notas con duración propia)

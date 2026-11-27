@@ -105,6 +105,14 @@ QtObject {
             }
         })
         drafts = d
+        // F5: las variantes de cada familia son las tomas de su pista (se eligen en la cabecera)
+        ;(state && state.families || []).forEach(function (f) {
+            if (d[f.name] === undefined) return
+            var tk = f.variants.map(function (v) { return { name: v.label, source: v.path, clips: [], ai: true, vid: v.id } })
+            var ci = 0
+            f.variants.forEach(function (v, i) { if (v.chosen) ci = i })
+            seq.replace("a" + d[f.name], { takes: tk, take: ci })
+        })
         studio.syncTrackStates()
         if (r.bpm && Math.abs(r.bpm - studio.bpm) > 0.01)
             studio.toast("El laboratorio va a " + r.bpm + " BPM y el proyecto a " + studio.bpm + ": cambia el tempo del proyecto para que encaje")
@@ -114,7 +122,7 @@ QtObject {
         var r = studio.call("labSend")
         if (!r.ok) { studio.toast(r.error); return false }
         r.tracks.forEach(function (t) {
-            seq.replace("a" + t.id, { name: t.name, lab: "", len: t.track.length_seconds || 0, peaks: t.track.peaks || [], aclips: studio.clipsOf(t.id) })
+            seq.replace("a" + t.id, { name: t.name, lab: "", takes: [], take: 0, len: t.track.length_seconds || 0, peaks: t.track.peaks || [], aclips: studio.clipsOf(t.id) })
         })
         drafts = ({})
         studio.markDirty()

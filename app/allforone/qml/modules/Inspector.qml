@@ -54,6 +54,19 @@ Column {
                text: root.track ? root.track.name : ""; color: Theme.chipInk
                font.family: Theme.font; font.pixelSize: 16; font.weight: 700 }
     }
+    // F5: lo hecho con «Generar con IA» se regenera aquí; la versión nueva entra como toma de la pista
+    Row {
+        visible: !!root.track && !!root.track.gen
+        spacing: 8
+        NeoButton { objectName: "inspRegen"; text: root.studio && root.studio.seq.genUid ? "Regenerando…" : "Regenerar con IA"
+                    fontSize: 12; padY: 3; enabled: !!root.studio && !root.studio.seq.generating
+                    tip: "Otra versión con el mismo texto y estilo; entra como toma nueva de esta pista (las anteriores siguen en sus tomas)"
+                    onClicked: root.studio.seq.regenerate(root.track.uid) }
+        NeoButton { text: "Ajustes…"; fontSize: 12; padY: 3; enabled: !!root.studio && !root.studio.seq.generating
+                    tip: "Cambiar el texto, el estilo o la duración antes de regenerar"
+                    onClicked: { root.studio.seq.draftIa = Object.assign({}, root.studio.seq.draftIa, root.track.gen.cfg || {})
+                                 root.studio.newTrack("gen"); root.studio.seq.genUid = root.track.uid } }
+    }
     Text {
         visible: !!root.track && !root.live; width: root.width; wrapMode: Text.Wrap
         text: "Esta pista aún no está en el motor (no tiene sonido): no se puede mezclar todavía."

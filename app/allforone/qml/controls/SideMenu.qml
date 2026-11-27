@@ -68,8 +68,12 @@ Rectangle {
                     onClicked: root.studio.addMore("cinta") }
             Entry { visible: root.tab === 1; title: "Importar audio…"; sub: "WAV, AIFF, FLAC, OGG, MP3"; color2: Theme.pc.audios
                     onClicked: root.studio.addMore("audios") }
-            Entry { visible: root.tab === 1; title: "Pista con IA"; sub: "Instrumental con ACE-Step, en tu equipo"; color2: Theme.pc.ia
-                    onClicked: root.studio.addMore("ia") }
+            Entry { visible: root.tab === 1; title: "Intérprete IA"; sub: "La IA escribe las notas (MIDI-LLM, en tu equipo)"; color2: Theme.pc.ia
+                    onClicked: root.studio.newTrack("interp") }
+            Entry { visible: root.tab === 1; title: "Generar con IA"; sub: "Canción o parte en audio (ACE-Step, en tu equipo)"; color2: Theme.pc.ia
+                    onClicked: root.studio.newTrack("gen") }
+            Entry { visible: root.tab === 1; title: "Instrumental por piezas"; sub: "Familias con variantes como tomas"; color2: Theme.pc.ia
+                    onClicked: root.studio.newTrack("lab") }
             Section { visible: root.tab === 1; text: "PLUGINS VST3 (INSTRUMENTOS)" }
             Repeater {
                 model: root.tab === 1 ? root.studio.plugins.filter(function (p) { return p.instrument }) : []
