@@ -94,9 +94,9 @@ $nargs = @('-m', 'nuitka',
     '--include-package=allforone',
     "--include-data-dir=$Root\app\allforone\qml=allforone/qml",
     '--include-qt-plugins=qml',
-    # librosa lee sus datos (util/example_data: registry.txt, index.json) al importarse: sin ellos
-    # el analisis del proyecto (F7) falla en el EXE con «No module named librosa.util.example_data»
-    '--include-package=librosa.util.example_data', '--include-package-data=librosa',
+    # librosa y numba van ademas como codigo Python en pylibs\ (ver mas abajo); Nuitka los sigue para
+    # meter sus dependencias. Con numba de verdad (su JIT) en vez del modo sin JIT de Nuitka.
+    '--module-parameter=numba-disable-jit=no',
     # La interfaz es Qt Quick: nada de Chromium en la distribucion
     '--nofollow-import-to=PySide6.QtWebEngineCore', '--nofollow-import-to=PySide6.QtWebEngineWidgets',
     '--nofollow-import-to=PySide6.QtWebEngineQuick', '--nofollow-import-to=PySide6.QtWebChannel',
@@ -126,6 +126,16 @@ Ok ("Empaquetado en {0:N1} min" -f $sw.Elapsed.TotalMinutes)
 Copy-Item (Join-Path $Root 'THIRD_PARTY_NOTICES.md') $Out
 Copy-Item (Join-Path $Root 'LICENSE') $Out -ErrorAction SilentlyContinue
 Copy-Item (Join-Path $Root 'README.md') $Out -ErrorAction SilentlyContinue
+# librosa y numba como codigo Python (main._source_packages los carga de aqui): numba compila funciones
+# desde su bytecode, que el codigo compilado por Nuitka no tiene; sin esto el analisis (tempo, tonalidad,
+# acordes, secciones) falla en el EXE. Se dejan compilados a .pyc para no hacerlo en cada arranque.
+$PyLibs = Join-Path $Out 'pylibs'
+$Site = Join-Path $Root '.venv\Lib\site-packages'
+foreach ($pkg in @('librosa', 'numba')) {
+    & robocopy (Join-Path $Site $pkg) (Join-Path $PyLibs $pkg) /E /XD __pycache__ tests /NFL /NDL /NJH /NJS /NP | Out-Null
+    if ($LASTEXITCODE -ge 8) { Fail "No se pudo copiar $pkg a pylibs" }
+}
+if ((Run-Native $Py @('-m', 'compileall', '-q', '-j', '0', $PyLibs)) -ne 0) { Fail "compileall de pylibs fallo" }
 # Temas: cada carpeta de templates con un theme.json (copiar la carpeta = compartir el tema)
 Copy-Item (Join-Path $Root 'templates') (Join-Path $Out 'templates') -Recurse
 # Scripts del usuario (F8): los de ejemplo de scripts\ (menu Scripts; API afo)

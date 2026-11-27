@@ -27,6 +27,29 @@ def setup_logging(verbose: bool = False) -> None:
         root.addHandler(sh)
 
 
+SOURCE_PACKAGES = ("librosa", "numba")
+
+
+def _source_packages() -> None:
+    """En el EXE (Nuitka), librosa y numba se cargan desde su código Python en la carpeta pylibs: numba compila
+    funciones a partir de su bytecode, y lo que compila Nuitka no lo tiene (el análisis fallaría). Sus
+    dependencias y la biblioteca estándar siguen dentro del EXE."""
+    if not paths.is_frozen():
+        return
+    root = paths.app_root() / "pylibs"
+    if not root.is_dir():
+        return
+    import importlib.machinery
+
+    class _SourceFirst:
+        @staticmethod
+        def find_spec(name, path=None, target=None):
+            if name.partition(".")[0] not in SOURCE_PACKAGES:
+                return None
+            return importlib.machinery.PathFinder.find_spec(name, path if "." in name else [str(root)])
+    sys.meta_path.insert(0, _SourceFirst)
+
+
 def _prepare_qt_environment() -> None:
     os.environ.setdefault("QT_DISABLE_SHADER_DISK_CACHE", "1")   # no escribir cachés de Qt fuera de la carpeta
     # Temporales de Python, del mezclador y de librerías dentro de la carpeta de datos
@@ -40,6 +63,7 @@ def _prepare_qt_environment() -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
+    _source_packages()                          # antes de que nada importe librosa (EXE)
     parser = argparse.ArgumentParser(prog="AllForOne")
     parser.add_argument("--selftest", action="store_true", help="Ejecuta la verificación integrada y sale")
     parser.add_argument("--report", help="Ruta del informe JSON de --selftest")
