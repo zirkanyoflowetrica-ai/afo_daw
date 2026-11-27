@@ -46,6 +46,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--screenshot", help="Ruta de la captura de --selftest")
     parser.add_argument("--nativo", action="store_true", help=argparse.SUPPRESS)   # antes elegía la interfaz nativa; hoy es la única
     parser.add_argument("--scan-plugins", metavar="LISTA", help=argparse.SUPPRESS)   # proceso buscador de VST3
+    parser.add_argument("--run-script", metavar="SCRIPT", help=argparse.SUPPRESS)   # F8: proceso de un script del usuario
+    parser.add_argument("--script-io", metavar="JSON", help=argparse.SUPPRESS)
     parser.add_argument("--verbose", action="store_true")
     args, qt_args = parser.parse_known_args(argv if argv is not None else sys.argv[1:])
 
@@ -53,6 +55,10 @@ def main(argv: list[str] | None = None) -> int:
         from .plugin_scan import run_child
 
         return run_child(args.scan_plugins)
+    if args.run_script:                         # F8: sin interfaz ni motor: el script sobre una copia del proyecto
+        from .script_host import run_child as run_script
+
+        return run_script(args.run_script, args.script_io)
 
     setup_logging(args.verbose)
     from . import diagnostics

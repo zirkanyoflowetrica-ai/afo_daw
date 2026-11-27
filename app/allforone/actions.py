@@ -10,7 +10,7 @@ derecho), ai (True: lo hace la IA en tu equipo; lleva la marca «IA»).
 """
 from __future__ import annotations
 
-MENUS = ("Archivo", "Editar", "Pista", "Clip", "Mezcla", "Ver")
+MENUS = ("Archivo", "Editar", "Pista", "Clip", "Mezcla", "Scripts", "Ver")
 
 _A = [
     # Archivo
@@ -88,6 +88,9 @@ _A = [
     ("view.themeGrafito", "Tema Grafito", "Ver", 4, "", "Gris medio, mismos colores"),
     ("view.themeClaro", "Tema Claro", "Ver", 4, "", "Fondo claro, mismos colores"),
     ("view.palette", "Buscar una orden…", "Ver", 5, "Ctrl+K", "Escribe lo que quieres hacer y pulsa Intro"),
+    # Scripts (F8): encima salen los de la carpeta scripts/ (uno por archivo .py)
+    ("script.folder", "Abrir la carpeta de scripts", "Scripts", 9, "", "Tus scripts .py con la API afo; los que dejes ahí salen en este menú y en Ctrl+K"),
+    ("script.reload", "Volver a leer los scripts", "Scripts", 9, "", "Pone al día este menú con los archivos de la carpeta scripts"),
 ]
 
 # Clic derecho: qué órdenes salen sobre un clip de audio y sobre la cabecera de una pista
@@ -106,6 +109,10 @@ AI = {"clip.tempoKey", "track.generate", "track.interp", "track.regenerate", "vi
 
 def actions() -> list[dict]:
     out = []
+    from . import script_host
+    for s in script_host.list_scripts():               # F8: un script = una orden (corre aparte; Ctrl+Z lo deshace)
+        out.append({"id": s["id"], "label": s["name"], "menu": "Scripts", "group": 1, "keys": "",
+                    "tip": s["tip"] + " (script " + s["file"] + "; Ctrl+Z lo deshace)", "ctx": [], "ai": False, "confirm": ""})
     for aid, label, menu, group, keys, tip in _A:
         ctx = [c for c, ids in (("clip", CTX_CLIP), ("track", CTX_TRACK)) if aid in ids]
         out.append({"id": aid, "label": label, "menu": menu, "group": group, "keys": keys, "tip": tip,

@@ -62,6 +62,12 @@ Rectangle {
             text: visible ? "● Analizando tonalidad, acordes y secciones…" : ""
             color: Theme.ink; font.family: Theme.font; font.pixelSize: 12; font.weight: 700
         }
+        Text {                                       // F8: un script del usuario corre en otro proceso
+            anchors.verticalCenter: parent.verticalCenter
+            visible: !!root.studio.scriptBusy
+            text: visible ? "● Script «" + root.studio.scriptBusy + "» en marcha…" : ""
+            color: Theme.ink; font.family: Theme.font; font.pixelSize: 12; font.weight: 700
+        }
         Text {                                       // F6: mezcla automática o Master IA trabajando
             readonly property var mx: root.studio.mixer
             anchors.verticalCenter: parent.verticalCenter

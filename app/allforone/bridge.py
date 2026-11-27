@@ -109,6 +109,8 @@ class Bridge(QObject):
         from .lab import Lab
         self.lab = Lab(self._mixer_events.put, lambda: self.ai.generating or self.stems.busy or self._midi_busy())
         self._lab_tracks: dict[str, dict] = {}     # familia → pista borrador del laboratorio {tid, vid, folder}
+        from .script_host import ScriptRunner
+        self.scripts = ScriptRunner(self._mixer_events.put)   # F8: scripts del usuario en un proceso aparte
         app = QCoreApplication.instance()
         if app is not None:
             app.aboutToQuit.connect(self.ai.shutdown)   # no dejar procesos del motor de IA huérfanos
@@ -145,7 +147,7 @@ class Bridge(QObject):
             if ev.get("type") == "_pitched":        # interno: Pitch Editor terminó en su hilo
                 self._finish_pitch(ev)
                 continue
-            if str(ev.get("type", "")).startswith(("ai", "stems", "lab")):   # IA local (ai_music.py, stems.py, lab.py)
+            if str(ev.get("type", "")).startswith(("ai", "stems", "lab", "script")):   # IA local y scripts (F8)
                 self.aiEvent.emit(_json(ev))
                 continue
             if ev.get("type") == "_plan":           # interno: la mezcla decidida se aplica en el motor aquí
@@ -1024,6 +1026,61 @@ class Bridge(QObject):
 
         threading.Thread(target=work, name="afo-analisis", daemon=True).start()
         return _ok(started=True, clips=len(parts))
+
+    # --- F8: scripts del usuario (scripts/*.py con la API afo, en un proceso aparte) -------------
+    @Slot(result=str)
+    @_safe
+    def scriptList(self) -> str:
+        from . import script_host
+        return _ok(scripts=script_host.list_scripts(), folder=str(script_host.scripts_dir()), busy=self.scripts.busy)
+
+    @Slot(str, str, result=str)
+    @_safe
+    def scriptRun(self, file: str, snapshot_json: str) -> str:
+        """Lanza `scripts/<file>` sobre la copia del proyecto que manda la interfaz (pistas, clips,
+        canción); aquí se añade el archivo que suena en cada pista y los efectos que hay. Las órdenes
+        vuelven por `aiEvent` («scriptDone») y la interfaz las aplica como un solo paso de deshacer."""
+        snap = json.loads(snapshot_json or "{}")
+        for t in snap.get("tracks", []):
+            tid = int(t.get("id", -1))
+            t["path"] = self._playing_path(tid) if tid >= 0 and self.host.ok else ""
+            if tid >= 0 and self.host.ok:
+                t["clips"] = [dict(c) for c in self.host.engine.clips(tid)]
+        snap["effects"] = [c["key"] for c in self.host.effect_catalog() if not str(c["key"]).startswith("fxlab")] if self.host.ok else []
+        return _json(self.scripts.run(file, snap))
+
+    @Slot(result=str)
+    @_safe
+    def scriptsFolder(self) -> str:
+        from PySide6.QtCore import QUrl
+        from PySide6.QtGui import QDesktopServices
+        from . import script_host
+        d = script_host.scripts_dir()
+        d.mkdir(parents=True, exist_ok=True)
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(d)))
+        return _ok(folder=str(d))
+
+    @Slot(str, str, result=str)
+    @_safe
+    def exportStems(self, folder: str, tracks_json: str) -> str:
+        """Un WAV por pista (con sus efectos y el master): cada pista sola en el motor, una tras otra.
+        `tracks_json` = [[id, nombre], …]. Mute y solo los devuelve la interfaz al terminar."""
+        if (g := self._guard()):
+            return g
+        out = Path(folder) if folder else paths.media_dir() / f"stems_{datetime.now():%Y%m%d_%H%M%S}"
+        out.mkdir(parents=True, exist_ok=True)
+        eng, written = self.host.engine, []
+        items = [(int(i), str(n)) for i, n in json.loads(tracks_json or "[]")]
+        ids = [i for i, _ in items]
+        for tid, name in items:
+            for other in ids:
+                eng.set_track_mute(other, False)
+                eng.set_track_solo(other, other == tid)
+            safe = "".join(ch if ch.isalnum() or ch in " -_" else "_" for ch in name).strip() or f"pista_{tid}"
+            p = out / f"{len(written) + 1:02d} {safe}.wav"
+            if eng.render_to_wav(str(p)):
+                written.append(str(p))
+        return _ok(folder=str(out), files=written)
 
     # --- Vocal Align (AF-67): la toma se ajusta en el tiempo a una voz guía ----------------
     def _file_start(self, track_id: int) -> float:

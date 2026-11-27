@@ -52,7 +52,7 @@ QtObject {
                          cfg: t.cfg || {}, roll: t.roll || {}, pat: t.pat || {}, clips: t.clips || [], start: t.start || 0,
                          midi: t.midi || undefined, midiSrc: t.midiSrc || undefined,
                          takes: t.takes && t.takes.length ? t.takes : undefined, take: t.takes ? t.take || 0 : undefined,
-                         folder: t.folder || undefined, fold: t.fold || undefined, gen: t.gen || undefined,
+                         folder: t.folder || undefined, fold: t.fold || undefined, gen: t.gen || undefined, color: t.color || undefined,
                          stem: !!it, mix: it ? { kind: it.kind, role: it.role } : null }
             })
         }
@@ -145,6 +145,7 @@ QtObject {
                 var f = s.call("fxRestore", id, JSON.stringify(d.fx))
                 if (!f.ok) s.toast(f.error)
             }
+            if (uid && d.color) sq.replace(uid, { color: d.color })       // F8: color de pista
             if (id >= 0 && d.uid) idOf[d.uid] = id
             if (uid && d.uid) uidOf[d.uid] = uid
             if (uid && (d.takes || d.folder || d.fold || d.gen))   // F4: tomas y carpeta; F5: cómo se generó

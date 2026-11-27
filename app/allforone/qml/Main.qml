@@ -140,6 +140,7 @@ Window {
         switch (id) {
         case "file.import": case "file.export": case "track.newAudio": return engineOk
         case "edit.analyze": return engineOk && !songBusy
+        case "script.folder": case "script.reload": return true
         case "edit.undo": return (view === "mixer" && !!mx.undoSnap && !mx.busy) || a.undoStack.length > 0
         case "edit.redo": return a.redoStack.length > 0
         case "edit.split": case "clip.split": return !!a.clipUid
@@ -163,7 +164,13 @@ Window {
         case "mix.master": return engineOk && !mx.mastering && !mx.busy
         case "view.arrange": case "view.mixer": case "view.toggle": return !dualWindow || id === "view.mixer"
         }
-        return actionHandlers[id] !== undefined
+        return handlerOf(id) !== undefined
+    }
+    function handlerOf(id) {
+        if (actionHandlers[id] !== undefined) return actionHandlers[id]
+        if (id.indexOf("script.") === 0 && actionsReg.some(function (x) { return x.id === id }))
+            return function () { runScript(id.slice(7) + ".py") }
+        return undefined
     }
     function actionChecked(id) {
         var t = selTrackObj
@@ -257,11 +264,15 @@ Window {
         "view.themeOscuro": function () { setTheme("Oscuro") },
         "view.themeGrafito": function () { setTheme("Grafito") },
         "view.themeClaro": function () { setTheme("Claro") },
-        "view.palette": function () { palette.open() }
+        "view.palette": function () { palette.open() },
+        "script.folder": function () { call("scriptsFolder") },
+        "script.reload": function () { loadActions(); toast(actionsOf("Scripts").length - 2 + " script(s) en el menú Scripts") }
     })
     function runAction(id) {
-        var h = actionHandlers[id]
+        var h = handlerOf(id)
         if (!h) { toast("Orden desconocida: " + id); return false }
+        if (id.indexOf("script.") === 0 && !actionHandlers[id] && (!engineOk || scriptBusy)) {
+            toast(scriptBusy ? "Ya corre el script «" + scriptBusy + "»" : "Los scripts necesitan el motor de audio"); return false }
         if (!actionEnabled(id)) return false
         h()
         return true
@@ -300,6 +311,90 @@ Window {
         songBusy = true
         toast("Analizando el proyecto: tempo, tonalidad, acordes y secciones…")
         return true
+    }
+    // F8: scripts del usuario (scripts/*.py, API afo). Corren en otro proceso sobre una copia del proyecto;
+    // sus órdenes se aplican aquí, en el hilo de la interfaz, y quedan como UN paso de Ctrl+Z en el Arreglo.
+    property string scriptBusy: ""
+    property var scriptLast: null           // autoprueba: {name, ok, applied, error, log}
+    function scriptSnapshot() {
+        return { bpm: bpm, key: songKey, chords: chords, markers: markers,
+                 tracks: tracks.filter(function (t) { return t.type !== "master" }).map(function (t) {
+                     return { uid: t.uid, id: t.id, type: t.type, name: t.name, vol_db: MD.faderToDb(t.vol === undefined ? 70 : t.vol),
+                              pan: ((t.pan === undefined ? 50 : t.pan) - 50) / 50, mute: !!t.mute, solo: !!t.solo,
+                              color: t.color || "", clips: t.aclips || [] } }) }
+    }
+    function runScript(file) {
+        if (scriptBusy) { toast("Ya corre el script «" + scriptBusy + "»"); return false }
+        var r = call("scriptRun", file, JSON.stringify(scriptSnapshot()))
+        if (!r.ok) { toast(r.error); return false }
+        scriptBusy = r.name
+        toast("Script «" + r.name + "» en marcha (proceso aparte)…")
+        return true
+    }
+    function onScriptDone(ev) {
+        scriptBusy = ""
+        if (!ev.ok) {
+            scriptLast = { name: ev.name, ok: false, applied: 0, error: ev.error, log: ev.log || [] }
+            toast("Script «" + ev.name + "»: " + ev.error + ". No se cambió nada"); return
+        }
+        var n = applyScript(ev.name, ev.commands || [])
+        scriptLast = { name: ev.name, ok: true, applied: n.applied, error: "", log: ev.log || [], exported: n.exported }
+        var msg = (ev.log || []).slice(-1)[0] || (n.applied + " cambio(s)")
+        toast("Script «" + ev.name + "» · " + msg + (n.undo ? " · Ctrl+Z lo deshace" : "") + (n.exported ? " · stems en " + n.exported : ""))
+    }
+    function applyScript(name, cmds) {
+        var entries = [], trkBefore = {}, clipDone = {}, songSaved = false, applied = 0, exportCmd = null, racks = false
+        if (cmds.some(function (c) { return c.op === "fx" })) {          // efectos: la instantánea del Mezclador (F6) los devuelve
+            var snap = mx.call("snapshot")
+            if (snap.ok) entries.push({ mix: snap.tracks })
+        }
+        cmds.forEach(function (c) {
+            var t = c.uid ? sq.trackOf(c.uid) : null
+            if (c.uid && !t) return
+            if (c.op === "track") {
+                if (!trkBefore[c.uid]) trkBefore[c.uid] = { uid: c.uid, vol: t.vol === undefined ? 70 : t.vol, pan: t.pan === undefined ? 50 : t.pan,
+                                                            mute: !!t.mute, solo: !!t.solo, name: t.name, color: t.color || "" }
+                if (c.vol_db !== undefined || c.pan !== undefined)
+                    setTrackMixUid(c.uid, c.vol_db !== undefined ? MD.dbToFader(c.vol_db) : t.vol, c.pan !== undefined ? 50 + 50 * c.pan : t.pan)
+                var ch = {}
+                ;["mute", "solo", "name", "color"].forEach(function (k) { if (c[k] !== undefined) ch[k] = c[k] })
+                sq.replace(c.uid, ch)
+            } else if (c.op === "clip_gain") {
+                if (!clipDone[c.uid]) { clipDone[c.uid] = true; entries.push({ uid: c.uid, clips: t.aclips || [] }) }
+                if (!arrange.edit(c.uid, { op: "gain", clip: c.clip, db: c.db }, true)) return
+            } else if (c.op === "markers" || c.op === "chords" || c.op === "key") {
+                if (!songSaved) { songSaved = true; entries.push(arrange.songState()) }
+                if (c.op === "markers") setSongInfo(chords, c.markers, null)
+                else if (c.op === "chords") setSongInfo(c.chords, markers, null)
+                else setSongKey(c.key, c.scale, false)
+            } else if (c.op === "fx") {
+                var f = call("fxAdd", t.id, c.key, -1)
+                if (!f.ok) { toast(f.error); return }
+                racks = true
+            } else if (c.op === "seek") { call("seek", c.t)
+            } else if (c.op === "play") { if (!playing) call("togglePlay")
+            } else if (c.op === "stop") { call("stop"); step = -1
+            } else if (c.op === "export_stems") { exportCmd = c; return }
+            applied++
+        })
+        var tb = Object.keys(trkBefore).map(function (k) { return trkBefore[k] })
+        if (tb.length) { entries.push({ trk: tb }); syncTrackStates() }
+        if (racks) refreshRacks()
+        var exported = ""
+        if (exportCmd) {
+            var list = exportCmd.uids.map(function (u) { return sq.trackOf(u) }).filter(function (x) { return x && x.id >= 0 })
+                                     .map(function (x) { return [x.id, x.name] })
+            var folder = exportCmd.folder || (pj.file ? pj.file.replace(/[\\/][^\\/]*$/, "") + "/stems" : "")
+            var r = call("exportStems", folder, JSON.stringify(list))
+            syncTrackStates()                                 // vuelven el Mute y el Solo de cada pista
+            if (r.ok) { exported = r.folder; applied += r.files.length } else toast(r.error)
+        }
+        if (entries.length) {
+            arrange.undoStack = arrange.undoStack.concat([{ multi: entries, label: name }]).slice(-60)
+            arrange.redoStack = []
+            markDirty()
+        }
+        return { applied: applied, undo: entries.length > 0, exported: exported }
     }
     function setSongInfo(c, m, k) {
         chords = c || []; markers = m || []
@@ -576,11 +671,19 @@ Window {
         if (what === "sections") return { nav: navZ.sectionInfo(a), insp: inspZ.sectionInfo(a), detTabs: !detZ.sections }
         if (what === "actions") { loadActions()
                                   return { ids: actionsReg.map(function (x) { return x.id }),
-                                           missing: actionsReg.filter(function (x) { return actionHandlers[x.id] === undefined }).map(function (x) { return x.id }),
+                                           missing: actionsReg.filter(function (x) { return handlerOf(x.id) === undefined }).map(function (x) { return x.id }),
                                            extra: Object.keys(actionHandlers).filter(function (k) { return !actionsReg.some(function (x) { return x.id === k }) }),
                                            menus: actionMenus, clip: actionsCtx("clip").map(function (x) { return x.id }),
                                            track: actionsCtx("track").map(function (x) { return x.id }) } }
         if (what === "run") return { ok: runAction(a), enabled: actionEnabled(a), checked: actionChecked(a) }
+        if (what === "script") {                 // F8: lanzar, estado y deshacer
+            if (a === "undo") arrange.undo()
+            else if (a) return runScript(a)
+            return { busy: scriptBusy, last: scriptLast, undo: arrange.undoStack.length,
+                     tracks: tracks.map(function (t) { return { uid: t.uid, name: t.name, vol: t.vol, color: t.color || "", mute: !!t.mute,
+                                                                gains: (t.aclips || []).map(function (c) { return c.gain_db }) } }),
+                     markers: markers.map(function (m) { return m.label }) }
+        }
         if (what === "menu") { if (a === "palette") { palette.open(); palette.query = b || ""; return { open: palette.visible, hits: palette.hits.map(function (x) { return x.id }) } }
                                if (a === "close") { palette.close(); barMenu.close(); ctxMenu.close(); return true }
                                if (a === "ctx") { openContext(b, menuBar, 40, 10); return { open: ctxMenu.visible, count: ctxMenu.count } }
@@ -902,7 +1005,7 @@ Window {
     Connections {
         target: afo
         function onAiEvent(s) {
-            try { var ev = JSON.parse(s); if (ev.type === "aiTempoKey") win.onTempoKey(ev); else if (ev.type === "aiSongAnalysis") win.onSongAnalysis(ev); else if (!lb.onAiEvent(ev)) sq.onAiEvent(ev) } catch (e) { console.warn(e) }
+            try { var ev = JSON.parse(s); if (ev.type === "aiTempoKey") win.onTempoKey(ev); else if (ev.type === "aiSongAnalysis") win.onSongAnalysis(ev); else if (ev.type === "scriptDone") win.onScriptDone(ev); else if (!lb.onAiEvent(ev)) sq.onAiEvent(ev) } catch (e) { console.warn(e) }
         }
         function onPluginScanEvent(s) { try { win.onScanEvent(JSON.parse(s)) } catch (e) { console.warn(e) } }
         function onStateChanged(s) {

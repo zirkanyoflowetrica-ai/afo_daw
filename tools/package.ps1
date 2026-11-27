@@ -125,6 +125,8 @@ Copy-Item (Join-Path $Root 'LICENSE') $Out -ErrorAction SilentlyContinue
 Copy-Item (Join-Path $Root 'README.md') $Out -ErrorAction SilentlyContinue
 # Temas: cada carpeta de templates con un theme.json (copiar la carpeta = compartir el tema)
 Copy-Item (Join-Path $Root 'templates') (Join-Path $Out 'templates') -Recurse
+# Scripts del usuario (F8): los de ejemplo de scripts\ (menu Scripts; API afo)
+Copy-Item (Join-Path $Root 'scripts') (Join-Path $Out 'scripts') -Recurse
 # IA local: motor de ACE-Step (acestep.cpp con Vulkan) en motores\acestep. Los modelos no van en el
 # paquete: se descargan desde el propio programa a modelos\acestep.
 $Ace = Join-Path $Cache 'acestep.cpp\build-vk'
@@ -222,6 +224,9 @@ if (Test-Path (Join-Path $Exe 'modelos')) { Move-Item (Join-Path $Exe 'modelos')
 # Temas que anadiste tu (los de fabrica se actualizan)
 $keepT = Join-Path $Cache "tmp\temas_conservados_$Stamp"
 if (Test-Path (Join-Path $Exe 'templates')) { Move-Item (Join-Path $Exe 'templates') $keepT }
+# Scripts que escribiste tu (los de ejemplo se actualizan)
+$keepS = Join-Path $Cache "tmp\scripts_conservados_$Stamp"
+if (Test-Path (Join-Path $Exe 'scripts')) { Move-Item (Join-Path $Exe 'scripts') $keepS }
 if (Test-Path $Exe) { Remove-Item -Recurse -Force $Exe }
 Move-Item $Out $Exe
 if (Test-Path $keep) { Move-Item $keep (Join-Path $Exe 'datos') }
@@ -232,6 +237,13 @@ if (Test-Path $keepT) {
         if (-not (Test-Path $dest)) { Move-Item $t.FullName $dest }
     }
     Remove-Item -Recurse -Force $keepT -ErrorAction SilentlyContinue
+}
+if (Test-Path $keepS) {
+    foreach ($f in Get-ChildItem $keepS -File) {
+        $dest = Join-Path $Exe "scripts\$($f.Name)"
+        if (-not (Test-Path $dest)) { Move-Item $f.FullName $dest }
+    }
+    Remove-Item -Recurse -Force $keepS -ErrorAction SilentlyContinue
 }
 $shell = New-Object -ComObject WScript.Shell
 $lnk = $shell.CreateShortcut((Join-Path $Root 'AllForOne.lnk'))

@@ -158,7 +158,7 @@ fuera del hilo de audio (AGENTS.md §2) y con deshacer:
    paleta. Se ejecutan en un proceso aparte; las órdenes vuelven al hilo principal por el puente.
    Un script no puede tocar audio en tiempo real ni bloquear la interfaz. Se incluyen ejemplos
    útiles: normalizar todas las voces, colorear por tipo, exportar stems, crear marcadores por
-   sección.
+   sección. Hecho en F8: la API y sus límites están en `docs/SCRIPTS.md`.
 
 ## 5. Etapas (cada una deja el programa usable y pasa el selftest)
 

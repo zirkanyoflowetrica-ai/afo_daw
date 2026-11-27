@@ -112,7 +112,36 @@ Rectangle {
     }
     function restore(fromStack) {
         if (!fromStack.length) return null
-        var e = fromStack[fromStack.length - 1]
+        return restoreEntry(fromStack[fromStack.length - 1])
+    }
+    // Una entrada de deshacer; devuelve la contraria (para rehacer). F8: «multi» junta varias (un script
+    // entero es un solo paso), «trk» devuelve fader, paneo, mute, solo, nombre y color, y «mix» las
+    // cadenas de efectos con la instantánea del Mezclador.
+    function restoreEntry(e) {
+        if (e.multi) {
+            var backs = []
+            for (var i = e.multi.length - 1; i >= 0; i--) { var b = restoreEntry(e.multi[i]); if (b) backs.unshift(b) }
+            return { multi: backs, label: e.label }
+        }
+        if (e.trk) {
+            var bt = { trk: [] }
+            e.trk.forEach(function (s) {
+                var x = studio.seq.trackOf(s.uid); if (!x) return
+                bt.trk.push({ uid: s.uid, vol: x.vol === undefined ? 70 : x.vol, pan: x.pan === undefined ? 50 : x.pan, mute: !!x.mute,
+                              solo: !!x.solo, name: x.name, color: x.color || "" })
+                studio.setTrackMixUid(s.uid, s.vol, s.pan)
+                studio.seq.replace(s.uid, { mute: s.mute, solo: s.solo, name: s.name, color: s.color })
+            })
+            studio.syncTrackStates()
+            return bt
+        }
+        if (e.mix) {
+            var now = studio.mixer.call("snapshot")
+            var rr = studio.mixer.call("restore", { tracks: e.mix })
+            if (!rr.ok) { studio.toast(rr.error); return null }
+            studio.refreshRacks()
+            return now.ok ? { mix: now.tracks } : null
+        }
         if (e.song) { var bs = songState(); studio.setSongInfo(e.chords, e.markers, e.key.key ? e.key : { key: "", scale: "" }); return bs }
         var t = studio.seq.trackOf(e.uid)
         if (!t) return null
@@ -177,6 +206,7 @@ Rectangle {
     }
     function info(id) { return lanes[String(id)] || { inserts: [], lanes: [] } }
     function colorOf(t) {
+        if (t.color && Theme.pc[t.color]) return Theme.pc[t.color]     // F8: color puesto por un script (de la paleta del tema)
         if (t.type === "master") return Theme.pc.master
         if (t.type === "aux") return Theme.pc.fx || Theme.pc.pistas
         return Theme.pc[studio.seq.src[t.type]] || Theme.pc.pistas

@@ -181,6 +181,46 @@ def _f5_checks(rep, host, lay, track_id: int) -> None:
     shutil.rmtree(tmp, ignore_errors=True)
 
 
+def _f8_checks(rep, app, host, lay) -> None:
+    """F8: los scripts de scripts/ salen en el menú Scripts, corren en otro proceso sobre el proyecto y
+    sus cambios quedan como un solo paso de Ctrl+Z. (Lo que hace cada script se mide en
+    tests/test_scripts.py con proyectos completos.)"""
+    from pathlib import Path
+    from .selftest import _wait
+    lay("menu", "close")
+    m = lay("menu", "Scripts")
+    lay("menu", "close")
+    acts = lay("actions")
+    sids = [i for i in acts["ids"] if i.startswith("script.")]
+    rep.check("F8: el menú Scripts lista los scripts de la carpeta (y la paleta Ctrl+K los encuentra)",
+              m["open"] and m["count"] >= 6 and {"script.normalizar_voces", "script.colorear_por_tipo", "script.exportar_stems",
+                                                  "script.marcadores_por_seccion"} <= set(sids) and not acts["missing"],
+              {"scripts": sids, "filas": m["count"]})
+    lay("view", "arrange")
+    before = lay("script")
+    started = lay("script", "colorear_por_tipo.py")
+    done = started is True and _wait(app, lambda: not lay("script")["busy"], 120, host)
+    s = lay("script")
+    changed = [t for t, b in zip(s["tracks"], before["tracks"]) if t["color"] != b["color"]]
+    rep.check("F8: un script corre en otro proceso y aplica sus cambios (colorear por tipo)",
+              done and s["last"] is not None and s["last"]["ok"] and len(changed) >= 2 and s["undo"] == before["undo"] + 1,
+              {"cambian": [(t["name"], t["color"]) for t in changed][:8], "resultado": s["last"]})
+    u = lay("script", "undo")
+    rep.check("F8: un Ctrl+Z deshace todo lo que hizo el script",
+              [t["color"] for t in u["tracks"]] == [t["color"] for t in before["tracks"]] and u["undo"] == before["undo"],
+              {"colores": [t["color"] for t in u["tracks"]]})
+    mutes = [t["mute"] for t in lay("script")["tracks"]]
+    started = lay("script", "exportar_stems.py")
+    done = started is True and _wait(app, lambda: not lay("script")["busy"], 240, host)
+    s = lay("script")
+    last = s["last"] or {}
+    files = sorted(Path(last.get("exported") or ".").glob("*.wav")) if last.get("exported") else []
+    rep.check("F8: «Exportar stems» escribe un WAV por pista y deja el Mute y el Solo como estaban",
+              done and last.get("ok") and len(files) >= 2 and all(f.stat().st_size > 1000 for f in files)
+              and [t["mute"] for t in s["tracks"]] == mutes,
+              {"carpeta": last.get("exported"), "archivos": [f.name for f in files][:10], "resultado": last})
+
+
 def _f7_checks(rep, app, host, lay) -> None:
     """F7: «Editar › Analizar el proyecto» corre en otro hilo con el audio que suena y deja la pista de
     acordes y las secciones en el Arreglo; se guarda con el proyecto y Ctrl+Z vuelve a lo de antes.
@@ -498,6 +538,7 @@ def _native_daw_checks(rep, app, host, window, bridge, track_id) -> None:
     _f4_checks(rep, host, lay, call, track_id)
     _f5_checks(rep, host, lay, track_id)
     _f7_checks(rep, app, host, lay)
+    _f8_checks(rep, app, host, lay)
     z1 = lay("zones")
     rep.check("tamaño fijo: ninguna zona cambia de tamaño por su contenido", z0 == z1,
               {k: (z0.get(k), z1.get(k)) for k in z1 if z0.get(k) != z1.get(k)})
@@ -588,8 +629,8 @@ def _native_daw_checks(rep, app, host, window, bridge, track_id) -> None:
     ac = lay("actions")
     rep.check("órdenes: cada orden del registro hace algo en la interfaz y no hay órdenes fuera del registro",
               ac["ids"] and not ac["missing"] and not ac["extra"], {"sin hacer": ac["missing"], "fuera": ac["extra"]})
-    rep.check("barra de menús Archivo · Editar · Pista · Clip · Mezcla · Ver",
-              ac["menus"] == ["Archivo", "Editar", "Pista", "Clip", "Mezcla", "Ver"], ac["menus"])
+    rep.check("barra de menús Archivo · Editar · Pista · Clip · Mezcla · Scripts · Ver",
+              ac["menus"] == ["Archivo", "Editar", "Pista", "Clip", "Mezcla", "Scripts", "Ver"], ac["menus"])
     rep.check("clic derecho: la IA vive en el clip y en la pista (Rehacer, Versión, Alinear, Tono, Separar)",
               {"clip.repaint", "clip.cover", "clip.align", "clip.pitch", "clip.stems"} <= set(ac["clip"])
               and {"track.stems", "track.generate", "track.effects"} <= set(ac["track"]), {"clip": ac["clip"], "pista": ac["track"]})
