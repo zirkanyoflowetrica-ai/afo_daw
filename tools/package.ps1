@@ -99,6 +99,7 @@ $nargs = @('-m', 'nuitka',
     '--module-parameter=numba-disable-jit=no',
     # librosa no se compila (el codigo compilado se salta pylibs); se meten a mano los modulos que importa
     '--nofollow-import-to=librosa',
+    '--include-module=numba', '--include-package=llvmlite',   # numba (y lo que importa) ya no llega por librosa
     '--include-module=lazy_loader', '--include-module=decorator', '--include-module=joblib', '--include-module=pooch',
     '--include-module=soxr', '--include-module=msgpack', '--include-module=typing_extensions', '--include-module=soundfile',
     '--include-module=scipy.fft', '--include-module=scipy.interpolate', '--include-module=scipy.linalg',
