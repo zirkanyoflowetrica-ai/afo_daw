@@ -94,6 +94,9 @@ $nargs = @('-m', 'nuitka',
     '--include-package=allforone',
     "--include-data-dir=$Root\app\allforone\qml=allforone/qml",
     '--include-qt-plugins=qml',
+    # librosa lee sus datos (util/example_data: registry.txt, index.json) al importarse: sin ellos
+    # el analisis del proyecto (F7) falla en el EXE con «No module named librosa.util.example_data»
+    '--include-package=librosa.util.example_data', '--include-package-data=librosa',
     # La interfaz es Qt Quick: nada de Chromium en la distribucion
     '--nofollow-import-to=PySide6.QtWebEngineCore', '--nofollow-import-to=PySide6.QtWebEngineWidgets',
     '--nofollow-import-to=PySide6.QtWebEngineQuick', '--nofollow-import-to=PySide6.QtWebChannel',
