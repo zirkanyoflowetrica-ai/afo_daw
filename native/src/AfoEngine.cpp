@@ -191,6 +191,8 @@ struct Engine::Impl
     te::WaveInputDevice* armedInput = nullptr;
     std::shared_ptr<te::MidiInputDevice> armedMidi;      // G2: «All MIDI Ins» dirigida a armedTrack
     std::vector<te::EditItemID> clipsBeforeRec;          // G2: clips de la pista antes de grabar MIDI
+    std::map<int, te::FolderTrack::Ptr> vcaFolders;      // G6: grupos VCA por id
+    int nextVcaId = 1;
     std::map<int, te::WaveInputDevice*> armedSet;        // G3: todas las pistas armadas y su entrada
     std::map<int, std::vector<te::EditItemID>> clipsBefore;   // G3: clips de cada pista armada antes de grabar
     std::map<int, std::vector<std::string>> takesOf;     // G3: archivos de la última grabación de cada pista
@@ -253,6 +255,7 @@ struct Engine::Impl
                 lm->measurer.removeClient (slot->meter);
 
         slots.clear();
+        vcaFolders.clear();
         edit.reset();
         engine.reset();
     }
@@ -1528,6 +1531,112 @@ std::string Engine::freezeTrack (int trackId, bool on)
     }
     edit.getTransport().ensureContextAllocated();
     return "";
+}
+
+// ---------------- G6: grupos VCA ----------------
+namespace
+{
+    VcaInfo vcaInfoOf (int id, te::FolderTrack& f, const std::map<int, std::unique_ptr<TrackSlot>>& slots)
+    {
+        VcaInfo v;
+        v.id = id;
+        v.name = toStd (f.getName());
+        if (auto* p = f.getVCAPlugin()) v.db = p->getVolumeDb();
+        for (auto& [tid, s] : slots)
+            if (s->track != nullptr && s->track->getParentFolderTrack() == &f)
+                v.members.push_back (tid);
+        return v;
+    }
+}
+
+VcaInfo Engine::addVca (const std::string& name)
+{
+    requireMessageThread();
+    auto& edit = *impl->edit;
+    // La carpeta nace ya con su VCA en el estado: así FolderTrack lo encuentra al inicializarse (con
+    // insertNewFolderTrack el VCA llega después y la carpeta solo se entera en un aviso asíncrono)
+    juce::ValueTree v (te::IDs::FOLDERTRACK);
+    v.addChild (te::VCAPlugin::create(), -1, nullptr);
+    te::FolderTrack::Ptr f = dynamic_cast<te::FolderTrack*> (edit.insertTrack (te::TrackInsertPoint::getEndOfTracks (edit), v, nullptr).get());
+    if (f == nullptr || f->getVCAPlugin() == nullptr)
+        throw std::runtime_error ("afo_audio: Tracktion no pudo crear el grupo VCA");
+    f->setName (juce::String::fromUTF8 (name.c_str()));
+    const int id = impl->nextVcaId++;
+    impl->vcaFolders[id] = f;
+    return vcaInfoOf (id, *f, impl->slots);
+}
+
+bool Engine::removeVca (int vcaId)
+{
+    requireMessageThread();
+    auto it = impl->vcaFolders.find (vcaId);
+    if (it == impl->vcaFolders.end())
+        return false;
+    setVcaMembers (vcaId, {});
+    impl->edit->deleteTrack (it->second.get());
+    impl->vcaFolders.erase (it);
+    impl->edit->restartPlayback();
+    return true;
+}
+
+std::string Engine::setVcaMembers (int vcaId, const std::vector<int>& trackIds)
+{
+    requireMessageThread();
+    auto it = impl->vcaFolders.find (vcaId);
+    if (it == impl->vcaFolders.end())
+        return "Ese grupo VCA ya no existe";
+    auto& edit = *impl->edit;
+    auto folder = it->second;
+    for (int tid : trackIds)
+    {
+        auto st = impl->slots.find (tid);
+        if (st == impl->slots.end() || st->second->track == nullptr)
+            return "Esa pista ya no existe";
+        if (st->second->auxBus >= 0)
+            return "Un bus Aux no entra en un grupo VCA: mete las pistas que le mandan";
+    }
+    // fuera las que ya no están (vuelven sueltas, justo detrás del grupo)
+    for (auto& [tid, s] : impl->slots)
+        if (s->track != nullptr && s->track->getParentFolderTrack() == folder.get()
+            && std::find (trackIds.begin(), trackIds.end(), tid) == trackIds.end())
+            edit.moveTrack (s->track, te::TrackInsertPoint (nullptr, folder.get()));
+    // dentro las nuevas (si estaban en otro grupo, salen de él: una pista, un grupo)
+    for (int tid : trackIds)
+    {
+        auto& t = impl->slots[tid]->track;
+        if (t->getParentFolderTrack() == folder.get())
+            continue;
+        auto subs = folder->getAllSubTracks (false);
+        edit.moveTrack (t, te::TrackInsertPoint (folder.get(), subs.isEmpty() ? nullptr : subs.getLast()));
+    }
+    edit.restartPlayback();                     // el fader de cada pista vuelve a buscar su VCA
+    return "";
+}
+
+void Engine::setVcaGainDb (int vcaId, float db)
+{
+    requireMessageThread();
+    auto it = impl->vcaFolders.find (vcaId);
+    if (it == impl->vcaFolders.end())
+        throw std::out_of_range ("afo_audio: grupo VCA inexistente " + std::to_string (vcaId));
+    if (auto* p = it->second->getVCAPlugin())
+        p->setVolumeDb (juce::jlimit (-100.0f, 6.0f, db));
+}
+
+std::vector<VcaInfo> Engine::vcas() const
+{
+    std::vector<VcaInfo> r;
+    for (auto& [id, f] : impl->vcaFolders)
+        r.push_back (vcaInfoOf (id, *f, impl->slots));
+    return r;
+}
+
+int Engine::trackVca (int trackId) const
+{
+    auto* parent = impl->slot (trackId).track->getParentFolderTrack();
+    for (auto& [id, f] : impl->vcaFolders)
+        if (f.get() == parent) return id;
+    return 0;
 }
 
 bool Engine::trackFrozen (int trackId) const

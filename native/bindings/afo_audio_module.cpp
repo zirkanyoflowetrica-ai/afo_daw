@@ -25,6 +25,16 @@ py::dict toDict (const afo::TrackInfo& t)
     return d;
 }
 
+py::dict toDict (const afo::VcaInfo& v)
+{
+    py::dict d;
+    d["id"] = v.id; d["name"] = v.name; d["db"] = v.db;
+    py::list m;
+    for (int t : v.members) m.append (t);
+    d["members"] = m;
+    return d;
+}
+
 py::dict toDict (const afo::ClipInfo& c)
 {
     py::dict d;
@@ -275,6 +285,12 @@ PYBIND11_MODULE (afo_audio, m)
         .def ("consolidate_track", [] (afo::Engine& e, int t, const std::string& out) { return toDict (e.consolidateTrack (t, out)); },
               py::arg ("track_id"), py::arg ("out_path"))
         .def ("freeze_track", &afo::Engine::freezeTrack, py::arg ("track_id"), py::arg ("on"))
+        .def ("add_vca", [] (afo::Engine& e, const std::string& n) { return toDict (e.addVca (n)); }, py::arg ("name"))
+        .def ("remove_vca", &afo::Engine::removeVca, py::arg ("vca_id"))
+        .def ("set_vca_members", &afo::Engine::setVcaMembers, py::arg ("vca_id"), py::arg ("track_ids"))
+        .def ("set_vca_gain_db", &afo::Engine::setVcaGainDb, py::arg ("vca_id"), py::arg ("db"))
+        .def ("vcas", [] (const afo::Engine& e) { py::list l; for (auto& v : e.vcas()) l.append (toDict (v)); return l; })
+        .def ("track_vca", &afo::Engine::trackVca, py::arg ("track_id"))
         .def ("track_frozen", &afo::Engine::trackFrozen, py::arg ("track_id"))
         .def ("frozen_file", &afo::Engine::frozenFile, py::arg ("track_id"))
         .def ("set_sidechain", &afo::Engine::setSidechain, py::arg ("effect_id"), py::arg ("source_track_id"))

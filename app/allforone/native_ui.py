@@ -356,6 +356,48 @@ def _g5_checks(rep, window, host, lay) -> None:
     lay("rec", "remove", uid)
 
 
+def _g6_checks(rep, window, host, lay) -> None:
+    """G6: grupos VCA en el Mezclador («+ VCA», una tira por grupo con sus pistas y su fader). Que el
+    fader del grupo baja sus pistas y no las demás lo mide tests/test_vca.py en canciones completas."""
+    eng = host.engine
+    a = lay("rec", "add")
+    b = lay("rec", "add")
+    lay("run", "view.mixer")
+
+    def walk(it):
+        for c in it.childItems():
+            yield c
+            yield from walk(c)
+
+    def named(n):
+        return [i for i in walk(window.contentItem()) if i.objectName() == n and i.isVisible()]
+
+    add = named("mixAddVca")
+    v = lay("vca", "add", "Coros")
+    gid = v["vcas"][-1]["id"] if v["vcas"] else -1
+    lay("zones")
+    rep.check("G6: «+ VCA» en la barra del Mezclador crea un grupo y su tira aparece junto al master",
+              len(add) == 1 and v["ok"] and len(eng.vcas()) == 1 and len(named("vcaStrip")) == 1
+              and add[0].property("height") >= 24, {"vcas": v["vcas"], "tiras": len(named("vcaStrip"))})
+    m = lay("vca", "members", [gid, [a["id"], b["id"]]])
+    lay("zones")
+    rep.check("G6: meter dos pistas en el grupo (motor y tira: una «×» por pista)",
+              m["ok"] and sorted(eng.vcas()[0]["members"]) == sorted([a["id"], b["id"]]) and len(named("vcaOut")) == 2,
+              {"motor": eng.vcas(), "x": len(named("vcaOut"))})
+    p = lay("vca", "pos", [gid, 35])
+    rep.check("G6: el fader del grupo pone su ganancia en el motor (35 = −12 dB) y se guarda en el proyecto",
+              abs(eng.vcas()[0]["db"] + 12.04) < 0.1 and p["project"][0]["pos"] == 35
+              and sorted(p["project"][0]["members"]) == sorted([a["uid"], b["uid"]]),
+              {"db": eng.vcas()[0]["db"], "proyecto": p["project"]})
+    r = lay("vca", "remove", gid)
+    lay("zones")
+    rep.check("G6: quitar el grupo deja las pistas sueltas", r["ok"] and eng.vcas() == [] and eng.track_vca(a["id"]) == 0
+              and not named("vcaStrip") and r["project"] == [])
+    lay("rec", "remove", a["uid"])
+    lay("rec", "remove", b["uid"])
+    lay("run", "view.arrange")
+
+
 def _g4_checks(rep, window, host, lay) -> None:
     """G4: «Escucha» en el editor del compresor y de la puerta: la cadena lateral a otra pista. Que de
     verdad suena (el bajo respira con el bombo, la puerta abre al golpe) lo mide tests/test_sidechain.py."""
@@ -900,6 +942,7 @@ def _native_daw_checks(rep, app, host, window, bridge, track_id) -> None:
     _g3_checks(rep, window, host, lay)
     _g4_checks(rep, window, host, lay)
     _g5_checks(rep, window, host, lay)
+    _g6_checks(rep, window, host, lay)
     z1 = lay("zones")
     rep.check("tamaño fijo: ninguna zona cambia de tamaño por su contenido", z0 == z1,
               {k: (z0.get(k), z1.get(k)) for k in z1 if z0.get(k) != z1.get(k)})

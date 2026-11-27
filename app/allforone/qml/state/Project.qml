@@ -41,6 +41,10 @@ QtObject {
             bpm: s.bpm, click: { on: s.clickOn, vol: s.clickVol }, loop: s.loop, songKey: s.songKey, chords: s.chords, markers: s.markers, sus: sq.sus, oct: sq.oct, hidden: s.hidden,
             master: { pos: s.masterPos, drive: s.masterDrive, tone: s.masterTone, limiter: s.limiter },
             masterVersions: mx.versions, versionSel: mx.versionSel,
+            // G6: grupos VCA con sus miembros por uid
+            vcas: s.vcas.map(function (v) {
+                return { name: v.name, pos: v.pos, members: s.tracks.filter(function (t) { return v.members.indexOf(t.id) >= 0 })
+                                                                .map(function (t) { return t.uid }) } }),
             // Ajustes de la mezcla automática y del Afinador (la tonalidad confirmada vuelve confirmada)
             ai: { profile: mx.profile, mode: mx.mode, stepKnob: mx.stepKnob, space: mx.spaceKnob, masterSel: mx.masterSel,
                   tuneStrength: mx.tuneStrength,
@@ -89,6 +93,8 @@ QtObject {
         var s = studio
         if (s.seq.recording) s.seq.stopTake(true)
         s.call("stop")
+        s.vcas.forEach(function (v) { s.call("vcaRemove", v.id) })      // G6
+        s.vcas = []
         for (var i = s.tracks.length - 1; i >= 0; i--) s.removeTrackAt(i)
         s.call("fxRestore", 0, "[]")
     }
@@ -178,6 +184,13 @@ QtObject {
                 var k = s.call("fxSidechainRestore", tf[0], i, idOf[fx.keyFrom])
                 if (!k.ok) s.toast(k.error)
             })
+        })
+        ;(doc.vcas || []).forEach(function (v) {            // G6: grupos VCA
+            var g = s.addVca(v.name)
+            if (!g) return
+            var ids = (v.members || []).map(function (u) { return idOf[u] }).filter(function (i) { return i !== undefined })
+            if (ids.length) s.setVcaMembers(g.id, ids)
+            s.setVcaPos(g.id, v.pos === undefined ? 70 : v.pos)
         })
         ;(doc.tracks || []).forEach(function (d) {          // G5: congelar al final, con efectos y envíos ya puestos
             if (!d.frozen || idOf[d.uid] === undefined || !uidOf[d.uid]) return

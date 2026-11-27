@@ -81,7 +81,7 @@ Column {
     Connections {
         target: root.studio
         function onFxRevChanged() { root.refresh() }
-        function onTracksChanged() { Qt.callLater(root.refresh) }
+        function onTracksChanged() { Qt.callLater(root.refresh); Qt.callLater(root.studio.refreshVcas) }   // G6: miembros del motor
         function onEngineOkChanged() { root.refresh() }
     }
     Timer { interval: 2000; repeat: true; running: root.visible && !!root.studio && root.studio.engineOk; onTriggered: root.refresh() }
@@ -125,6 +125,11 @@ Column {
                         onClicked: if (root.studio.engineOk) root.addAux(); else root.studio.toast("Motor nativo no disponible")
                     }
                     Chip {
+                        objectName: "mixAddVca"
+                        text: "+ VCA"; tip: "Nuevo grupo VCA: un fader que sube o baja varias pistas a la vez sin juntar su audio en un bus (cada pista conserva sus efectos y envíos)"
+                        onClicked: { var v = root.studio.addVca(""); if (v) root.studio.toast("Grupo «" + v.name + "» creado: añádele pistas en su tira (junto al master)") }
+                    }
+                    Chip {
                         visible: !!root.rackName
                         text: root.rackName.toUpperCase(); fill: Theme.accent; ink: Theme.inkOnAccent
                         tip: "Canal cuyo rack se ve en Efectos (clic en el nombre de una tira para cambiarlo)"
@@ -162,6 +167,10 @@ Column {
                             required property int index
                             track: modelData
                         }
+                    }
+                    Repeater {                       // G6: grupos VCA, delante del master
+                        model: root.studio.vcas
+                        VcaStrip { required property var modelData; vca: modelData }
                     }
                     Item {                           // tira del master
                         id: ms
@@ -247,6 +256,7 @@ Column {
         readonly property bool isAux: track.type === "aux"
         readonly property color cc: Theme.pc[root.studio.seqSrc(track.type)] || Theme.pc.pistas
         readonly property var lr: root.studio.trackLR(tid)
+        readonly property var vca: { root.studio.vcas; return root.studio.vcaOf(tid) }
         width: 112; height: root.stripH
         Rectangle {                              // brillo de «trabajando» (mezcla automática)
             visible: strip.working
@@ -310,11 +320,12 @@ Column {
                     onReleased: root.studio.trackRelease(strip.track.uid)
                 }
                 Text { width: parent.width; horizontalAlignment: Text.AlignHCenter
-                       text: MD.faderDbText(strip.track.vol); color: Theme.ink
+                       text: MD.faderDbText(strip.track.vol) + (strip.vca ? " ·V" : ""); color: Theme.ink
                        font.family: Theme.font; font.pixelSize: 13; font.weight: 700 }
                 Row {
                     spacing: 5; anchors.horizontalCenter: parent.horizontalCenter
-                    Fader { height: 150 + root.grow; value: strip.track.vol; tip: "Volumen " + strip.track.name
+                    Fader { height: 150 + root.grow; value: strip.track.vol
+                            tip: "Volumen " + strip.track.name + (strip.vca ? " · en el grupo VCA «" + strip.vca.name + "»: el fader del grupo desplaza este" : "")
                             onMoved: function (v) { root.studio.setTrackMixUid(strip.track.uid, v, strip.track.pan) }
                             onReleased: root.studio.trackRelease(strip.track.uid) }
                     StereoMeter { height: 150 + root.grow; color2: strip.cc
@@ -337,6 +348,87 @@ Column {
                     Chip { text: "M"; fill: strip.track.mute ? Theme.pc.inst : Theme.button; ink: strip.track.mute ? Theme.inkOnColor : Theme.ink; tip: "Silenciar"
                            onClicked: root.studio.toggleTrackFlag(strip.track.uid, "mute") }
                 }
+            }
+        }
+    }
+    // G6: tira de un grupo VCA: sus pistas (× = sacarla), «+ pista…» para meter otra, su fader (desplaza
+    // el de cada miembro, como en una consola) y quitar el grupo (las pistas quedan sueltas).
+    component VcaStrip: Item {
+        id: vs
+        property var vca
+        readonly property var members: root.studio.tracks.filter(function (t) { return t.id >= 0 && vs.vca.members.indexOf(t.id) >= 0 })
+        readonly property var candidates: root.studio.tracks.filter(function (t) { return t.id >= 0 && t.type !== "aux" && vs.vca.members.indexOf(t.id) < 0 })
+        objectName: "vcaStrip"
+        width: 112; height: root.stripH
+        Rectangle { x: 3; y: 3; width: parent.width; height: parent.height; color: Theme.shadowColor; visible: Theme.buttonShadow > 0 }
+        Rectangle {
+            anchors.fill: parent
+            color: Theme.device; border.width: 2; border.color: Theme.line
+            Rectangle {
+                x: 2; y: 2; width: parent.width - 4; height: 30; color: Theme.pc.mezcla
+                Text { x: 4; width: parent.width - 8; anchors.verticalCenter: parent.verticalCenter
+                       horizontalAlignment: Text.AlignHCenter; elide: Text.ElideRight
+                       text: "VCA · " + vs.vca.name.toUpperCase(); color: Theme.inkOnColor
+                       font.family: Theme.font; font.pixelSize: 11; font.weight: 700 }
+                Rectangle { y: parent.height; width: parent.width; height: 2; color: Theme.line }
+            }
+            Column {
+                x: 6; y: 38; width: parent.width - 12; spacing: 5
+                Item {
+                    width: parent.width; height: root.insertsH + root.sendsH + 23 + 5
+                    Text { id: vh; text: "PISTAS" + (vs.members.length ? " · " + vs.members.length : ""); color: Theme.ink
+                           font.family: Theme.font; font.pixelSize: 11; font.weight: 800 }
+                    Flickable {
+                        y: vh.height + 4; width: parent.width; height: parent.height - y - addSel.height - 4
+                        contentHeight: memCol.height; clip: true
+                        boundsBehavior: Flickable.StopAtBounds; flickableDirection: Flickable.VerticalFlick
+                        Column {
+                            id: memCol
+                            width: parent.width; spacing: 2
+                            Repeater {
+                                model: vs.members
+                                Rectangle {
+                                    required property var modelData
+                                    width: memCol.width; height: 24; radius: 3
+                                    color: Theme.button; border.width: 1; border.color: Theme.line
+                                    Text { x: 5; width: parent.width - 34; anchors.verticalCenter: parent.verticalCenter
+                                           elide: Text.ElideRight; text: modelData.name; color: Theme.ink
+                                           font.family: Theme.font; font.pixelSize: 11; font.weight: 600 }
+                                    Chip { objectName: "vcaOut"; x: parent.width - width; text: "×"
+                                           tip: "Sacar " + modelData.name + " del grupo (su fader vuelve a mandar solo)"
+                                           onClicked: root.studio.setVcaMembers(vs.vca.id, vs.vca.members.filter(function (i) { return i !== modelData.id })) }
+                                }
+                            }
+                            Text { visible: vs.members.length === 0; width: memCol.width; wrapMode: Text.Wrap
+                                   text: "Sin pistas: añade alguna abajo"; color: Theme.ink; opacity: 0.8
+                                   font.family: Theme.font; font.pixelSize: 11 }
+                        }
+                    }
+                    Select {
+                        id: addSel
+                        objectName: "vcaAddSel"
+                        y: parent.height - height; width: parent.width
+                        enabled: vs.candidates.length > 0
+                        options: [["", "+ pista…"]].concat(vs.candidates.map(function (t) { return [String(t.id), t.name] }))
+                        current: ""; fontSize: 11; fontWeight: 700; padX: 4; padY: 2
+                        tip: "Meter una pista en el grupo (si estaba en otro grupo, sale de él)"
+                        onPicked: function (v) {
+                            if (v !== "") root.studio.setVcaMembers(vs.vca.id, vs.vca.members.concat([parseInt(v)]))
+                            currentIndex = 0
+                        }
+                    }
+                }
+                Text { width: parent.width; horizontalAlignment: Text.AlignHCenter
+                       text: MD.faderDbText(vs.vca.pos); color: Theme.ink
+                       font.family: Theme.font; font.pixelSize: 13; font.weight: 700 }
+                Fader { anchors.horizontalCenter: parent.horizontalCenter
+                        height: 150 + root.grow; value: vs.vca.pos
+                        tip: "Grupo VCA «" + vs.vca.name + "» (70 = 0 dB): sube o baja todas sus pistas a la vez sin mover sus faders"
+                        onMoved: function (v) { root.studio.setVcaPos(vs.vca.id, Math.round(v)) } }
+                NeoButton { objectName: "vcaRemove"; anchors.horizontalCenter: parent.horizontalCenter
+                            text: "Quitar grupo"; fontSize: 11; padX: 6; padY: 3; shadow: 2; confirm: "¿Quitar?"
+                            tip: "Quita el grupo VCA; sus pistas quedan sueltas con su fader tal cual"
+                            onClicked: root.studio.removeVca(vs.vca.id) }
             }
         }
     }

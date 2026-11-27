@@ -134,6 +134,15 @@ struct TrackInfo
     bool frozen = false;                       // G5: congelada (suena su audio renderizado; efectos en pausa)
 };
 
+// G6: grupo VCA: un fader que mueve el volumen de varias pistas sin sumar su audio en un bus
+struct VcaInfo
+{
+    int id = 0;
+    std::string name;
+    float db = 0.0f;                           // posición de su fader (0 dB = no cambia nada)
+    std::vector<int> members;                  // pistas del grupo (cada pista, en un grupo como mucho)
+};
+
 // Envío de una pista a un bus Aux (como en una consola: pre o post fader)
 struct SendInfo
 {
@@ -310,6 +319,14 @@ public:
     // de gastar CPU y no se pueden tocar hasta descongelarla. "" = hecho; si no, por qué no.
     TrackInfo consolidateTrack (int trackId, const std::string& outPath);
     std::string freezeTrack (int trackId, bool on);
+    // G6: grupos VCA (carpeta de Tracktion con VCA, sin bus: cada pista sigue yendo a su salida). El
+    // fader del grupo desplaza el de sus pistas, como en una consola; a −100 dB las calla.
+    VcaInfo addVca (const std::string& name);
+    bool removeVca (int vcaId);                        // las pistas vuelven a estar sueltas
+    std::string setVcaMembers (int vcaId, const std::vector<int>& trackIds);   // "" = hecho
+    void setVcaGainDb (int vcaId, float db);
+    std::vector<VcaInfo> vcas() const;
+    int trackVca (int trackId) const;                  // 0 = en ningún grupo
     bool trackFrozen (int trackId) const;
     std::string frozenFile (int trackId) const;    // el audio congelado ("" si no lo está)
 

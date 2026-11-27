@@ -102,6 +102,8 @@ Window {
     property real bpm: 96
     property int step: -1                     // semicorchea dentro de los 16 compases (como la plantilla)
     property var tracks: []
+    // G6: grupos VCA [{id, name, pos, members: [id de pista]}]; los miembros son los del motor
+    property var vcas: []
     property int selected: -1
     // Fuentes desconectadas (Instrumentos, Batería, IA, Grabador): sus pistas no suenan ni graban.
     // Se cambia con «Conectada» en la cabecera de su página; se guarda en el proyecto.
@@ -771,6 +773,14 @@ Window {
             return { ok: ok, armed: sq.midiUid, active: it ? it.uid : "", midi: it ? (it.midi || null) : null,
                      grid: sq.qGrid, rec: sq.midiRec }
         }
+        if (what === "vca") {                    // G6: grupos VCA (a = orden, b = su dato)
+            var okv = true
+            if (a === "add") okv = !!addVca(b || "")
+            else if (a === "members") okv = setVcaMembers(b[0], b[1])
+            else if (a === "pos") setVcaPos(b[0], b[1])
+            else if (a === "remove") removeVca(b)
+            return { ok: okv, vcas: vcas, project: pj.snapshot().vcas }
+        }
         if (what === "rec") {                    // G3: varias pistas, punch y tomas (a = orden, b = su dato)
             var ok3 = true
             if (a === "add") { var nt = sq.addTrack("voz"); return { uid: nt ? nt.uid : "", id: nt ? nt.id : -1 } }
@@ -1144,6 +1154,46 @@ Window {
     }
     function trackLevel(id) { var v = trackDb[String(id)]; return v === undefined ? -100 : v }
     function setMaster(v) { masterPos = v; if (engineOk) call("setMasterVolume", v) }
+    // G6: grupos VCA (Mezclador). Los miembros se releen del motor tras cada cambio.
+    function vcaOf(trackId) {
+        for (var i = 0; i < vcas.length; i++) if (vcas[i].members.indexOf(trackId) >= 0) return vcas[i]
+        return null
+    }
+    function refreshVcas() {
+        if (!engineOk) { vcas = []; return }
+        var r = call("vcaList")
+        if (!r.ok) return
+        var pos = {}
+        vcas.forEach(function (v) { pos[v.id] = v.pos })
+        vcas = r.vcas.map(function (v) {
+            return { id: v.id, name: v.name, members: v.members, pos: pos[v.id] !== undefined ? pos[v.id] : MD.dbToFader(v.db) } })
+    }
+    function addVca(name) {
+        if (!engineOk) { toast("Motor nativo no disponible"); return null }
+        var r = call("vcaAdd", name || ("VCA " + (vcas.length + 1)))
+        if (!r.ok) { toast(r.error); return null }
+        vcas = vcas.concat([{ id: r.vca.id, name: r.vca.name, pos: 70, members: [] }])
+        markDirty()
+        return vcas[vcas.length - 1]
+    }
+    function setVcaMembers(vcaId, ids) {
+        var r = call("vcaMembers", vcaId, JSON.stringify(ids))
+        if (!r.ok) { toast(r.error); return false }
+        refreshVcas(); markDirty()
+        return true
+    }
+    function setVcaPos(vcaId, pos) {
+        var r = call("vcaGain", vcaId, pos)
+        if (!r.ok) { toast(r.error); return }
+        vcas = vcas.map(function (v) { return v.id === vcaId ? Object.assign({}, v, { pos: pos }) : v })
+        markDirty()
+    }
+    function removeVca(vcaId) {
+        var r = call("vcaRemove", vcaId)
+        if (!r.ok) { toast(r.error); return }
+        vcas = vcas.filter(function (v) { return v.id !== vcaId })
+        markDirty()
+    }
     function applyTempo(v) { v = Math.round(v * 100) / 100; bpm = v; bpmInput.text = String(v); if (engineOk) call("setTempo", v) }
     function setMasterProcessing(drive, tone, lim) {
         masterDrive = drive; masterTone = tone; limiter = lim

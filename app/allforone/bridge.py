@@ -1464,6 +1464,50 @@ class Bridge(QObject):
         return _ok(source=str(out), clips=eng.clips(tid), previous=before, peaks=info["peaks"],
                    start=info["start_seconds"], length=info["length_seconds"])
 
+    # --- G6: grupos VCA -----------------------------------------------------------------------------
+    @Slot(str, result=str)
+    @_safe
+    def vcaAdd(self, name: str) -> str:
+        """Nuevo grupo VCA: un fader que desplaza el de sus pistas (sin sumar su audio en un bus)."""
+        if (g := self._guard()):
+            return g
+        return _ok(vca=dict(self.host.engine.add_vca(str(name))))
+
+    @Slot(int, result=str)
+    @_safe
+    def vcaRemove(self, vca_id: int) -> str:
+        if (g := self._guard()):
+            return g
+        return _ok(removed=bool(self.host.engine.remove_vca(int(vca_id))))
+
+    @Slot(int, str, result=str)
+    @_safe
+    def vcaMembers(self, vca_id: int, ids_json: str) -> str:
+        """Pistas del grupo (lista de ids del motor); una pista sale de su grupo anterior."""
+        if (g := self._guard()):
+            return g
+        err = self.host.engine.set_vca_members(int(vca_id), [int(i) for i in json.loads(ids_json or "[]")])
+        if err:
+            return _err(err)
+        return _ok(vcas=[dict(v) for v in self.host.engine.vcas()])
+
+    @Slot(int, float, result=str)
+    @_safe
+    def vcaGain(self, vca_id: int, pos: float) -> str:
+        """Fader del grupo (0..100, 70 = 0 dB, como el de una pista)."""
+        if (g := self._guard()):
+            return g
+        db = fader_to_db(pos)
+        self.host.engine.set_vca_gain_db(int(vca_id), db)
+        return _ok(db=db)
+
+    @Slot(result=str)
+    @_safe
+    def vcaList(self) -> str:
+        if (g := self._guard()):
+            return g
+        return _ok(vcas=[dict(v) for v in self.host.engine.vcas()])
+
     @Slot(int, bool, result=str)
     @_safe
     def trackFreeze(self, track_id: int, on: bool) -> str:
