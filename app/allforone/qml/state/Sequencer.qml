@@ -496,6 +496,32 @@ QtObject {
         return what + " " + n
     }
     // Elegir otra toma: la pista suena con su archivo y sus clips (los de la toma que deja se guardan)
+    // G5: consolidar los clips en un audio (lo de antes queda como toma) y congelar la pista
+    function consolidate(uid) {
+        var t = trackOf(uid)
+        if (!t) return false
+        var r = studio.call("trackConsolidate", t.id)
+        if (!r.ok) { studio.toast(r.error); return false }
+        var tk = (t.takes || []).slice(), prev = r.previous
+        if (!tk.length) tk.push({ name: "Antes de consolidar", source: prev.source, clips: prev.clips, ai: false })
+        else tk[t.take || 0] = Object.assign({}, tk[t.take || 0], { clips: prev.clips })
+        tk.push({ name: "Consolidada", source: r.source, clips: r.clips, ai: false })
+        replace(uid, { takes: tk, take: tk.length - 1, aclips: r.clips, peaks: r.peaks || t.peaks, len: r.length, start: r.start })
+        studio.markDirty()
+        studio.toast(t.name + ": " + prev.clips.length + " clips en un solo audio (lo de antes queda en sus tomas)")
+        return true
+    }
+    function freeze(uid, on) {
+        var t = trackOf(uid)
+        if (!t) return false
+        var r = studio.call("trackFreeze", t.id, !!on)
+        if (!r.ok) { studio.toast(r.error); return false }
+        replace(uid, { frozen: r.frozen })
+        studio.markDirty()
+        studio.toast(r.frozen ? t.name + " congelada: suena su audio con los efectos aplicados (no gastan CPU). Para editarla, descongélala"
+                              : t.name + " descongelada: el instrumento y los efectos vuelven a procesarse en vivo")
+        return true
+    }
     function useTake(uid, i) {
         var t = trackOf(uid)
         if (!t || !t.takes || i < 0 || i >= t.takes.length || i === (t.take || 0)) return false

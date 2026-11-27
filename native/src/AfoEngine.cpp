@@ -333,6 +333,20 @@ struct Engine::Impl
         return c;
     }
 
+    // G5: una pista congelada suena desde su audio renderizado: lo que lo cambiaría se rechaza
+    void unfrozen (int trackId) const
+    {
+        if (trackId == 0) return;
+        auto it = slots.find (trackId);
+        if (it != slots.end() && it->second->track != nullptr && it->second->track->isFrozen (te::Track::individualFreeze))
+            throw std::runtime_error ("La pista «" + it->second->info.name + "» está congelada: descongélala para editarla");
+    }
+    void unfrozenFx (int effectId) const
+    {
+        auto it = fxSlots.find (effectId);
+        if (it != fxSlots.end()) unfrozen (it->second.trackId);
+    }
+
     // Plugin delante del cual van los efectos: el volumen/pan de la pista o la sección master
     te::Plugin* anchor (int trackId) const
     {
@@ -698,6 +712,7 @@ static std::shared_ptr<const synth::Sample> loadSample (PreviewPlayer& pv, const
 int Engine::setDrumSamples (int id, const std::vector<std::string>& paths)
 {
     requireMessageThread();
+    impl->unfrozen (id);
     auto& slot = impl->slot (id);
     if (slot.synth == nullptr)
         throw std::invalid_argument ("afo_audio: la pista no es de síntesis");
@@ -718,6 +733,7 @@ int Engine::setDrumSamples (int id, const std::vector<std::string>& paths)
 bool Engine::setInstrumentSample (int id, const std::string& path)
 {
     requireMessageThread();
+    impl->unfrozen (id);
     auto& slot = impl->slot (id);
     if (slot.synth == nullptr)
         throw std::invalid_argument ("afo_audio: la pista no es de síntesis");
@@ -732,6 +748,7 @@ bool Engine::setInstrumentSample (int id, const std::string& path)
 void Engine::setSynthSettings (int id, const SynthSettings& s)
 {
     requireMessageThread();
+    impl->unfrozen (id);
     auto& slot = impl->slot (id);
     if (slot.synth == nullptr)
         throw std::invalid_argument ("afo_audio: la pista no es de síntesis");
@@ -741,12 +758,13 @@ void Engine::setSynthSettings (int id, const SynthSettings& s)
 double Engine::setSynthNotes (int id, const std::vector<std::pair<double, int>>& notes, double lengthBeats)
 {
     requireMessageThread();
+    impl->unfrozen (id);
     auto& slot = impl->slot (id);
     if (slot.synth == nullptr)
         throw std::invalid_argument ("afo_audio: la pista no es de síntesis");
     slot.synth->heldNotes = false;
     auto& edit = *impl->edit;
-    for (auto* c : slot.track->getClips())          // el patrón se rehace entero: es pequeño
+    for (auto* c : juce::Array<te::Clip*> (slot.track->getClips()))          // el patrón se rehace entero: es pequeño
         c->removeFromParent();
     slot.info.lengthSeconds = 0.0;
     if (notes.empty())
@@ -768,12 +786,13 @@ double Engine::setSynthNotes (int id, const std::vector<std::pair<double, int>>&
 double Engine::setSynthMidi (int id, const std::vector<std::tuple<double, double, int, int>>& notes, double lengthBeats)
 {
     requireMessageThread();
+    impl->unfrozen (id);
     auto& slot = impl->slot (id);
     if (slot.synth == nullptr)
         throw std::invalid_argument ("afo_audio: la pista no es de síntesis");
     slot.synth->heldNotes = true;
     auto& edit = *impl->edit;
-    for (auto* c : slot.track->getClips())
+    for (auto* c : juce::Array<te::Clip*> (slot.track->getClips()))
         c->removeFromParent();
     slot.info.lengthSeconds = 0.0;
     if (notes.empty())
@@ -920,7 +939,10 @@ std::vector<TrackInfo> Engine::tracks() const
 {
     std::vector<TrackInfo> r;
     for (auto& [id, s] : impl->slots)
+    {
         r.push_back (s->info);
+        r.back().frozen = s->track != nullptr && s->track->isFrozen (te::Track::individualFreeze);
+    }
     return r;
 }
 
@@ -1103,6 +1125,7 @@ std::vector<PluginDesc> Engine::knownPlugins()
 EffectInfo Engine::addPluginEffect (int trackId, const std::string& pluginId, int index, const std::string& state)
 {
     requireMessageThread();
+    impl->unfrozen (trackId);
     auto& list = impl->pluginList (trackId);
     auto* ext = impl->createExternal (pluginId, state);
     te::Plugin::Ptr plugin (ext);
@@ -1136,6 +1159,7 @@ bool Engine::showEffectEditor (int effectId)
 bool Engine::setTrackInstrument (int trackId, const std::string& pluginId, const std::string& state)
 {
     requireMessageThread();
+    impl->unfrozen (trackId);
     auto& s = impl->slot (trackId);
     if (s.synth == nullptr)
         throw std::invalid_argument ("afo_audio: la pista no es de instrumento");
@@ -1190,6 +1214,8 @@ namespace
         auto* w = dynamic_cast<te::WaveAudioClip*> (c);
         if (w == nullptr)
             throw std::out_of_range ("afo_audio: clip inexistente " + std::to_string (id));
+        if (auto* at = dynamic_cast<te::AudioTrack*> (w->getTrack()); at != nullptr && at->isFrozen (te::Track::individualFreeze))
+            throw std::runtime_error ("La pista «" + toStd (at->getName()) + "» está congelada: descongélala para editarla");
         return w;
     }
 
@@ -1390,11 +1416,12 @@ float Engine::clipPeakDb (long long clipId)
 std::vector<ClipInfo> Engine::setClips (int trackId, const std::vector<ClipInfo>& list)
 {
     requireMessageThread();
+    impl->unfrozen (trackId);
     auto& s = impl->slot (trackId);
     auto file = toFile (s.info.sourcePath);
     if (! file.existsAsFile())
         throw std::runtime_error ("afo_audio: la pista no tiene audio");
-    for (auto* c : s.track->getClips())
+    for (auto* c : juce::Array<te::Clip*> (s.track->getClips()))      // copia: quitar uno cambia la lista
         c->removeFromParent();
     for (auto& ci : list)
     {
@@ -1414,6 +1441,104 @@ std::vector<ClipInfo> Engine::setClips (int trackId, const std::vector<ClipInfo>
     refreshLength (s);
     impl->edit->getTransport().ensureContextAllocated();
     return clips (trackId);
+}
+
+// G5: consolidar. Tracktion renderiza solo esta pista sin plugins (ni los suyos, ni el fader, ni el
+// master): quedan los clips con su ganancia, fundidos y estiramiento. Como en la exportación, se empieza
+// un segundo antes y se recorta (el primer bloque del render sale corrido).
+TrackInfo Engine::consolidateTrack (int trackId, const std::string& outPath)
+{
+    requireMessageThread();
+    impl->unfrozen (trackId);
+    auto& s = impl->slot (trackId);
+    auto& edit = *impl->edit;
+    double a = 1.0e12, b = 0.0;
+    int n = 0;
+    for (auto* c : s.track->getClips())
+        if (dynamic_cast<te::WaveAudioClip*> (c) != nullptr)
+        {
+            auto p = c->getPosition();
+            a = std::min (a, p.getStart().inSeconds());
+            b = std::max (b, p.getEnd().inSeconds());
+            ++n;
+        }
+    if (n == 0)
+        throw std::runtime_error ("La pista no tiene clips de audio que consolidar");
+    auto file = toFile (outPath);
+    file.getParentDirectory().createDirectory();
+    if (file.exists() && ! file.deleteFile())
+        throw std::runtime_error ("No se puede escribir " + outPath);
+    if (edit.getTransport().isPlaying())
+        edit.getTransport().stop (false, false);
+    impl->relinkAllLabs();
+    const double sr = impl->engine->getDeviceManager().getSampleRate();
+    const int padSamples = juce::roundToInt (sr * renderPadSeconds);
+    const auto pad = te::TimeDuration::fromSamples (padSamples, sr);
+    juce::BigInteger one;
+    one.setBit (te::getAllTracks (edit).indexOf (s.track.get()));
+    auto raw = file.getSiblingFile (file.getFileNameWithoutExtension() + ".afo-render.wav");
+    raw.deleteFile();
+    const bool ok = te::Renderer::renderToFile ("AllForOne", raw, edit,
+                                                te::TimeRange (te::TimePosition::fromSeconds (a) - pad, te::TimePosition::fromSeconds (b)),
+                                                one, false, false, {}, false)
+                    && raw.existsAsFile() && trimWavStart (raw, file, padSamples);
+    raw.deleteFile();
+    if (! ok || ! file.existsAsFile())
+        throw std::runtime_error ("No se pudo consolidar la pista");
+    return setTrackAudio (trackId, outPath, a);
+}
+
+std::string Engine::freezeTrack (int trackId, bool on)
+{
+    requireMessageThread();
+    auto& s = impl->slot (trackId);
+    auto& t = *s.track;
+    if (on == t.isFrozen (te::Track::individualFreeze))
+        return "";
+    auto& edit = *impl->edit;
+    if (edit.getTransport().isRecording())
+        return "Termina de grabar antes de congelar";
+    if (edit.getTransport().isPlaying())
+        edit.getTransport().stop (false, false);
+    if (on)
+    {
+        if (t.getClips().isEmpty())
+            return "La pista no tiene nada que congelar";
+        if (impl->armedTrack == trackId || impl->armedSet.count (trackId) > 0)
+            return "Desarma la pista antes de congelarla";
+        // Punto de congelación delante del fader y de los envíos pre-fader: instrumento y efectos quedan
+        // dentro; volumen, paneo, envíos y automatización de la pista siguen vivos
+        t.removeFreezePoint();
+        t.pluginList.insertPlugin (te::FreezePointPlugin::create(), t.pluginList.indexOf (impl->anchor (trackId)));
+        edit.dispatchPendingUpdatesSynchronously();
+        t.setFrozen (true, te::Track::individualFreeze);
+        if (! t.isFrozen (te::Track::individualFreeze) || ! te::TemporaryFileManager::getFreezeFileForTrack (t).existsAsFile())
+        {
+            t.setFrozen (false, te::Track::individualFreeze);
+            t.removeFreezePoint();
+            return "No se pudo congelar la pista";
+        }
+    }
+    else
+    {
+        auto f = te::TemporaryFileManager::getFreezeFileForTrack (t);
+        t.setFrozen (false, te::Track::individualFreeze);
+        t.removeFreezePoint();
+        f.deleteFile();
+    }
+    edit.getTransport().ensureContextAllocated();
+    return "";
+}
+
+bool Engine::trackFrozen (int trackId) const
+{
+    return impl->slot (trackId).track->isFrozen (te::Track::individualFreeze);
+}
+
+std::string Engine::frozenFile (int trackId) const
+{
+    auto& t = *impl->slot (trackId).track;
+    return t.isFrozen (te::Track::individualFreeze) ? toStd (te::TemporaryFileManager::getFreezeFileForTrack (t).getFullPathName()) : std::string();
 }
 
 std::vector<float> Engine::trackPeaks (int id, int numBuckets) const
@@ -1851,6 +1976,7 @@ TrackInfo Engine::addRecordTrack (const std::string& name)
 std::string Engine::armTrack (int trackId, const std::string& input, bool monitor, bool add)
 {
     requireMessageThread();
+    impl->unfrozen (trackId);
     auto& slot = impl->slot (trackId);
     auto& edit = *impl->edit;
     auto& transport = edit.getTransport();
@@ -1987,12 +2113,13 @@ std::string Engine::startRecording()
 TrackInfo Engine::setTrackAudio (int trackId, const std::string& path, double startSeconds)
 {
     requireMessageThread();
+    impl->unfrozen (trackId);
     auto& slot = impl->slot (trackId);
     auto file = toFile (path);
     te::AudioFile af (*impl->engine, file);
     if (! file.existsAsFile() || ! af.isValid())
         throw std::runtime_error ("afo_audio: no se puede leer el audio: " + path);
-    for (auto* c : slot.track->getClips())
+    for (auto* c : juce::Array<te::Clip*> (slot.track->getClips()))   // copia: quitar uno cambia la lista
         c->removeFromParent();
     const auto start = te::TimePosition::fromSeconds (std::max (0.0, startSeconds));
     const auto len = te::TimeDuration::fromSeconds (af.getLength());
@@ -2033,7 +2160,7 @@ TrackInfo Engine::stopRecording (bool discard)
                 take = w;
     if (take != nullptr && ! discard)
     {
-        for (auto* c : slot.track->getClips())
+        for (auto* c : juce::Array<te::Clip*> (slot.track->getClips()))
             if (c != take) c->removeFromParent();
         te::AudioFile af (*impl->engine, take->getOriginalFile());
         slot.info.sourcePath = toStd (take->getOriginalFile().getFullPathName());
@@ -2058,6 +2185,7 @@ std::vector<std::string> Engine::midiInputs()
 std::string Engine::armMidi (int trackId)
 {
     requireMessageThread();
+    impl->unfrozen (trackId);
     auto& slot = impl->slot (trackId);
     if (slot.synth == nullptr && slot.instrument == nullptr)
         return "Solo una pista de instrumento o de batería recibe MIDI";
@@ -2358,7 +2486,7 @@ std::vector<TrackInfo> Engine::stopRecordingAll (bool discard)
             }
         }
         impl->takesOf[id] = takes;
-        for (auto* c : slot.track->getClips())  // lo que Tracktion dejó (clip partido, tomas) sale: suena la última toma
+        for (auto* c : juce::Array<te::Clip*> (slot.track->getClips()))  // lo que Tracktion dejó (clip partido, tomas) sale: suena la última toma
             c->removeFromParent();
         te::AudioFile af (*impl->engine, toFile (takes.back()));
         slot.info.sourcePath = takes.back();
@@ -2429,6 +2557,7 @@ std::vector<EffectTypeInfo> Engine::effectCatalog()
 EffectInfo Engine::addEffect (int trackId, const std::string& key, int index)
 {
     requireMessageThread();
+    impl->unfrozen (trackId);
     auto* xml = fx::xmlTypeFor (key);
     if (xml == nullptr)
         throw std::invalid_argument ("afo_audio: efecto desconocido " + key);
@@ -2455,6 +2584,7 @@ EffectInfo Engine::addEffect (int trackId, const std::string& key, int index)
 bool Engine::removeEffect (int effectId)
 {
     requireMessageThread();
+    impl->unfrozenFx (effectId);
     auto it = impl->fxSlots.find (effectId);
     if (it == impl->fxSlots.end())
         return false;
@@ -2474,6 +2604,7 @@ bool Engine::removeEffect (int effectId)
 bool Engine::moveEffect (int effectId, int newIndex)
 {
     requireMessageThread();
+    impl->unfrozenFx (effectId);
     auto& f = impl->fxSlot (effectId);
     auto c = impl->chain (f.trackId);
     const int from = (int) (std::find (c.begin(), c.end(), &f) - c.begin());
@@ -2490,6 +2621,7 @@ bool Engine::moveEffect (int effectId, int newIndex)
 bool Engine::setEffectParam (int effectId, const std::string& paramId, float value)
 {
     requireMessageThread();
+    impl->unfrozenFx (effectId);
     auto& f = impl->fxSlot (effectId);
     const bool ok = f.fx != nullptr && f.fx->setValue (juce::String::fromUTF8 (paramId.c_str()), value);
     if (ok) impl->relinkLabs (f.trackId);       // la latencia de un efecto puede depender de sus parámetros
@@ -2499,6 +2631,7 @@ bool Engine::setEffectParam (int effectId, const std::string& paramId, float val
 void Engine::setEffectEnabled (int effectId, bool enabled)
 {
     requireMessageThread();
+    impl->unfrozenFx (effectId);
     auto& f = impl->fxSlot (effectId);
     f.plugin->setEnabled (enabled);
     impl->relinkLabs (f.trackId);
@@ -2515,6 +2648,7 @@ std::vector<EffectInfo> Engine::effects (int trackId) const
 std::string Engine::setSidechain (int effectId, int sourceTrackId)
 {
     requireMessageThread();
+    impl->unfrozenFx (effectId);
     auto& f = impl->fxSlot (effectId);
     auto& p = *f.plugin;
     if (sourceTrackId != 0)
@@ -2561,6 +2695,7 @@ EffectInfo Engine::effectInfo (int effectId) const
 bool Engine::setEffectAutomation (int effectId, const std::string& paramId, const std::vector<std::pair<double, float>>& points)
 {
     requireMessageThread();
+    impl->unfrozenFx (effectId);
     auto& f = impl->fxSlot (effectId);
     auto* ap = f.fx != nullptr ? f.fx->parameter (juce::String::fromUTF8 (paramId.c_str())) : nullptr;
     if (ap == nullptr)
@@ -2611,6 +2746,7 @@ std::vector<float> Engine::effectSpectrum (int effectId, int bands)
 bool Engine::setEffectMacro (int labId, int macro, int effectId, const std::string& paramId, float amount)
 {
     requireMessageThread();
+    impl->unfrozenFx (labId);
     auto& lab = impl->fxSlot (labId);
     auto& tgt = impl->fxSlot (effectId);
     if (dynamic_cast<fx::FxLabFx*> (lab.fx) == nullptr || tgt.fx == nullptr || dynamic_cast<fx::FxLabPart*> (tgt.fx) != nullptr

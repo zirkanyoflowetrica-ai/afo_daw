@@ -1441,6 +1441,40 @@ class Bridge(QObject):
             return _err(f"No se pudo cambiar el audio de la pista: {exc}")
         return _ok(track=info, clips=self.host.engine.clips(int(track_id)), previous=prev)
 
+    # --- G5: consolidar y congelar ------------------------------------------------------------------
+    @Slot(int, result=str)
+    @_safe
+    def trackConsolidate(self, track_id: int) -> str:
+        """Los clips de la pista (ganancia, fundidos, estiramiento) en un solo archivo, junto al suyo; los
+        efectos siguen en la cadena. Devuelve lo de antes para guardarlo como toma (se puede volver)."""
+        if (g := self._guard()):
+            return g
+        eng, tid = self.host.engine, int(track_id)
+        src = self._playing_path(tid)
+        if not src:
+            return _err("La pista no tiene audio que consolidar")
+        before = {"source": src, "clips": eng.clips(tid)}
+        stem, folder = Path(src).stem, Path(src).parent
+        out, n = folder / f"{stem}_consolidado.wav", 2
+        while out.exists():
+            out, n = folder / f"{stem}_consolidado{n}.wav", n + 1
+        info = dict(eng.consolidate_track(tid, str(out)))
+        info["peaks"] = [round(v, 4) for v in eng.track_peaks(tid, 600)]
+        self.host.tracks[tid] = {**self.host.tracks.get(tid, {}), **info, "originalPath": str(out)}
+        return _ok(source=str(out), clips=eng.clips(tid), previous=before, peaks=info["peaks"],
+                   start=info["start_seconds"], length=info["length_seconds"])
+
+    @Slot(int, bool, result=str)
+    @_safe
+    def trackFreeze(self, track_id: int, on: bool) -> str:
+        """Congela (suena su audio con instrumento y efectos; no gastan CPU) o descongela la pista."""
+        if (g := self._guard()):
+            return g
+        err = self.host.engine.freeze_track(int(track_id), bool(on))
+        if err:
+            return _err(err)
+        return _ok(frozen=bool(self.host.engine.track_frozen(int(track_id))))
+
     @Slot(int, str, result=str)
     @_safe
     def clipEdit(self, track_id: int, op_json: str) -> str:

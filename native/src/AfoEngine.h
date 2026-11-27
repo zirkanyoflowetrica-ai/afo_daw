@@ -131,6 +131,7 @@ struct TrackInfo
     double sampleRate = 0.0;
     int numChannels = 0;
     int auxBus = -1;                           // bus Aux que recibe esta pista (-1 = pista normal)
+    bool frozen = false;                       // G5: congelada (suena su audio renderizado; efectos en pausa)
 };
 
 // Envío de una pista a un bus Aux (como en una consola: pre o post fader)
@@ -303,6 +304,14 @@ public:
     ClipInfo setClipStretch (long long clipId, double speed, float semitones);
     float clipPeakDb (long long clipId);                 // pico real del trozo de archivo que suena (sin la ganancia)
     std::vector<ClipInfo> setClips (int trackId, const std::vector<ClipInfo>& clips);
+    // G5: consolidar = los clips de la pista (ganancia, fundidos, estiramiento; sin efectos ni fader) en
+    // un solo archivo que pasa a ser su audio, con un clip. Congelar = la pista suena desde su audio
+    // renderizado con instrumento y efectos (antes del fader y de los envíos pre-fader): esos efectos dejan
+    // de gastar CPU y no se pueden tocar hasta descongelarla. "" = hecho; si no, por qué no.
+    TrackInfo consolidateTrack (int trackId, const std::string& outPath);
+    std::string freezeTrack (int trackId, bool on);
+    bool trackFrozen (int trackId) const;
+    std::string frozenFile (int trackId) const;    // el audio congelado ("" si no lo está)
 
     // Plugins VST3 externos: buscar (carpetas estándar + extra; la lista se guarda en la carpeta de
     // datos), insertarlos como efecto en la cadena de una pista o como instrumento de una pista de

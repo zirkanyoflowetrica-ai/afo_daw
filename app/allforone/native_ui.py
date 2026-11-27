@@ -295,6 +295,67 @@ def _g2_checks(rep, window, host, lay) -> None:
               window.findChild(QObject, "midiBar") is not None and not small, small)
 
 
+def _g5_checks(rep, window, host, lay) -> None:
+    """G5: «Consolidar clips en un audio» y «Congelar pista» en el menú de la pista. Que el audio
+    consolidado suena igual y que lo congelado lleva los efectos lo mide tests/test_congelar_consolidar.py."""
+    import tempfile
+    from pathlib import Path
+
+    import numpy as np
+    import soundfile as sf
+    from PySide6.QtCore import QObject
+
+    eng = host.engine
+    a = lay("rec", "add")
+    b = lay("rec", "add")
+    tid, uid = b["id"], b["uid"]
+    folder = Path(tempfile.mkdtemp(prefix="afo_consolidar_"))
+    src, sr = folder / "voz.wav", 48000
+    t = np.arange(int(3 * sr)) / sr
+    sf.write(str(src), (0.2 * np.sin(2 * np.pi * 220 * t)).astype(np.float32), sr)
+    eng.set_track_audio(tid, str(src), 0.0)
+    host.tracks[tid] = dict(host.tracks.get(tid, {}), source_path=str(src), originalPath=str(src))
+    prev = {"source": str(src), "clips": eng.clips(tid)}
+    first = eng.split_clip(prev["clips"][0]["id"], 1.5)
+    eng.set_clip_range(first[1]["id"], 2.0, first[1]["length"], first[1]["offset"])     # hueco de 0,5 s
+    info = dict(next(x for x in eng.tracks() if x["id"] == tid))
+    info.update(takes=[], clips=eng.clips(tid), previous=prev, peaks=[])
+    lay("rec", "apply", info)
+    lay("select", lay("rec", "index", uid)["index"])
+    c = lay("run", "track.consolidate")
+    st = lay("rec")
+    now = eng.clips(tid)
+    out = host.tracks[tid].get("originalPath", "")
+    rep.check("G5: «Consolidar clips en un audio» deja un clip en un archivo nuevo y lo de antes como toma",
+              c["ok"] and len(now) == 1 and out.endswith("voz_consolidado.wav") and Path(out).is_file()
+              and st["active"]["takes"] == ["Antes de consolidar", "Consolidada"] and st["active"]["take"] == 1,
+              {"clips": len(now), "archivo": Path(out).name, "tomas": st["active"]["takes"]})
+    u = lay("rec", "take", [uid, 0])
+    rep.check("G5: la toma «Antes de consolidar» devuelve los clips y el archivo de antes",
+              u["ok"] and len(eng.clips(tid)) == 2 and host.tracks[tid].get("originalPath") == str(src))
+    f = lay("run", "track.freeze")
+    st = lay("rec", "index", uid)
+    view = lay("run", "view.arrange")                     # la cabecera de la pista, en el Arreglo
+    lay("zones")
+    def walk(it):                                   # los delegados de un Repeater solo son hijos visuales
+        for c in it.childItems():
+            yield c
+            yield from walk(c)
+    every = [i for i in walk(window.contentItem()) if i.objectName() == "frozenBtn"]
+    btns = [o for o in every if o.isVisible()]
+    rep.check("G5: «Congelar pista» la congela en el motor, se ve «❄ congelada» en su cabecera y bloquea consolidar",
+              f["ok"] and eng.track_frozen(tid) and bool(eng.frozen_file(tid)) and st["frozen"] and len(btns) == 1
+              and not lay("run", "track.consolidate")["enabled"] and not f["enabled"],
+              {"motor": eng.track_frozen(tid), "botones": len(btns), "todos": len(every), "fila": st, "arreglo": view})
+    rep.check("G5: el botón «❄» de la cabecera mide ≥ 24 px", bool(btns) and btns[0].property("height") >= 24,
+              btns[0].property("height") if btns else None)
+    z = lay("run", "track.unfreeze")
+    rep.check("G5: «Descongelar pista» vuelve a procesar en vivo (sin archivo congelado)",
+              z["ok"] and not eng.track_frozen(tid) and eng.frozen_file(tid) == "" and not lay("rec", "index", uid)["frozen"])
+    lay("rec", "remove", a["uid"])
+    lay("rec", "remove", uid)
+
+
 def _g4_checks(rep, window, host, lay) -> None:
     """G4: «Escucha» en el editor del compresor y de la puerta: la cadena lateral a otra pista. Que de
     verdad suena (el bajo respira con el bombo, la puerta abre al golpe) lo mide tests/test_sidechain.py."""
@@ -838,6 +899,7 @@ def _native_daw_checks(rep, app, host, window, bridge, track_id) -> None:
     _g2_checks(rep, window, host, lay)
     _g3_checks(rep, window, host, lay)
     _g4_checks(rep, window, host, lay)
+    _g5_checks(rep, window, host, lay)
     z1 = lay("zones")
     rep.check("tamaño fijo: ninguna zona cambia de tamaño por su contenido", z0 == z1,
               {k: (z0.get(k), z1.get(k)) for k in z1 if z0.get(k) != z1.get(k)})

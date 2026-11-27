@@ -818,7 +818,7 @@ Rectangle {
                                 }
                                 Text { visible: !(trk.t.takes && trk.t.takes.length > 1)
                                        width: parent.width; elide: Text.ElideRight
-                                       text: root.kindOf(trk.t) + (headCol.kids > 0 ? " · carpeta de " + headCol.kids : ""); color: Theme.deviceInk
+                                       text: root.kindOf(trk.t) + (headCol.kids > 0 ? " · carpeta de " + headCol.kids : "") + (trk.t.frozen ? " · congelada" : ""); color: Theme.deviceInk
                                        font.family: Theme.font; font.pixelSize: 11; font.weight: 500 }
                                 Select {                           // F4: tomas (Rehacer y Alinear con IA dejan una nueva)
                                     objectName: "takeSel"
@@ -870,6 +870,10 @@ Rectangle {
                                 visible: !trk.master
                                 x: btns.width - width
                                 spacing: 4
+                                NeoButton { visible: !!trk.t.frozen; objectName: "frozenBtn"; text: "❄"; padX: 6; padY: 3; fontSize: 12; shadow: 2
+                                            pressedState: true; color: Theme.pressedBg; textColor: Theme.pressedInk
+                                            tip: "Congelada: suena su audio con el instrumento y los efectos ya aplicados (no gastan CPU); el fader, el paneo y los envíos siguen vivos. Clic: descongelar para editarla"
+                                            onClicked: root.studio.seq.freeze(trk.t.uid, false) }
                                 NeoButton { text: "✕"; padX: 6; padY: 3; fontSize: 12; shadow: 2; confirm: "¿Quitar?"
                                             tip: "Quitar la pista (y su canal y efectos). Pide confirmación"
                                             onClicked: { var i = root.studio.seq.indexOf(trk.t.uid); if (i >= 0) root.studio.removeTrackAt(i) } }

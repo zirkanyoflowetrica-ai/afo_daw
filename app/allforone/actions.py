@@ -53,6 +53,9 @@ _A = [
     ("track.mute", "Silenciar", "Pista", 3, "", "Silencia la pista elegida"),
     ("track.stems", "Separar en pistas", "Pista", 4, "", "Demucs: batería, bajo, voz, guitarra, piano y otros, en la carpeta de la original, que queda silenciada"),
     ("track.effects", "Ver su cadena de efectos", "Pista", 4, "", "Abre la cadena de efectos de la pista en el panel de abajo"),
+    ("track.consolidate", "Consolidar clips en un audio", "Pista", 4, "", "Une los clips de la pista (con su ganancia, fundidos y estiramiento) en un solo archivo; lo de antes queda como toma"),
+    ("track.freeze", "Congelar pista", "Pista", 4, "", "La pista suena desde su audio con el instrumento y los efectos ya aplicados: dejan de gastar CPU. Para editarla, se descongela"),
+    ("track.unfreeze", "Descongelar pista", "Pista", 4, "", "Vuelve a procesar el instrumento y los efectos en vivo para poder editarlos"),
     ("track.midiKeys", "Tocar con el teclado MIDI", "Pista", 4, "", "La pista de instrumento suena con tu teclado MIDI, el de pantalla del Piano roll o el del ordenador (A W S E D F T G Y H U J K)"),
     ("track.remove", "Quitar pista…", "Pista", 5, "", "Quita la pista con su canal y sus efectos (pide confirmación)"),
     # Clip
@@ -109,7 +112,7 @@ CTX_CLIP = ("clip.split", "clip.duplicate", "clip.delete", "clip.gainUp", "clip.
             "clip.fadeIn", "clip.fadeOut", "clip.noFades", "clip.repaint", "clip.cover", "clip.align",
             "clip.pitch", "clip.stems", "clip.tempoKey", "clip.toProjectTempo", "clip.projectToTempo",
             "clip.toProjectKey", "clip.projectToKey", "clip.original")
-CTX_TRACK = ("track.solo", "track.mute", "track.effects", "track.stems", "track.regenerate", "track.new", "track.generate",
+CTX_TRACK = ("track.solo", "track.mute", "track.effects", "track.consolidate", "track.freeze", "track.unfreeze", "track.stems", "track.regenerate", "track.new", "track.generate",
              "track.interp", "track.newAudio", "track.newInst", "track.newDrum", "track.remove")
 # Órdenes que borran: piden un segundo clic en la misma fila (confirmación en el sitio, guía de diseño)
 CONFIRM = {"track.remove": "¿Quitar la pista? Clic otra vez", "clip.delete": "¿Borrar el clip? Clic otra vez",

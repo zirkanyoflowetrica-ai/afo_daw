@@ -21,6 +21,7 @@ py::dict toDict (const afo::TrackInfo& t)
     d["sample_rate"] = t.sampleRate;
     d["num_channels"] = t.numChannels;
     d["aux_bus"] = t.auxBus;
+    d["frozen"] = t.frozen;
     return d;
 }
 
@@ -271,6 +272,11 @@ PYBIND11_MODULE (afo_audio, m)
         .def ("move_effect", &afo::Engine::moveEffect, py::arg ("effect_id"), py::arg ("index"))
         .def ("set_effect_param", &afo::Engine::setEffectParam, py::arg ("effect_id"), py::arg ("param"), py::arg ("value"))
         .def ("set_effect_enabled", &afo::Engine::setEffectEnabled, py::arg ("effect_id"), py::arg ("enabled"))
+        .def ("consolidate_track", [] (afo::Engine& e, int t, const std::string& out) { return toDict (e.consolidateTrack (t, out)); },
+              py::arg ("track_id"), py::arg ("out_path"))
+        .def ("freeze_track", &afo::Engine::freezeTrack, py::arg ("track_id"), py::arg ("on"))
+        .def ("track_frozen", &afo::Engine::trackFrozen, py::arg ("track_id"))
+        .def ("frozen_file", &afo::Engine::frozenFile, py::arg ("track_id"))
         .def ("set_sidechain", &afo::Engine::setSidechain, py::arg ("effect_id"), py::arg ("source_track_id"))
         .def ("sidechain_peak_db", &afo::Engine::sidechainPeakDb, py::arg ("effect_id"))
         .def ("effects", [] (const afo::Engine& e, int track)

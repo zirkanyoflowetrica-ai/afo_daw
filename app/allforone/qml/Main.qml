@@ -207,6 +207,9 @@ Window {
         case "transport.play": case "transport.stop": case "transport.metronome": case "transport.loop": case "transport.loopSection":
         case "transport.prevMarker": case "transport.nextMarker": return engineOk
         case "track.effects": return !!t && t.id > 0
+        case "track.consolidate": return engineOk && !!t && t.id > 0 && !t.frozen && (t.aclips || []).length > 0
+        case "track.freeze": return engineOk && !!t && t.id > 0 && !t.frozen && t.type !== "aux"
+        case "track.unfreeze": return engineOk && !!t && !!t.frozen
         case "track.stems": return !!t && t.type === "audio" && t.id >= 0 && !sq.splitting
         case "track.regenerate": return !!t && !!t.gen && !sq.generating
         case "track.newAux": return engineOk
@@ -288,6 +291,9 @@ Window {
         "track.solo": function () { toggleTrackFlag(selTrackObj.uid, "solo") },
         "track.mute": function () { toggleTrackFlag(selTrackObj.uid, "mute") },
         "track.stems": function () { sq.splitStems(selTrackObj.id) },
+        "track.consolidate": function () { sq.consolidate(selTrackObj.uid) },
+        "track.freeze": function () { sq.freeze(selTrackObj.uid, true) },
+        "track.unfreeze": function () { sq.freeze(selTrackObj.uid, false) },
         "track.effects": function () { rackTrack = selTrackObj.id; goTo("fx") },
         "track.remove": function () { var i = sq.indexOf(selTrackObj.uid); if (i >= 0) removeTrackAt(i) },
         "clip.split": function () { arrange.splitAt(arrange.clipUid, arrange.clipSel, posSec) },
@@ -773,6 +779,7 @@ Window {
             else if (a === "take") ok3 = sq.useTake(b[0], b[1])
             else if (a === "apply") sq.applyTake(b)
             else if (a === "remove") { var ti = sq.indexOf(b); if (ti >= 0) removeTrackAt(ti) }
+            else if (a === "index") return { index: sq.indexOf(b), frozen: !!(sq.trackOf(b) || {}).frozen }   // G5
             var vt = sq.active("voz")
             return { ok: ok3, punch: sq.punch, armed: sq.armedUid, extra: sq.extraUids, inputs: sq.inputs,
                      active: vt ? { uid: vt.uid, id: vt.id, takes: (vt.takes || []).map(function (k) { return k.name }), take: vt.take === undefined ? -1 : vt.take, start: vt.start || 0 } : null }

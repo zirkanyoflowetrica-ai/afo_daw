@@ -53,6 +53,7 @@ QtObject {
                          midi: t.midi || undefined, midiSrc: t.midiSrc || undefined,
                          takes: t.takes && t.takes.length ? t.takes : undefined, take: t.takes ? t.take || 0 : undefined,
                          folder: t.folder || undefined, fold: t.fold || undefined, gen: t.gen || undefined, color: t.color || undefined,
+                         frozen: t.frozen || undefined,
                          stem: !!it, mix: it ? { kind: it.kind, role: it.role } : null }
             })
         }
@@ -177,6 +178,11 @@ QtObject {
                 var k = s.call("fxSidechainRestore", tf[0], i, idOf[fx.keyFrom])
                 if (!k.ok) s.toast(k.error)
             })
+        })
+        ;(doc.tracks || []).forEach(function (d) {          // G5: congelar al final, con efectos y envíos ya puestos
+            if (!d.frozen || idOf[d.uid] === undefined || !uidOf[d.uid]) return
+            var z = s.call("trackFreeze", idOf[d.uid], true)
+            if (z.ok) sq.replace(uidOf[d.uid], { frozen: true }); else s.toast(z.error)
         })
         s.call("setMasterCeiling", doc.master_ceiling === undefined ? -1 : doc.master_ceiling)
         mx.masterStats = null
