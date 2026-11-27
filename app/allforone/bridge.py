@@ -992,6 +992,39 @@ class Bridge(QObject):
         except Exception:
             return 0
 
+    # --- Análisis del proyecto (F7): tempo, tonalidad, acordes y secciones, en otro hilo ----------
+    @Slot(str, float, result=str)
+    @_safe
+    def projectAnalyze(self, ids_json: str, near_bpm: float) -> str:
+        """Suma en mono el audio de las pistas que suenan (sus clips en su sitio, sin efectos) y lo
+        analiza en otro hilo; llega por `aiEvent` («aiSongAnalysis»)."""
+        if (g := self._guard()):
+            return g
+        parts = []
+        for tid in json.loads(ids_json or "[]"):
+            src = self._playing_path(int(tid))
+            if not src:
+                continue
+            for c in self.host.engine.clips(int(tid)):
+                sp = float(c.get("speed", 1.0)) or 1.0
+                parts.append((src, float(c["start"]), float(c["offset"]) * sp, float(c["length"]) * sp,
+                              float(c["length"]), float(c.get("gain_db", 0.0))))
+        if not parts:
+            return _err("No hay audio que analizar: importa audio o quita el Mute de alguna pista de audio")
+
+        def work():
+            from . import analysis
+            try:
+                r = analysis.analyze_mix(analysis.mix_clips(parts), near_bpm)
+                out = {"type": "aiSongAnalysis", "ok": True, "clips": len(parts), **r}
+            except Exception as exc:
+                log.exception("Análisis del proyecto")
+                out = {"type": "aiSongAnalysis", "ok": False, "error": f"No se pudo analizar el proyecto: {exc}"}
+            self._mixer_events.put(out)
+
+        threading.Thread(target=work, name="afo-analisis", daemon=True).start()
+        return _ok(started=True, clips=len(parts))
+
     # --- Vocal Align (AF-67): la toma se ajusta en el tiempo a una voz guía ----------------
     def _file_start(self, track_id: int) -> float:
         """Segundo del proyecto en que cae el principio del archivo de la pista (por su primer clip)."""

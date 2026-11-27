@@ -56,6 +56,12 @@ Rectangle {
                                          : "● IA descargando modelos " + Math.round(sq.dlProgress * 100) + " %"
             color: Theme.ink; font.family: Theme.font; font.pixelSize: 12; font.weight: 700
         }
+        Text {                                       // F7: análisis del proyecto en otro hilo
+            anchors.verticalCenter: parent.verticalCenter
+            visible: !!root.studio.songBusy
+            text: visible ? "● Analizando tonalidad, acordes y secciones…" : ""
+            color: Theme.ink; font.family: Theme.font; font.pixelSize: 12; font.weight: 700
+        }
         Text {                                       // F6: mezcla automática o Master IA trabajando
             readonly property var mx: root.studio.mixer
             anchors.verticalCenter: parent.verticalCenter

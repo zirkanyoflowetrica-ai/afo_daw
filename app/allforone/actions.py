@@ -24,6 +24,7 @@ _A = [
     # Editar
     ("edit.undo", "Deshacer", "Editar", 1, "Ctrl+Z", "Deshace la última edición de clips; en el Mezclador, la mezcla automática"),
     ("edit.redo", "Rehacer", "Editar", 1, "Ctrl+Y", "Rehace lo deshecho"),
+    ("edit.analyze", "Analizar el proyecto", "Editar", 3, "", "Tempo, tonalidad, acordes y secciones del audio que suena: pista de acordes y marcadores en el Arreglo (Ctrl+Z lo deshace)"),
     ("edit.split", "Dividir en el cursor", "Editar", 2, "S", "Divide el clip elegido donde está el cursor de reproducción"),
     ("edit.duplicate", "Duplicar", "Editar", 2, "Ctrl+D", "Copia el clip detrás del último de su pista"),
     ("edit.delete", "Borrar", "Editar", 2, "Supr", "Quita el clip elegido"),

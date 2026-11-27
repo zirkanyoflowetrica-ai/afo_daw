@@ -103,9 +103,18 @@ Rectangle {
         if (clipUid === uid && !r.clips.some(function (c) { return c.id === clipSel })) clipSel = 0
         return r
     }
+    // F7: el análisis del proyecto se deshace como una edición más (acordes, secciones y tonalidad)
+    function songState() { return { song: true, chords: studio.chords, markers: studio.markers, key: studio.songKey } }
+    function pushSong() { undoStack = undoStack.concat([songState()]).slice(-60); redoStack = [] }
+    function songLaneInfo() {               // autoprueba (F7)
+        return { visible: songLane.visible, height: songLane.height, chords: chordRep.count, markers: markRep.count,
+                 flickTop: flick.y - songLane.y - songLane.height }
+    }
     function restore(fromStack) {
         if (!fromStack.length) return null
-        var e = fromStack[fromStack.length - 1], t = studio.seq.trackOf(e.uid)
+        var e = fromStack[fromStack.length - 1]
+        if (e.song) { var bs = songState(); studio.setSongInfo(e.chords, e.markers, e.key.key ? e.key : { key: "", scale: "" }); return bs }
+        var t = studio.seq.trackOf(e.uid)
         if (!t) return null
         var back = { uid: e.uid, clips: t.aclips || [] }
         var op = { op: "set", clips: e.clips }
@@ -394,10 +403,68 @@ Rectangle {
         Rectangle { y: parent.height - 2; width: parent.width; height: 2; color: Theme.deviceBorder }
     }
 
+    // ---------------- F7: secciones y pista de acordes (Editar › Analizar el proyecto) ----------------
+    Rectangle {
+        id: songLane
+        objectName: "songLane"
+        readonly property bool has: !!root.studio && (root.studio.chords.length > 0 || root.studio.markers.length > 0)
+        anchors { top: ruler.bottom; left: parent.left; right: parent.right }
+        height: has ? 50 : 0
+        visible: has
+        color: Theme.deviceHead
+        clip: true
+        Column {
+            x: 12; y: 3; spacing: 4
+            Text { height: 20; verticalAlignment: Text.AlignVCenter; text: "Secciones"; color: Theme.deviceInk
+                   font.family: Theme.font; font.pixelSize: 12; font.weight: 700 }
+            Text { height: 22; verticalAlignment: Text.AlignVCenter; text: "Acordes"; color: Theme.deviceInk
+                   font.family: Theme.font; font.pixelSize: 12; font.weight: 700 }
+        }
+        Item {
+            x: root.headW; width: parent.width - root.headW; height: parent.height
+            clip: true
+            Repeater {
+                id: markRep
+                model: root.studio ? root.studio.markers : []
+                Rectangle {
+                    required property var modelData
+                    x: modelData.start * root.pps - flick.contentX; y: 3
+                    width: Math.max(3, (modelData.end - modelData.start) * root.pps - 2); height: 20; radius: 2
+                    color: Theme.button; border.width: 1; border.color: Theme.line
+                    Text { x: 6; width: parent.width - 8; anchors.verticalCenter: parent.verticalCenter; elide: Text.ElideRight
+                           text: modelData.label; color: Theme.ink; font.family: Theme.font; font.pixelSize: 12; font.weight: 800 }
+                    MouseArea { id: mkM; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
+                                onClicked: root.seek(modelData.start) }
+                    ToolTipLite { show: mkM.containsMouse
+                                  text: "Sección " + modelData.label + " · " + root.fmtTime(modelData.start) + " – " + root.fmtTime(modelData.end)
+                                        + ". Las secciones con la misma letra se parecen. Clic: ir allí" }
+                }
+            }
+            Repeater {
+                id: chordRep
+                model: root.studio ? root.studio.chords : []
+                Rectangle {
+                    required property var modelData
+                    x: modelData.start * root.pps - flick.contentX; y: 26
+                    width: Math.max(3, (modelData.end - modelData.start) * root.pps - 2); height: 22; radius: 2
+                    color: Theme.input; border.width: 1; border.color: Theme.line
+                    Text { x: 5; width: parent.width - 7; anchors.verticalCenter: parent.verticalCenter; elide: Text.ElideRight
+                           text: modelData.name_es; color: Theme.ink; font.family: Theme.font; font.pixelSize: 12; font.weight: 700 }
+                    MouseArea { id: chM; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
+                                onClicked: root.seek(modelData.start) }
+                    ToolTipLite { show: chM.containsMouse
+                                  text: modelData.name_es + " (" + modelData.name + ") · " + root.fmtTime(modelData.start) + " – "
+                                        + root.fmtTime(modelData.end) + ". Detectado en el audio; Ctrl+Z deshace el análisis" }
+                }
+            }
+        }
+        Rectangle { y: parent.height - 2; width: parent.width; height: 2; color: Theme.deviceBorder }
+    }
+
     // ---------------- pistas y carriles ----------------
     Flickable {
         id: flick
-        anchors { top: ruler.bottom; left: parent.left; right: parent.right; bottom: parent.bottom }
+        anchors { top: songLane.bottom; left: parent.left; right: parent.right; bottom: parent.bottom }
         clip: true
         boundsBehavior: Flickable.StopAtBounds
         contentWidth: root.headW + root.songLen * root.pps + 40

@@ -38,7 +38,7 @@ QtObject {
     function snapshot() {
         var s = studio, sq = s.seq, mx = s.mixer
         return {
-            bpm: s.bpm, songKey: s.songKey, sus: sq.sus, oct: sq.oct, hidden: s.hidden,
+            bpm: s.bpm, songKey: s.songKey, chords: s.chords, markers: s.markers, sus: sq.sus, oct: sq.oct, hidden: s.hidden,
             master: { pos: s.masterPos, drive: s.masterDrive, tone: s.masterTone, limiter: s.limiter },
             masterVersions: mx.versions, versionSel: mx.versionSel,
             // Ajustes de la Mezcla IA y del Afinador (la tonalidad confirmada vuelve confirmada)
@@ -98,6 +98,7 @@ QtObject {
         clear()
         s.applyTempo(doc.bpm || 96)
         s.setSongKey((doc.songKey || {}).key || "", (doc.songKey || {}).scale || "", true)
+        s.chords = doc.chords || []; s.markers = doc.markers || []     // F7: pista de acordes y secciones
         var m = doc.master || {}
         s.setMaster(m.pos === undefined ? 70 : m.pos)
         s.setMasterProcessing(m.drive === undefined ? 30 : m.drive, m.tone === undefined ? 50 : m.tone, m.limiter !== false)

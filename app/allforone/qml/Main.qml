@@ -139,6 +139,7 @@ Window {
         var t = selTrackObj, a = arrange
         switch (id) {
         case "file.import": case "file.export": case "track.newAudio": return engineOk
+        case "edit.analyze": return engineOk && !songBusy
         case "edit.undo": return (view === "mixer" && !!mx.undoSnap && !mx.busy) || a.undoStack.length > 0
         case "edit.redo": return a.redoStack.length > 0
         case "edit.split": case "clip.split": return !!a.clipUid
@@ -194,6 +195,7 @@ Window {
         "file.import": function () { importAudio() },
         "file.export": function () { exportMix() },
         "file.audio": function () { openAudioSettings() },
+        "edit.analyze": function () { view = "arrange"; analyzeSong() },
         "edit.undo": function () { if (view === "mixer" && mx.undoSnap) mx.undoMix(); else arrange.undo() },   // F6: en el Mezclador deshace la mezcla automática
         "edit.redo": function () { arrange.redo() },
         "edit.split": function () { arrange.splitAt(arrange.clipUid, arrange.clipSel, posSec) },
@@ -282,6 +284,39 @@ Window {
         songKey = { key: k || "", scale: k ? s : "" }
         if (k) mx.setTune({ key: k, scale: s })
         if (!quiet) markDirty()
+    }
+    // F7: análisis del proyecto (Python, en otro hilo): pista de acordes y marcadores de sección.
+    // Se guardan con el proyecto y Ctrl+Z (Arreglo) vuelve a lo de antes.
+    property var chords: []                 // [{start, end, root, quality, name, name_es}]
+    property var markers: []                // [{start, end, label}]
+    property bool songBusy: false
+    property var songInfo: null             // lo último que midió: {bpm, key, scale, chords, sections}
+    function analyzeSong() {
+        if (songBusy) return false
+        var ids = tracks.filter(function (t) { return t.id >= 0 && !t.mute && (t.aclips || []).length > 0 })
+                        .map(function (t) { return t.id })
+        var r = call("projectAnalyze", JSON.stringify(ids), bpm)
+        if (!r.ok) { toast(r.error); return false }
+        songBusy = true
+        toast("Analizando el proyecto: tempo, tonalidad, acordes y secciones…")
+        return true
+    }
+    function setSongInfo(c, m, k) {
+        chords = c || []; markers = m || []
+        if (k) setSongKey(k.key, k.scale, true)
+        markDirty()
+    }
+    function onSongAnalysis(ev) {
+        songBusy = false
+        if (!ev.ok) { toast(ev.error); return }
+        arrange.pushSong()
+        var sure = ev.key.confidence >= 0.2
+        setSongInfo(ev.chords, ev.sections, ev.key.key && sure ? { key: ev.key.key, scale: ev.key.scale } : null)
+        songInfo = { bpm: ev.tempo.bpm, key: ev.key.key, scale: ev.key.scale, sure: sure, chords: ev.chords.length, sections: ev.sections.length }
+        var tb = ev.tempo.bpm ? (Math.abs(ev.tempo.bpm - bpm) < 0.5 ? "tempo " + bpm + " BPM, como el proyecto"
+                                 : "el audio va a " + ev.tempo.bpm + " BPM y el proyecto a " + bpm) : "sin pulso claro"
+        toast("Proyecto: " + (ev.key.key ? keyLabel(ev.key.key, ev.key.scale) + (sure ? "" : " (dudosa: no se cambia)") : "sin tonalidad clara")
+              + " · " + ev.chords.length + " acordes · " + ev.sections.length + " secciones · " + tb + ". Ctrl+Z lo deshace")
     }
     property var audioInfo: ({})            // uid de la pista → {bpm, key, scale, busy, error}
     property string tkPending: ""           // orden que espera al análisis
@@ -612,6 +647,13 @@ Window {
         // F4 (autoprueba): órdenes del secuenciador, estado de tomas y carpetas, y el cuadro de IA del clip
         if (what === "seq") return sq[a].apply(sq, b || [])
         if (what === "seqSet") { sq[a] = b; return true }
+        if (what === "song") {                       // autoprueba F7: análisis del proyecto
+            if (a === "run") return analyzeSong()
+            if (a === "undo") arrange.undo()
+            return { busy: songBusy, chords: chords.map(function (c) { return [c.start, c.end, c.name] }),
+                     markers: markers.map(function (m) { return [m.start, m.end, m.label] }), key: songKey, info: songInfo,
+                     lane: arrange.songLaneInfo() }
+        }
         if (what === "f6") {                         // autoprueba F6: un solo mezclador
             if (a === "close") mixBox.close(); else if (a === "masterA" || a === "masterB") mx.bypassMaster(a.slice(-1)); else if (a) runAction(a)
             var autoOn = 0, autoAll = 0
@@ -860,7 +902,7 @@ Window {
     Connections {
         target: afo
         function onAiEvent(s) {
-            try { var ev = JSON.parse(s); if (ev.type === "aiTempoKey") win.onTempoKey(ev); else if (!lb.onAiEvent(ev)) sq.onAiEvent(ev) } catch (e) { console.warn(e) }
+            try { var ev = JSON.parse(s); if (ev.type === "aiTempoKey") win.onTempoKey(ev); else if (ev.type === "aiSongAnalysis") win.onSongAnalysis(ev); else if (!lb.onAiEvent(ev)) sq.onAiEvent(ev) } catch (e) { console.warn(e) }
         }
         function onPluginScanEvent(s) { try { win.onScanEvent(JSON.parse(s)) } catch (e) { console.warn(e) } }
         function onStateChanged(s) {

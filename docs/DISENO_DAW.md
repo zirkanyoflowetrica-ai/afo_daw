@@ -49,6 +49,8 @@ ideas comunes son de interacción, no de aspecto: no se copia la apariencia de n
      ajustes en su diálogo, A/B en la barra, Ctrl+Z la deshace) y lo que pone se ve en las tiras con
      la marca «IA». Master IA es un dispositivo más del master, con su A/B en la tira MASTER. El
      Inspector ya no tiene Asistente IA.
+   - Análisis del proyecto (F7): Editar › Analizar el proyecto escribe, bajo la regla del Arreglo,
+     las secciones (A, B, A…) y la pista de acordes, y la tonalidad del proyecto. Ctrl+Z lo deshace.
    - El usuario nunca busca dónde está algo: está donde está lo seleccionado.
 4. **Cadena de efectos como fila de dispositivos**, en el orden en que suena. Cada uno lleva el
    mismo marco: nombre, encendido/puenteo, preset, A/B y quitar. Se reordena arrastrando. Los

@@ -181,6 +181,27 @@ def _f5_checks(rep, host, lay, track_id: int) -> None:
     shutil.rmtree(tmp, ignore_errors=True)
 
 
+def _f7_checks(rep, app, host, lay) -> None:
+    """F7: «Editar › Analizar el proyecto» corre en otro hilo con el audio que suena y deja la pista de
+    acordes y las secciones en el Arreglo; se guarda con el proyecto y Ctrl+Z vuelve a lo de antes.
+    (Que acierte se mide en tests/test_analisis_proyecto.py con 4 géneros.)"""
+    from .selftest import _wait
+    lay("view", "arrange")
+    before = lay("song")
+    started = lay("song", "run")
+    done = started is True and _wait(app, lambda: not lay("song")["busy"], 120, host)
+    s = lay("song")
+    lane = s["lane"]
+    rep.check("F7: el análisis del proyecto deja la pista de acordes y las secciones en el Arreglo (otro hilo, barra de estado)",
+              done and len(s["chords"]) > 0 and len(s["markers"]) > 0 and lane["visible"] and lane["chords"] == len(s["chords"])
+              and lane["markers"] == len(s["markers"]) and lane["flickTop"] == 0 and s["info"] is not None,
+              {"acordes": [c[2] for c in s["chords"]][:8], "secciones": [m[2] for m in s["markers"]], "info": s["info"]})
+    u = lay("song", "undo")
+    rep.check("F7: Ctrl+Z deshace el análisis (acordes, secciones y tonalidad de antes)",
+              u["chords"] == before["chords"] and u["markers"] == before["markers"] and u["key"] == before["key"]
+              and not u["lane"]["visible"], {"acordes": len(u["chords"]), "tonalidad": u["key"]})
+
+
 def _f6_checks(rep, app, host, window, call, snap) -> None:
     """F6: un solo mezclador. La mezcla automática es una orden del Mezclador (diálogo con sus ajustes,
     A/B en la barra, marca «IA» en los efectos, Ctrl+Z la deshace) y Master IA un dispositivo del
@@ -476,6 +497,7 @@ def _native_daw_checks(rep, app, host, window, bridge, track_id) -> None:
               window.findChild(QObject, "songKey") is not None and window.findChild(QObject, "tempoKeyBox") is not None)
     _f4_checks(rep, host, lay, call, track_id)
     _f5_checks(rep, host, lay, track_id)
+    _f7_checks(rep, app, host, lay)
     z1 = lay("zones")
     rep.check("tamaño fijo: ninguna zona cambia de tamaño por su contenido", z0 == z1,
               {k: (z0.get(k), z1.get(k)) for k in z1 if z0.get(k) != z1.get(k)})
