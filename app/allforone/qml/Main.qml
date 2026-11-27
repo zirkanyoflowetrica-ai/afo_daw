@@ -52,6 +52,53 @@ Window {
     Timer { interval: 2500; repeat: true; running: win.engineOk; onTriggered: win.refreshDevice() }
     property bool playing: false
     property real posSec: 0                   // posición del motor en segundos
+    // G1: metrónomo y bucle. Los hace el motor (el clic de Tracktion va a la salida, nunca a la
+    // exportación); aquí solo el estado que se ve y se guarda con el proyecto.
+    property bool clickOn: false
+    property real clickVol: 60                // 20–100 %
+    property var loop: ({ on: false, start: 0, end: 0 })
+    readonly property bool loopSet: loop.end - loop.start >= 0.05
+    function setClick(on, vol) {
+        if (vol !== undefined) clickVol = vol
+        if (!engineOk) { toast("Motor nativo no disponible"); return false }
+        var r = call("setClick", !!on, clickVol)
+        if (!r.ok) { toast(r.error); return false }
+        clickOn = r.on; clickVol = r.volume
+        return true
+    }
+    function setLoop(on, s, e, quiet) {
+        if (!engineOk) { toast("Motor nativo no disponible"); return false }
+        var r = call("setLoop", !!on, s, e)
+        if (!r.ok) { toast(r.error); return false }
+        loop = { on: r.on, start: r.start, end: r.end }
+        if (!quiet) markDirty()
+        return true
+    }
+    function toggleLoop() { return loopSet ? setLoop(!loop.on, loop.start, loop.end) : loopSection() }
+    function sectionAt(t) {
+        for (var i = 0; i < markers.length; i++) if (t >= markers[i].start && t < markers[i].end) return markers[i]
+        return null
+    }
+    function loopSection() {
+        var m = sectionAt(posSec)
+        if (m) return setLoop(true, m.start, m.end)
+        var bar = 4 * 60 / Math.max(40, bpm), s = Math.floor(posSec / bar + 1e-6) * bar
+        return setLoop(true, s, s + 4 * bar)
+    }
+    // Saltar entre secciones (F7: Editar › Analizar el proyecto las pone). Al reproducir, «anterior»
+    // salta la que suena si ya va más de un segundo dentro, como en los DAW.
+    function jumpMarker(dir) {
+        var pts = [0]
+        for (var i = 0; i < markers.length; i++) pts.push(markers[i].start)
+        pts.sort(function (a, b) { return a - b })
+        var tol = playing ? 1.0 : 0.05, t = -1
+        if (dir > 0) { for (i = 0; i < pts.length; i++) if (pts[i] > posSec + 0.05) { t = pts[i]; break } }
+        else { for (i = pts.length - 1; i >= 0; i--) if (pts[i] < posSec - tol) { t = pts[i]; break } }
+        if (t < 0) { toast(dir > 0 ? "No hay más secciones después del cursor" : "El cursor ya está al principio"); return false }
+        if (!engineOk) return false
+        call("seek", t); posSec = t
+        return true
+    }
     property real bpm: 96
     property int step: -1                     // semicorchea dentro de los 16 compases (como la plantilla)
     property var tracks: []
@@ -154,6 +201,8 @@ Window {
         case "clip.projectToKey": return clipPicked && !(tkInfo && tkInfo.busy)
         case "clip.original": return clipPicked && ((a.selInfo.speed || 1) !== 1 || (a.selInfo.semitones || 0) !== 0)
         case "track.solo": case "track.mute": case "track.remove": return !!t
+        case "transport.play": case "transport.stop": case "transport.metronome": case "transport.loop": case "transport.loopSection":
+        case "transport.prevMarker": case "transport.nextMarker": return engineOk
         case "track.effects": return !!t && t.id > 0
         case "track.stems": return !!t && t.type === "audio" && t.id >= 0 && !sq.splitting
         case "track.regenerate": return !!t && !!t.gen && !sq.generating
@@ -176,6 +225,8 @@ Window {
         var t = selTrackObj
         switch (id) {
         case "edit.snap": return arrange.snap
+        case "transport.metronome": return clickOn
+        case "transport.loop": return loop.on
         case "edit.toolMove": return arrange.tool === "move"
         case "edit.toolCut": return arrange.tool === "cut"
         case "track.solo": return !!t && !!t.solo
@@ -212,6 +263,13 @@ Window {
         "edit.snap": function () { arrange.snap = !arrange.snap },
         "edit.toolMove": function () { arrange.tool = "move" },
         "edit.toolCut": function () { arrange.tool = "cut" },
+        "transport.play": function () { var r = call("togglePlay"); if (!r.ok) toast(r.error) },
+        "transport.stop": function () { call("stop"); step = -1 },
+        "transport.metronome": function () { setClick(!clickOn) },
+        "transport.loop": function () { toggleLoop() },
+        "transport.loopSection": function () { loopSection() },
+        "transport.prevMarker": function () { jumpMarker(-1) },
+        "transport.nextMarker": function () { jumpMarker(1) },
         "track.newAudio": function () { importAudio(); view = dualWindow ? "mixer" : "arrange" },
         "track.newInst": function () { addMore("piano") },
         "track.newDrum": function () { addMore("drums") },
@@ -510,6 +568,12 @@ Window {
     Shortcut { sequence: "F4"; onActivated: win.view = "home" }
     Shortcut { sequence: "Shift+Space"; enabled: !win.typing; onActivated: { if (win.engineOk) win.call("stop"); win.step = -1 } }
     Shortcut { sequence: "Ctrl+Shift+R"; onActivated: win.resetLayout() }
+    // G1: metrónomo, bucle y secciones (no mientras se escribe en un campo)
+    Shortcut { sequence: "C"; enabled: !win.typing && win.view !== "home"; onActivated: win.runAction("transport.metronome") }
+    Shortcut { sequence: "L"; enabled: !win.typing && win.view !== "home"; onActivated: win.runAction("transport.loop") }
+    Shortcut { sequence: "Ctrl+L"; enabled: !win.typing && win.view !== "home"; onActivated: win.runAction("transport.loopSection") }
+    Shortcut { sequence: ","; enabled: !win.typing && win.view !== "home"; onActivated: win.runAction("transport.prevMarker") }
+    Shortcut { sequence: "."; enabled: !win.typing && win.view !== "home"; onActivated: win.runAction("transport.nextMarker") }
     Shortcut { sequence: "Ctrl+,"; onActivated: win.openAudioSettings() }
     Shortcut { sequence: "F5"; onActivated: win.view = "arrange" }
     Shortcut { sequence: "F6"; onActivated: win.view = "mixer" }
@@ -678,6 +742,13 @@ Window {
                                            menus: actionMenus, clip: actionsCtx("clip").map(function (x) { return x.id }),
                                            track: actionsCtx("track").map(function (x) { return x.id }) } }
         if (what === "run") return { ok: runAction(a), enabled: actionEnabled(a), checked: actionChecked(a) }
+        if (what === "transport") {              // G1: metrónomo, bucle y secciones (a = orden, b = su dato)
+            if (a === "markers") markers = b
+            else if (a === "seek") { call("seek", b); posSec = b }
+            else if (a === "drag") arrange.dragLoop(b[0], b[1])
+            var ps = pj.snapshot()
+            return { clickOn: clickOn, clickVol: clickVol, loop: loop, posSec: posSec, markers: markers, band: arrange.loopInfo(),
+                     pps: arrange.pps, project: { click: ps.click, loop: ps.loop } } }
         if (what === "arrangeScroll") {          // F10: lleva el scroll del Arreglo a una fracción (0..1)
             arrange.scrollTo(a); return arrange.scrollProgress > 0 || a === 0 }
         if (what === "backdrop") {               // F10: poner (a = modo, b = ruta), ajustar y medir
@@ -1253,6 +1324,25 @@ Window {
                         if (!win.engineOk) { win.toast("Motor nativo no disponible"); return }
                         var r = win.call("togglePlay"); if (!r.ok) win.toast(r.error)
                     }
+                }
+                NeoButton {                         // G1
+                    objectName: "loopBtn"
+                    text: "Bucle"
+                    tip: win.loop.on ? "Bucle encendido: repite " + arrange.fmtTime(win.loop.start) + " – " + arrange.fmtTime(win.loop.end) + ". Clic: apagarlo (L). Arrastra en la regla para cambiar el tramo"
+                       : win.loopSet ? "Repetir " + arrange.fmtTime(win.loop.start) + " – " + arrange.fmtTime(win.loop.end) + " (L). Arrastra en la regla para cambiar el tramo"
+                       : "Repetir la sección del cursor (L) o el tramo que arrastres en la regla del Arreglo"
+                    pressedState: win.loop.on
+                    color: win.loop.on ? Theme.pressedBg : Theme.button; textColor: win.loop.on ? Theme.pressedInk : Theme.ink
+                    onClicked: win.toggleLoop()
+                }
+                NeoButton {                         // G1
+                    objectName: "clickBtn"
+                    text: "Metrónomo"
+                    tip: (win.clickOn ? "Metrónomo encendido: clic en cada tiempo. Clic: apagarlo (C)" : "Metrónomo: clic en cada tiempo, más fuerte en el primero del compás (C)")
+                         + ". Suena por tu salida; no entra al exportar"
+                    pressedState: win.clickOn
+                    color: win.clickOn ? Theme.pressedBg : Theme.button; textColor: win.clickOn ? Theme.pressedInk : Theme.ink
+                    onClicked: win.setClick(!win.clickOn)
                 }
                 Rectangle {                         // .time
                     width: timeLbl.implicitWidth + 26; height: 35

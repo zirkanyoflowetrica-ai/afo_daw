@@ -148,10 +148,35 @@ int main (int argc, char** argv)
         engine.setTrackAutomation (t2.id, "pan", {});
         CHECK (engine.removeTrack (t2.id), "elimina pista 2");
 
+        // G1: metrónomo y bucle. El clic suena por el dispositivo, nunca en lo que se exporta.
+        engine.setTrackMute (t.id, false);                  // quedó silenciada arriba: el render necesita algo que suene
+        CHECK (! engine.clickEnabled() && ! engine.loopEnabled(), "de fábrica: sin clic ni bucle");
+        const auto plain = (out / "render_sin_clic.wav").string();
+        const auto clicked = (out / "render_con_clic.wav").string();
+        CHECK (engine.renderToWav (plain), "render sin clic");
+        engine.setClickEnabled (true);
+        engine.setClickVolume (0.5f);
+        CHECK (engine.clickEnabled() && std::abs (engine.clickVolume() - 0.5f) < 1e-4f, "clic encendido al 50 %");
+        CHECK (engine.renderToWav (clicked), "render con el clic encendido");
+        const auto [p0, r0] = afo::measureFile (plain);
+        const auto [p1, r1] = afo::measureFile (clicked);
+        std::printf ("       exportación sin clic %.2f / con clic %.2f dBFS RMS\n", r0, r1);
+        CHECK (std::abs (p0 - p1) < 0.01f && std::abs (r0 - r1) < 0.01f, "el clic no entra en la exportación");
+        engine.setClickEnabled (false);
+        engine.setLoop (true, 0.5, 1.5);
+        CHECK (engine.loopEnabled() && std::abs (engine.loopStart() - 0.5) < 1e-6 && std::abs (engine.loopEnd() - 1.5) < 1e-6, "bucle 0,5–1,5 s");
+        engine.setLoop (true, 1.5, 0.25);
+        CHECK (std::abs (engine.loopStart() - 0.25) < 1e-6 && std::abs (engine.loopEnd() - 1.5) < 1e-6, "un bucle al revés se ordena");
+        engine.setLoop (true, 1.0, 1.01);
+        CHECK (engine.loopEnabled() && std::abs (engine.loopStart() - 0.25) < 1e-6, "un bucle de menos de 50 ms no cambia el rango");
+        engine.setLoop (false, 0.0, 0.0);
+        CHECK (! engine.loopEnabled(), "bucle apagado");
+
         CHECK (engine.previewPlay (tone, 0.5) || ! dev.open, "previsualización acepta el archivo");
         CHECK (engine.previewLength() > 1.9 || ! dev.open, "longitud de la previsualización");
         engine.previewStop();
         CHECK (! engine.previewPlaying(), "previsualización detenida");
+
         CHECK (engine.removeTrack (t.id), "elimina pista");
         CHECK (engine.tracks().empty(), "sin pistas tras eliminar");
 

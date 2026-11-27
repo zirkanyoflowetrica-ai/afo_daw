@@ -225,6 +225,27 @@ class Bridge(QObject):
         self.host.engine.set_tempo(float(bpm))
         return _ok(bpm=self.host.engine.tempo())
 
+    # G1: metrónomo y bucle (los hace Tracktion: el clic va al dispositivo y nunca a la exportación)
+    @Slot(bool, float, result=str)
+    @_safe
+    def setClick(self, on: bool, volume: float) -> str:
+        """Metrónomo encendido o apagado; volumen 0..100 % (Tracktion admite de 20 a 100 %)."""
+        if (g := self._guard()):
+            return g
+        eng = self.host.engine
+        eng.set_click_volume(max(0.2, min(1.0, float(volume) / 100)))
+        eng.set_click(bool(on))
+        return _ok(on=eng.click_enabled(), volume=round(eng.click_volume() * 100))
+
+    @Slot(bool, float, float, result=str)
+    @_safe
+    def setLoop(self, on: bool, start: float, end: float) -> str:
+        """Bucle del transporte entre dos segundos (el orden da igual; menos de 50 ms no cambia el rango)."""
+        if (g := self._guard()):
+            return g
+        self.host.engine.set_loop(bool(on), float(start), float(end))
+        return _ok(**self.host.engine.loop())
+
     # --- mezcla ------------------------------------------------------------------
     @Slot(float, result=str)
     @_safe
@@ -581,7 +602,7 @@ class Bridge(QObject):
     @Slot(float, result=str)
     @_safe
     def setMasterCeiling(self, db: float) -> str:
-        """Techo del limitador del master (−6..0 dBFS); Master IA lo fija según el preset."""
+        """Techo del limitador del master (−6..0 dBFS); Master automático lo fija según el preset."""
         if (g := self._guard()):
             return g
         self.host.engine.set_master_ceiling(db)
@@ -2069,7 +2090,7 @@ class Bridge(QObject):
         from ._native import afo_audio
         return _ok(path=path, measure=afo_audio.measure_file(path))
 
-    # --- mezcla automática (paneles Mezcla IA, Afinador, Master IA, Antes/Después) ---------------
+    # --- mezcla automática (paneles Mezcla automática, Afinador, Master automático, Antes/Después) ---------------
     @Slot(str, str, result=str)
     @_safe
     def mixer(self, cmd: str, payload: str) -> str:
@@ -2246,7 +2267,7 @@ class Bridge(QObject):
             return preset, None
         ref = (self._live_plan or {}).get("reference_lufs")
         if ref is None:
-            raise ValueError("Elige una canción de referencia en Mezcla IA y vuelve a mezclar.")
+            raise ValueError("Elige una canción de referencia en la mezcla automática y vuelve a mezclar.")
         return "Comercial (-11 LUFS)", max(-16.0, min(-9.0, float(ref)))
 
     def _mx_master(self, d):
@@ -2294,7 +2315,7 @@ class Bridge(QObject):
         """A/B de escucha: activa o puentea los efectos de la mezcla automática (pista o master)."""
         on = not bool(d.get("bypass"))
         tid = d.get("track")
-        # Sin pista: las pistas de la mezcla, no el master (tiene su propio A/B en Master IA)
+        # Sin pista: las pistas de la mezcla, no el master (tiene su propio A/B en Master automático)
         targets = [int(tid)] if tid is not None else [t for t in self._auto if t != project.MASTER]
         for t in targets:
             for e in self._auto.get(t, []):

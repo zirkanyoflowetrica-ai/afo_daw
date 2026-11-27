@@ -272,6 +272,8 @@ Rectangle {
         return m + ":" + (r < 10 ? "0" : "") + r.toFixed(1)
     }
     function seek(s) { if (studio.engineOk) studio.call("seek", Math.max(0, s)) }
+    function dragLoop(a, b) { if (studio) studio.setLoop(true, a, b) }      // G1: arrastre en la regla
+    function loopInfo() { return { visible: loopBand.visible, on: loopBand.on, x: loopBand.x, w: loopBand.width } }
     // Modos de automatización por pista (como Pro Tools): Read solo lee; Touch, Latch y Write graban
     readonly property var modes: ["read", "touch", "latch", "write"]
     readonly property var modeName: ({ read: "Read", touch: "Touch", latch: "Latch", write: "Write" })
@@ -417,6 +419,23 @@ Rectangle {
         clip: true
         Text { x: 12; anchors.verticalCenter: parent.verticalCenter; text: "Compás · tiempo"; color: Theme.deviceInk
                font.family: Theme.font; font.pixelSize: 12; font.weight: 700 }
+        // G1: el tramo del bucle (el que se arrastra, mientras se arrastra) bajo los números de la regla
+        Item {
+            x: root.headW; width: parent.width - root.headW; height: parent.height
+            clip: true
+            Rectangle {
+                id: loopBand
+                objectName: "loopBand"
+                readonly property bool dragging: rulerM.dragging
+                readonly property real a: dragging ? Math.min(rulerM.t0, rulerM.t1) : (root.studio ? root.studio.loop.start : 0)
+                readonly property real b: dragging ? Math.max(rulerM.t0, rulerM.t1) : (root.studio ? root.studio.loop.end : 0)
+                readonly property bool on: dragging || (!!root.studio && root.studio.loop.on)
+                visible: dragging || (!!root.studio && root.studio.loopSet)
+                x: a * root.pps - flick.contentX; width: Math.max(2, (b - a) * root.pps); height: parent.height
+                color: on ? Theme.accent : Theme.line
+                opacity: on ? 0.32 : 0.45
+            }
+        }
         Canvas {
             id: rulerCv
             x: root.headW; width: parent.width - root.headW; height: parent.height
@@ -442,9 +461,29 @@ Rectangle {
                     ctx.fillText(root.fmtTime(s).replace(".0", ""), s * p - off + 3, 10)
             }
         }
-        MouseArea { x: root.headW; width: parent.width - root.headW; height: parent.height
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: function (m) { root.seek((m.x + flick.contentX) / root.pps) } }
+        // Clic: llevar el cursor ahí. Arrastrar: marcar el tramo del bucle y encenderlo (G1); con
+        // «Ajustar a la rejilla» los bordes caen en los tiempos
+        MouseArea {
+            id: rulerM
+            objectName: "rulerMouse"
+            x: root.headW; width: parent.width - root.headW; height: parent.height
+            cursorShape: Qt.PointingHandCursor
+            property real t0: 0
+            property real t1: 0
+            property real x0: 0
+            property bool dragging: false
+            function at(mx) {
+                var t = Math.max(0, (mx + flick.contentX) / root.pps)
+                return root.snap ? Math.round(t / root.beat) * root.beat : t
+            }
+            onPressed: function (m) { x0 = m.x; t0 = at(m.x); t1 = t0; dragging = false }
+            onPositionChanged: function (m) { if (Math.abs(m.x - x0) > 4) dragging = true; if (dragging) t1 = at(m.x) }
+            onReleased: function (m) {
+                if (dragging) { dragging = false; root.dragLoop(t0, t1) }
+                else root.seek((m.x + flick.contentX) / root.pps)
+            }
+            onCanceled: dragging = false
+        }
         Rectangle { y: parent.height - 2; width: parent.width; height: 2; color: Theme.deviceBorder }
     }
 

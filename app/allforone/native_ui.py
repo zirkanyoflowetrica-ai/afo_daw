@@ -209,6 +209,55 @@ def _backdrop_images(folder) -> tuple[str, str]:
     return str(folder / "peor_caso.png"), str(par)
 
 
+def _g1_checks(rep, host, lay) -> None:
+    """G1: metrónomo (el clic de Tracktion), bucle desde la sección o arrastrando en la regla, saltos entre
+    secciones; todo se guarda con el proyecto. Que el bucle y el clic suenan se mide en tests/test_transporte.py."""
+    eng = host.engine
+    t0 = lay("transport")
+    rep.check("G1: de fábrica sin metrónomo ni bucle (ni en el motor)",
+              not t0["clickOn"] and not t0["loop"]["on"] and not t0["band"]["visible"] and not eng.click_enabled()
+              and not eng.loop()["on"], {"interfaz": [t0["clickOn"], t0["loop"]], "motor": [eng.click_enabled(), eng.loop()]})
+    a = lay("run", "transport.metronome")
+    on = eng.click_enabled()
+    b = lay("run", "transport.metronome")
+    rep.check("G1: «Metrónomo» (C) enciende y apaga el clic del motor; el menú lo marca",
+              a["ok"] and a["checked"] and on and b["ok"] and not b["checked"] and not eng.click_enabled(), {"encendido": a, "apagado": b})
+    old = t0["markers"]
+    lay("transport", "markers", [{"start": 0, "end": 4, "label": "A"}, {"start": 4, "end": 12, "label": "B"},
+                                 {"start": 12, "end": 20, "label": "A"}])
+    lay("transport", "seek", 6.0)
+    s = lay("run", "transport.loopSection")
+    t1 = lay("transport")
+    el = eng.loop()
+    band = t1["band"]
+    rep.check("G1: «Bucle en la sección del cursor» (Ctrl+L) repite la sección B (4–12 s) en el motor y se ve en la regla",
+              s["ok"] and t1["loop"]["on"] and abs(t1["loop"]["start"] - 4) < 1e-3 and abs(t1["loop"]["end"] - 12) < 1e-3
+              and el["on"] and abs(el["start"] - 4) < 1e-3 and abs(el["end"] - 12) < 1e-3
+              and band["visible"] and band["on"] and abs(band["w"] - 8 * t1["pps"]) < 1.5,
+              {"bucle": t1["loop"], "motor": el, "franja": band})
+    lay("transport", "seek", 6.0)
+    n = lay("run", "transport.nextMarker")
+    pn = lay("transport")["posSec"]
+    p = lay("run", "transport.prevMarker")
+    pp = lay("transport")["posSec"]
+    p0 = lay("run", "transport.prevMarker")
+    rep.check("G1: «,» y «.» saltan al principio de la sección anterior y siguiente (y a 0)",
+              n["ok"] and abs(pn - 12) < 1e-3 and p["ok"] and abs(pp - 4) < 1e-3 and p0["ok"] and lay("transport")["posSec"] == 0,
+              {"siguiente": pn, "anterior": pp})
+    lay("transport", "drag", [9.0, 2.0])
+    t2 = lay("transport")
+    lp = lay("run", "transport.loop")
+    t3 = lay("transport")
+    rep.check("G1: arrastrar en la regla marca el tramo (2–9 s) y lo enciende; «Bucle» (L) lo apaga y el tramo queda marcado",
+              abs(t2["loop"]["start"] - 2) < 1e-3 and abs(t2["loop"]["end"] - 9) < 1e-3 and t2["loop"]["on"]
+              and lp["ok"] and not lp["checked"] and not t3["loop"]["on"] and not eng.loop()["on"]
+              and t3["band"]["visible"] and not t3["band"]["on"], {"arrastre": t2["loop"], "apagado": t3["loop"], "franja": t3["band"]})
+    rep.check("G1: el proyecto guarda el metrónomo y el bucle",
+              t3["project"]["loop"] == t3["loop"] and t3["project"]["click"] == {"on": False, "vol": t3["clickVol"]}, t3["project"])
+    lay("transport", "markers", old)
+    lay("transport", "seek", 0.0)
+
+
 def _f10_checks(rep, app, host, lay) -> None:
     """F10: fondo opcional (imagen o parallax), apagado de fábrica. Con el fondo puesto el texto de las
     zonas sigue ≥ 4,5:1 en los tres temas, medido con el píxel más oscuro y el más claro de la imagen
@@ -645,6 +694,7 @@ def _native_daw_checks(rep, app, host, window, bridge, track_id) -> None:
     _f7_checks(rep, app, host, lay)
     _f8_checks(rep, app, host, lay)
     _f10_checks(rep, app, host, lay)
+    _g1_checks(rep, host, lay)
     z1 = lay("zones")
     rep.check("tamaño fijo: ninguna zona cambia de tamaño por su contenido", z0 == z1,
               {k: (z0.get(k), z1.get(k)) for k in z1 if z0.get(k) != z1.get(k)})
@@ -735,8 +785,8 @@ def _native_daw_checks(rep, app, host, window, bridge, track_id) -> None:
     ac = lay("actions")
     rep.check("órdenes: cada orden del registro hace algo en la interfaz y no hay órdenes fuera del registro",
               ac["ids"] and not ac["missing"] and not ac["extra"], {"sin hacer": ac["missing"], "fuera": ac["extra"]})
-    rep.check("barra de menús Archivo · Editar · Pista · Clip · Mezcla · Scripts · Ver",
-              ac["menus"] == ["Archivo", "Editar", "Pista", "Clip", "Mezcla", "Scripts", "Ver"], ac["menus"])
+    rep.check("barra de menús Archivo · Editar · Transporte · Pista · Clip · Mezcla · Scripts · Ver",
+              ac["menus"] == ["Archivo", "Editar", "Transporte", "Pista", "Clip", "Mezcla", "Scripts", "Ver"], ac["menus"])
     rep.check("clic derecho: la IA vive en el clip y en la pista (Rehacer, Versión, Alinear, Tono, Separar)",
               {"clip.repaint", "clip.cover", "clip.align", "clip.pitch", "clip.stems"} <= set(ac["clip"])
               and {"track.stems", "track.generate", "track.effects"} <= set(ac["track"]), {"clip": ac["clip"], "pista": ac["track"]})

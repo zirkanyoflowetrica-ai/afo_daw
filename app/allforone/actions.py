@@ -10,7 +10,7 @@ derecho), ai (True: lo hace la IA en tu equipo; lleva la marca «IA»).
 """
 from __future__ import annotations
 
-MENUS = ("Archivo", "Editar", "Pista", "Clip", "Mezcla", "Scripts", "Ver")
+MENUS = ("Archivo", "Editar", "Transporte", "Pista", "Clip", "Mezcla", "Scripts", "Ver")
 
 _A = [
     # Archivo
@@ -31,6 +31,14 @@ _A = [
     ("edit.snap", "Ajustar a la rejilla", "Editar", 3, "", "Mover, recortar y cortar caen en los tiempos del compás"),
     ("edit.toolMove", "Herramienta Mover", "Editar", 3, "", "Arrastra clips para moverlos y sus bordes para recortarlos"),
     ("edit.toolCut", "Herramienta Cortar", "Editar", 3, "", "Clic en un clip lo divide en ese punto"),
+    # Transporte (G1)
+    ("transport.play", "Reproducir o pausar", "Transporte", 1, "Espacio", "Reproduce desde el cursor o lo pausa"),
+    ("transport.stop", "Detener y volver al principio", "Transporte", 1, "Mayús+Espacio", "Para y lleva el cursor a 0"),
+    ("transport.metronome", "Metrónomo", "Transporte", 2, "C", "Clic en cada tiempo, más fuerte en el primero del compás; suena por tu salida y no entra al exportar"),
+    ("transport.loop", "Bucle", "Transporte", 3, "L", "Repite el tramo marcado en la regla (arrastra en la regla para marcarlo); sin tramo, toma la sección del cursor"),
+    ("transport.loopSection", "Bucle en la sección del cursor", "Transporte", 3, "Ctrl+L", "Marca como bucle la sección donde está el cursor o, sin secciones, 4 compases desde su compás"),
+    ("transport.prevMarker", "Ir a la sección anterior", "Transporte", 4, ",", "Lleva el cursor al principio de la sección anterior (o a 0)"),
+    ("transport.nextMarker", "Ir a la sección siguiente", "Transporte", 4, ".", "Lleva el cursor al principio de la sección siguiente"),
     # Pista
     ("track.new", "Pista nueva…", "Pista", 1, "Ctrl+Shift+N", "Audio, instrumento, batería, voz, Intérprete IA o Generar con IA"),
     ("track.newAudio", "Pista nueva de audio…", "Pista", 1, "", "Importa audio en una pista nueva"),

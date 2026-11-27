@@ -1535,6 +1535,31 @@ void Engine::setTempo (double bpm)
             s->synth->bpm = (float) juce::jlimit (20.0, 400.0, bpm);         // arpegiador
 }
 
+void Engine::setClickEnabled (bool on)
+{
+    requireMessageThread();
+    impl->edit->clickTrackEnabled = on;
+    impl->edit->clickTrackRecordingOnly = false;
+    impl->edit->clickTrackEmphasiseBars = true;          // el primer tiempo de cada compás, acentuado
+}
+bool Engine::clickEnabled() const         { return impl->edit->clickTrackEnabled.get(); }
+void Engine::setClickVolume (float gain)  { requireMessageThread(); impl->edit->setClickTrackVolume (gain); }
+float Engine::clickVolume() const         { return impl->edit->getClickTrackVolume(); }
+
+void Engine::setLoop (bool on, double startSeconds, double endSeconds)
+{
+    requireMessageThread();
+    auto& t = impl->edit->getTransport();
+    const double a = juce::jmax (0.0, juce::jmin (startSeconds, endSeconds));
+    const double b = juce::jmax (startSeconds, endSeconds);
+    if (b - a >= 0.05)
+        t.setLoopRange (te::TimeRange (te::TimePosition::fromSeconds (a), te::TimePosition::fromSeconds (b)));
+    t.looping = on && t.getLoopRange().getLength().inSeconds() >= 0.05;
+}
+bool Engine::loopEnabled() const  { return impl->edit->getTransport().looping.get(); }
+double Engine::loopStart() const  { return impl->edit->getTransport().getLoopRange().getStart().inSeconds(); }
+double Engine::loopEnd() const    { return impl->edit->getTransport().getLoopRange().getEnd().inSeconds(); }
+
 double Engine::tempo() const
 {
     if (auto* t = impl->edit->tempoSequence.getTempo (0))

@@ -95,6 +95,13 @@ C→X: siguen tuyas X2, X6, X7, X8, X9, en ese orden. No esperes respuesta para 
 | F11 | C | ✓ | `analysis.py`, `native/src/AfoEngine.*` (estirar y transponer clips), `actions.py`, `ArrangeView.qml` | Clic derecho en un audio: detectar tempo y tonalidad; audio → tempo/tono del proyecto (SoundTouch en el motor) o proyecto → tempo/tono del audio; prueba con proyectos de `song_factory` |
 | F12 | C | ✓ | `Main.qml`, `controls/Zone.qml`, módulos | La ventana se reparte sin huecos a 1280×720, 1600×900, 1920×1080 y 2560×1440 (selftest mide los huecos) |
 | F13 | C | ✓ | `controls/HelpButton.qml` (nuevo), módulos con textos largos | Botón «?» en cada panel y efecto con su explicación; fuera los párrafos fijos de ayuda |
+| G1 | C | ✓ | `native/src/AfoEngine.*`, `afo_audio_module.cpp`, `bridge.py`, `actions.py`, `Main.qml`, `ArrangeView.qml`, `Project.qml`, `tests/test_transporte.py` | Menú Transporte: Metrónomo (C, el clic de Tracktion: suena por la salida y no entra al exportar), Bucle (L) arrastrando en la regla o en la sección del cursor (Ctrl+L), saltar entre secciones (, y .); se guarda con el proyecto; prueba que el clic suena y el bucle vuelve sonando una canción completa |
+| G2 | C | … | motor (entrada MIDI), `Sequencer.qml`, piano roll | Teclado MIDI: tocar el instrumento de la pista armada y grabar sus notas en el piano roll; cuantizar |
+| G3 | C | … | motor (grabación), `ArrangeView.qml` | Grabar varias pistas a la vez, punch in/out con el bucle, tomas por pasada |
+| G4 | C | … | `native/src/fx/` (compresor, puerta) | Sidechain: el compresor o la puerta escuchan otra pista (bombo → bajo) |
+| G5 | C | … | motor (render por pista), `ArrangeView.qml` | Consolidar clips en un audio y congelar pistas con sus efectos |
+| G6 | C | … | motor, `MixBody.qml` | Grupos de pistas y VCA |
+| G7 | C | … | IA local, piano roll | La IA escribe MIDI en la rejilla del piano roll |
 
 C→X: NUEVA PRIORIDAD (23-11, el usuario deja atrás lo modular): X14, X15, X12, X10, X11, X16, X17; X13 se hace dentro de X14–X17; luego X2…X9. Plan: docs/DISENO_DAW.md.
 C→X: PRIORIDAD anterior: X10, X11, X12, X13; luego X2…X9. Antes: X10 y luego X11 (las pidió el usuario) antes que X2…X9. Esos archivos son tuyos en este lote, `bridge.py` solo para los slots `library*`.

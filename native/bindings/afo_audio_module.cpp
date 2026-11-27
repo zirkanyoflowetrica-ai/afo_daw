@@ -424,6 +424,16 @@ PYBIND11_MODULE (afo_audio, m)
         .def ("length_seconds", &afo::Engine::lengthSeconds)
         .def ("set_tempo", &afo::Engine::setTempo)
         .def ("tempo", &afo::Engine::tempo)
+        .def ("set_click", &afo::Engine::setClickEnabled)
+        .def ("click_enabled", &afo::Engine::clickEnabled)
+        .def ("set_click_volume", &afo::Engine::setClickVolume)
+        .def ("click_volume", &afo::Engine::clickVolume)
+        .def ("set_loop", &afo::Engine::setLoop, py::arg ("on"), py::arg ("start"), py::arg ("end"))
+        .def ("loop", [] (afo::Engine& e) {
+            py::dict d;
+            d["on"] = e.loopEnabled(); d["start"] = e.loopStart(); d["end"] = e.loopEnd();
+            return d;
+        })
         .def ("read_levels", [] (afo::Engine& e)
               {
                   auto l = e.readLevels();

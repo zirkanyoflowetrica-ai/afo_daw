@@ -356,6 +356,16 @@ public:
     double lengthSeconds() const;
     void setTempo (double bpm);
     double tempo() const;
+    // G1: metrónomo (el clic de Tracktion: suena por el dispositivo, no entra en las exportaciones)
+    // y bucle del transporte entre dos tiempos en segundos.
+    void setClickEnabled (bool on);
+    bool clickEnabled() const;
+    void setClickVolume (float gain);                  // 0.2..1 (lo que admite Tracktion)
+    float clickVolume() const;
+    void setLoop (bool on, double startSeconds, double endSeconds);
+    bool loopEnabled() const;
+    double loopStart() const;
+    double loopEnd() const;
 
     // Previsualización (A/B de mezclas y masters): reproduce un archivo por el mismo dispositivo,
     // sin añadirlo al proyecto. Cambiar de archivo conserva la posición (comparación A/B).
