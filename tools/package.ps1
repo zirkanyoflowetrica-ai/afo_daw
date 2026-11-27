@@ -97,6 +97,17 @@ $nargs = @('-m', 'nuitka',
     # librosa y numba van ademas como codigo Python en pylibs\ (ver mas abajo); Nuitka los sigue para
     # meter sus dependencias. Con numba de verdad (su JIT) en vez del modo sin JIT de Nuitka.
     '--module-parameter=numba-disable-jit=no',
+    # librosa no se compila (el codigo compilado se salta pylibs); se meten a mano los modulos que importa
+    '--nofollow-import-to=librosa',
+    '--include-module=lazy_loader', '--include-module=decorator', '--include-module=joblib', '--include-module=pooch',
+    '--include-module=soxr', '--include-module=msgpack', '--include-module=typing_extensions', '--include-module=soundfile',
+    '--include-module=scipy.fft', '--include-module=scipy.interpolate', '--include-module=scipy.linalg',
+    '--include-module=scipy.ndimage', '--include-module=scipy.optimize', '--include-module=scipy.signal',
+    '--include-module=scipy.sparse', '--include-module=scipy.spatial', '--include-module=scipy.stats',
+    '--include-module=sklearn.cluster', '--include-module=sklearn.decomposition',
+    '--include-module=sklearn.feature_extraction', '--include-module=sklearn.neighbors',
+    '--include-module=fractions', '--include-module=colorsys', '--include-module=html', '--include-module=glob',
+    '--include-module=tomllib', '--include-module=inspect',
     # La interfaz es Qt Quick: nada de Chromium en la distribucion
     '--nofollow-import-to=PySide6.QtWebEngineCore', '--nofollow-import-to=PySide6.QtWebEngineWidgets',
     '--nofollow-import-to=PySide6.QtWebEngineQuick', '--nofollow-import-to=PySide6.QtWebChannel',
