@@ -48,6 +48,13 @@ def _source_packages() -> None:
                 return None
             return importlib.machinery.PathFinder.find_spec(name, path if "." in name else [str(root)])
     sys.meta_path.insert(0, _SourceFirst)
+    # Un `import librosa` del código compilado va directo al módulo que Nuitka lleva dentro, sin pasar por
+    # sys.meta_path: se importa aquí desde código interpretado (exec) para que quede en sys.modules el de
+    # pylibs. Es ligero (librosa carga sus partes y numba al usarlas, ya por el buscador de arriba).
+    try:
+        exec("import librosa", {})
+    except Exception:
+        log.exception("No se pudo cargar librosa desde pylibs")
 
 
 def _prepare_qt_environment() -> None:
