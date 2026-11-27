@@ -22,7 +22,7 @@ _A = [
     ("file.export", "Exportar mezcla…", "Archivo", 3, "", "Escribe la mezcla con el master en un WAV"),
     ("file.audio", "Ajustes de audio…", "Archivo", 4, "Ctrl+,", "Tarjeta de sonido, frecuencia y búfer"),
     # Editar
-    ("edit.undo", "Deshacer", "Editar", 1, "Ctrl+Z", "Deshace la última edición de clips"),
+    ("edit.undo", "Deshacer", "Editar", 1, "Ctrl+Z", "Deshace la última edición de clips; en el Mezclador, la mezcla automática"),
     ("edit.redo", "Rehacer", "Editar", 1, "Ctrl+Y", "Rehace lo deshecho"),
     ("edit.split", "Dividir en el cursor", "Editar", 2, "S", "Divide el clip elegido donde está el cursor de reproducción"),
     ("edit.duplicate", "Duplicar", "Editar", 2, "Ctrl+D", "Copia el clip detrás del último de su pista"),
@@ -67,11 +67,11 @@ _A = [
     ("clip.projectToKey", "Proyecto a la tonalidad del audio", "Clip", 5, "", "Transpone el resto del proyecto (audio e instrumentos) a la tonalidad del audio"),
     ("clip.original", "Tempo y tono originales", "Clip", 5, "", "El clip vuelve a su velocidad y su tono"),
     # Mezcla
-    ("mix.auto", "Mezcla automática", "Mezcla", 1, "", "La IA pone faders, paneo y efectos en las tiras (Ctrl+Z en cada efecto)"),
+    ("mix.auto", "Mezcla automática…", "Mezcla", 1, "", "La IA pone faders, paneo y efectos (marca «IA») en las tiras; Ctrl+Z en el Mezclador la deshace"),
     ("mix.remix", "Volver a mezclar", "Mezcla", 1, "", "Repite la mezcla automática con los ajustes de ahora"),
     ("mix.abA", "Escuchar sin mezcla automática (A)", "Mezcla", 2, "", "Puentea los efectos de la mezcla automática"),
     ("mix.abB", "Escuchar con mezcla automática (B)", "Mezcla", 2, "", "Vuelve a activar los efectos de la mezcla automática"),
-    ("mix.master", "Masterizar automáticamente", "Mezcla", 3, "", "La IA pone la cadena del master midiendo la mezcla"),
+    ("mix.master", "Master IA", "Mezcla", 3, "", "La IA pone la cadena del master midiendo la mezcla (dispositivo del master en Efectos; A/B en la tira MASTER)"),
     ("mix.masterFx", "Efectos del master", "Mezcla", 3, "", "Abre la cadena de efectos del master"),
     # Ver
     ("view.arrange", "Arreglo", "Ver", 1, "F5", "Pistas, clips y automatización"),

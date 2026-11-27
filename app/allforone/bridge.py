@@ -1999,6 +1999,59 @@ class Bridge(QObject):
     def _mx_mix(self, d):
         return self.mixsvc.mix_async(d)
 
+    def _mx_snapshot(self, d):
+        """F6: cómo están las pistas antes de la mezcla automática (cadenas, envíos y audio), para Ctrl+Z."""
+        if not self.host.ok:
+            return {"ok": False, "error": self.host.error}
+        eng, cat = self.host.engine, self.host.effect_catalog()
+        src = {t["id"]: t.get("source_path", "") for t in eng.tracks()}
+        out = {}
+        for tid in list(self.host.tracks):
+            e = {"chain": project.chain_of(eng, cat, tid, self._fx_labels, self._auto.get(tid, ())), "source": src.get(tid, "")}
+            try:
+                e["sends"] = [{"aux": int(s["aux"]), "db": float(s["db"]), "pre": bool(s["pre"])} for s in eng.sends(tid)]
+            except Exception:                    # motor sin buses Aux
+                e["sends"] = []
+            out[str(tid)] = e
+        return {"ok": True, "tracks": out}
+
+    def _mx_restore(self, d):
+        """F6: deshace la mezcla automática: cada pista vuelve a su cadena, sus envíos y su audio de antes
+        (fader y paneo los devuelve la interfaz, que los guardó)."""
+        if not self.host.ok:
+            return {"ok": False, "error": self.host.error}
+        if self.mixsvc.busy:
+            return {"ok": False, "error": "El mezclador está trabajando; espera a que termine."}
+        eng, cat = self.host.engine, self.host.effect_catalog()
+        src = {t["id"]: t.get("source_path", "") for t in eng.tracks()}
+        warn: list[str] = []
+        for key, e in (d.get("tracks") or {}).items():
+            tid = int(key)
+            if tid not in self.host.tracks:
+                continue
+            if e.get("source") and src.get(tid) and e["source"] != src[tid]:   # la mezcla afinó una copia
+                start = float(self.host.tracks[tid].get("start_seconds", 0.0) or 0.0)
+                self.host.tracks[tid] = {**self.host.tracks[tid], **dict(eng.set_track_audio(tid, e["source"], start))}
+            for old in self._auto.pop(tid, []):
+                self._fx_labels.pop(old, None)
+
+            def added(eid, fx, tid=tid):
+                if fx.get("label"):
+                    self._fx_labels[eid] = fx["label"]
+                if fx.get("auto"):
+                    self._auto.setdefault(tid, []).append(eid)
+            warn += project.restore_chain(eng, cat, tid, e.get("chain") or [], added)
+            try:
+                keep = {int(s["aux"]) for s in e.get("sends") or []}
+                for s in eng.sends(tid):
+                    if int(s["aux"]) not in keep:
+                        eng.set_send(tid, int(s["aux"]), -100.0, False)
+                for s in e.get("sends") or []:
+                    eng.set_send(tid, int(s["aux"]), float(s["db"]), bool(s["pre"]))
+            except Exception:                    # motor sin buses Aux
+                pass
+        return {"ok": True, "warnings": warn}
+
     def _mix_buses(self, buses: dict) -> dict:
         """Buses Aux de la mezcla automática: se reutilizan por nombre (también los de un proyecto abierto),
         se crean si faltan y llevan su reverb como efecto automático. Devuelve {clave: id de la pista}."""

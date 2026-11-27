@@ -181,6 +181,50 @@ def _f5_checks(rep, host, lay, track_id: int) -> None:
     shutil.rmtree(tmp, ignore_errors=True)
 
 
+def _f6_checks(rep, app, host, window, call, snap) -> None:
+    """F6: un solo mezclador. La mezcla automática es una orden del Mezclador (diálogo con sus ajustes,
+    A/B en la barra, marca «IA» en los efectos, Ctrl+Z la deshace) y Master IA un dispositivo del
+    master con su A/B en la tira MASTER; el Inspector ya no tiene Asistente IA. Mezcla real del V4.2."""
+    from PySide6.QtCore import QMetaObject, Q_ARG, Q_RETURN_ARG
+
+    from .selftest import _wait
+
+    def lay(a=None):
+        v = QMetaObject.invokeMethod(window, "layoutCommand", Q_RETURN_ARG("QVariant"), Q_ARG("QVariant", "f6"),
+                                     Q_ARG("QVariant", a), Q_ARG("QVariant", None))
+        v = v.toVariant() if hasattr(v, "toVariant") else v
+        _wait(app, lambda: False, 0.2, host)
+        return v
+    s0 = lay("mix.auto")
+    box = window.findChild(QObject, "mixAutoBox")
+    lay("close")
+    rep.check("F6: «Mezcla automática…» y «A/B» en la barra del Mezclador abren la orden con sus ajustes; el Inspector sin Asistente IA",
+              s0["box"] and s0["view"] == "mixer" and "Mezcla automática…" in s0["bar"] and "A/B: con mezcla auto" in s0["bar"]
+              and s0["insp"] == ["pista", "master", "cinta"] and box is not None,
+              {"barra": s0["bar"], "inspector": s0["insp"], "diálogo": s0["box"]})
+    rep.check("F6: los efectos de la mezcla automática llevan la marca «IA» en las tiras y A/B los puentea y los vuelve a activar",
+              s0["autoAll"] > 0 and s0["autoOn"] == s0["autoAll"]
+              and (a := lay("mix.abA"))["autoOn"] == 0 and a["ab"] == "A"
+              and (b := lay("mix.abB"))["autoOn"] == b["autoAll"] and b["ab"] == "B",
+              {"efectos IA": s0["autoAll"], "en A": a["autoOn"], "en B": b["autoOn"]})
+    QMetaObject.invokeMethod(window, "layoutCommand", Q_RETURN_ARG("QVariant"), Q_ARG("QVariant", "view"),
+                             Q_ARG("QVariant", "mixer"), Q_ARG("QVariant", None))
+    ma = lay()
+    mA = lay("masterA")
+    mB = lay("masterB")
+    rep.check("F6: Master IA tiene su A/B en la tira MASTER (puentea su cadena y la vuelve a activar)",
+              ma["masterAuto"] >= 4 and mA["masterOn"] == 0 and mA["masterAb"] == "A" and mB["masterOn"] == ma["masterAuto"],
+              {"efectos": ma["masterAuto"], "A": mA["masterOn"], "B": mB["masterOn"]})
+    want = {v["id"]: (round(v["vol"]), v["pan"]) for v in (ma["undo"] or [])}
+    u = lay("edit.undo")
+    got = {t["id"]: (round(t["vol"]), t["pan"]) for t in snap()["tracks"] if t["id"] in want}
+    rep.check("F6: Ctrl+Z en el Mezclador deshace la mezcla automática (efectos IA fuera, faders y paneo de antes)",
+              bool(want) and u["autoAll"] == 0 and u["undo"] is None and got == want and u["masterAuto"] == ma["masterAuto"],
+              {"efectos IA": u["autoAll"], "tiras": len(want), "iguales": got == want})
+    call("mixNow", False)                         # se vuelve a mezclar para lo que sigue
+    _wait(app, lambda: snap()["runs"] >= 1 or "Error" in snap()["status"], 240, host)
+
+
 def build_native_window(host):
     """Crea la ventana QML. Devuelve (engine, window, bridge)."""
     from PySide6.QtCore import QUrl
@@ -737,8 +781,8 @@ def _native_home_checks(rep, app, host, window, bridge, startup: bool = False) -
 
 
 def _native_inspector_checks(rep, app, host, window, track_id) -> None:
-    """Inspector (X17): la página Pista sigue a la pista elegida y su volumen llega al motor; el
-    Asistente IA reúne Mezcla IA, Master IA y Antes / Después."""
+    """Inspector (X17): la página Pista sigue a la pista elegida y su volumen llega al motor. Sin
+    Asistente IA (F6): Master IA es un dispositivo del master en Efectos."""
     from PySide6.QtCore import QMetaObject, Q_ARG, Q_RETURN_ARG
     from PySide6.QtQuick import QQuickItem
 
@@ -765,7 +809,8 @@ def _native_inspector_checks(rep, app, host, window, track_id) -> None:
               vol.property("value") if vol else None)
     QMetaObject.invokeMethod(window, "setTrackMixUid", Q_ARG("QVariant", uid), Q_ARG("QVariant", 70), Q_ARG("QVariant", 50))
     g = call("layoutCommand", "goto", "mastia", None)
-    rep.check("Master IA y A/B abren el Asistente IA del Inspector", g["page"] == "asist" and g["zone"] == "Inspector", g)
+    rep.check("Master IA abre el rack del master en Efectos (F6: sin Asistente IA en el Inspector)",
+              g["page"] == "fx" and g["zone"] == "Detalle", g)
 
 
 def run_native_selftest(app, host, report_path: str | None, screenshot_path: str | None, rep=None) -> int:
@@ -801,7 +846,7 @@ def run_native_selftest(app, host, report_path: str | None, screenshot_path: str
                                   Q_ARG("QVariant", None), Q_ARG("QVariant", None))
     ids = sorted((pv.toVariant() if hasattr(pv, "toVariant") else pv) or [])
     rep.check("cada módulo tiene su sitio: páginas en las zonas y la consola como vista Mezclador",
-              ids == sorted(["add", "fxlist", "audios", "recent", "pista", "asist", "master", "cinta", "piano",
+              ids == sorted(["add", "fxlist", "audios", "recent", "pista", "master", "cinta", "piano",
                              "inst", "drums", "fx", "tono", "afina"]), ids)
     rep.check("motor conectado desde QML", bool(prop("engineOk")))
     _native_home_checks(rep, app, host, window, bridge, startup=True)   # lo demás de Inicio, al final: deja el proyecto vacío
@@ -928,6 +973,7 @@ def _native_mixer_checks(rep, app, host, window, bridge, prop) -> None:
               len(st["versions"]) == 1 and st["versions"][0]["kind"] == "auto" and st["versionSel"] == 0
               and st["versions"][0]["fx"] == len(st["masterChain"]) >= 4, st["versions"])
     check_mix_run(rep, bridge, st, t0)
+    _f6_checks(rep, app, host, window, call, snap)
     # Vista Arreglo: lo que hizo la mezcla se ve (inserts por pista y curvas de automatización del motor)
     lv = QMetaObject.invokeMethod(window, "layoutCommand", Q_RETURN_ARG("QVariant"), Q_ARG("QVariant", "view"),
                                   Q_ARG("QVariant", "arrange"), Q_ARG("QVariant", None))

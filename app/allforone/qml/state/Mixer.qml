@@ -38,6 +38,8 @@ QtObject {
     property var masterStats: null              // lo que midió el motor al masterizar
     property bool mastering: false
     property string abState: "B"                // B = con efectos automáticos, A = puenteados
+    property string masterAb: "B"               // A/B del Master IA (tira MASTER y su dispositivo)
+    property var undoSnap: null                 // F6: cómo estaban las tiras antes de la última mezcla automática
     readonly property var masterNames: data.masters.concat(["Según referencia"])
     // Rebobinado: cada master (automático o manual) queda como versión para escucharla, elegirla y exportarla
     property var versions: []                   // {name, kind, chain, ceiling, pos, drive, tone, limiter, lufs, peak, at}
@@ -148,8 +150,32 @@ QtObject {
     function mix(remix) {
         if (!items.length) { studio.toast("Carga audios en el módulo «Audios»"); return }
         if (abState === "A") bypass("B")
+        var snap = call("snapshot"), before = { live: live, runs: runs }
         var r = fail(call("mix", request()))
-        if (r.ok) { live = {}; busy = true; progress = 1; status = remix ? "Remezclando en vivo…" : "Mezclando en vivo…" }
+        if (r.ok) {
+            undoSnap = snap.ok ? { engine: snap.tracks, live: before.live, runs: before.runs,
+                                   vols: studio.tracks.filter(function (t) { return t.id >= 0 && t.vol !== undefined })
+                                                      .map(function (t) { return { id: t.id, vol: t.vol, pan: t.pan } }) } : null
+            live = {}; busy = true; progress = 1; status = remix ? "Remezclando en vivo…" : "Mezclando en vivo…"
+        }
+    }
+    // F6: Ctrl+Z en el Mezclador deshace la última mezcla automática: fader, paneo, envíos, efectos y audio
+    function undoMix() {
+        var s = undoSnap
+        if (!s || busy) return false
+        var r = fail(call("restore", { tracks: s.engine }))
+        if (!r.ok) return false
+        s.vols.forEach(function (v) { studio.setTrackMix(v.id, v.vol, v.pan) })
+        undoSnap = null
+        live = s.live; runs = s.runs; abState = "B"
+        studio.refreshRacks()
+        status = "Mezcla automática deshecha: las tiras vuelven a como estaban" + (r.warnings && r.warnings.length ? " (" + r.warnings.join("; ") + ")" : "") + "."
+        studio.toast(status)
+        return true
+    }
+    function bypassMaster(which) {
+        var r = fail(call("bypass", { bypass: which === "A", track: 0 }))
+        if (r.ok) { masterAb = which; studio.refreshRacks() }
     }
     // Master IA: el V4.2 decide la cadena del master midiendo la sesión en el motor (sin archivos)
     function masterAuto(sel) {
@@ -161,6 +187,7 @@ QtObject {
             mastering = false
             if (!r.ok) { status = "Master: " + (r.error || "sin cambios"); return }
             masterStats = r.stats
+            masterAb = "B"
             studio.refreshRacks()
             saveVersion("Auto · " + masterNames[sel], "auto", r.stats)
             status = "Master en vivo · " + masterNames[sel] + ": " + r.stats.lufs_i.toFixed(1) + " LUFS · pico " + r.stats.max_peak_db.toFixed(1) + " dB · " + r.stats.note
@@ -168,7 +195,7 @@ QtObject {
     }
     function unmaster() {
         var r = fail(call("unmaster"))
-        if (r.ok) { masterStats = null; studio.refreshRacks(); status = "Master IA quitado: el master vuelve a su cadena manual." }
+        if (r.ok) { masterStats = null; masterAb = "B"; studio.refreshRacks(); status = "Master IA quitado: el master vuelve a su cadena manual." }
     }
     // ---------------- versiones de master (Rebobinado) ----------------
     // stats: lo que midió Master IA; sin stats, el motor mide la sesión (en memoria) para mostrar LUFS y pico

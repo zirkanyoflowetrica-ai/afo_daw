@@ -56,6 +56,15 @@ Rectangle {
                                          : "● IA descargando modelos " + Math.round(sq.dlProgress * 100) + " %"
             color: Theme.ink; font.family: Theme.font; font.pixelSize: 12; font.weight: 700
         }
+        Text {                                       // F6: mezcla automática o Master IA trabajando
+            readonly property var mx: root.studio.mixer
+            anchors.verticalCenter: parent.verticalCenter
+            visible: !!mx && (mx.busy || mx.mastering)
+            text: !visible ? "" : mx.mastering ? "● Master IA midiendo la mezcla…"
+                                               : "● Mezcla automática " + Math.round(mx.progress) + " % · " + mx.status
+            elide: Text.ElideRight; width: Math.min(implicitWidth, 460)
+            color: Theme.ink; font.family: Theme.font; font.pixelSize: 12; font.weight: 700
+        }
         Text {                                       // Vocal Align trabajando (motor C++ en otro hilo)
             anchors.verticalCenter: parent.verticalCenter
             visible: !!root.studio.seq && !!root.studio.seq.alignUid

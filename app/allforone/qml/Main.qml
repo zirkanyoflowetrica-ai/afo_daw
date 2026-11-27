@@ -139,7 +139,7 @@ Window {
         var t = selTrackObj, a = arrange
         switch (id) {
         case "file.import": case "file.export": case "track.newAudio": return engineOk
-        case "edit.undo": return a.undoStack.length > 0
+        case "edit.undo": return (view === "mixer" && !!mx.undoSnap && !mx.busy) || a.undoStack.length > 0
         case "edit.redo": return a.redoStack.length > 0
         case "edit.split": case "clip.split": return !!a.clipUid
         case "edit.duplicate": case "edit.delete": case "clip.duplicate": case "clip.delete": case "clip.gainUp": case "clip.gainDown":
@@ -156,7 +156,8 @@ Window {
         case "track.stems": return !!t && t.type === "audio" && t.id >= 0 && !sq.splitting
         case "track.regenerate": return !!t && !!t.gen && !sq.generating
         case "track.newAux": return engineOk
-        case "mix.auto": case "mix.remix": return mx.items.length > 0 && !mx.busy
+        case "mix.auto": return engineOk && !mx.busy
+        case "mix.remix": return mx.items.length > 0 && !mx.busy && mx.runs > 0
         case "mix.abA": case "mix.abB": return engineOk
         case "mix.master": return engineOk && !mx.mastering && !mx.busy
         case "view.arrange": case "view.mixer": case "view.toggle": return !dualWindow || id === "view.mixer"
@@ -193,7 +194,7 @@ Window {
         "file.import": function () { importAudio() },
         "file.export": function () { exportMix() },
         "file.audio": function () { openAudioSettings() },
-        "edit.undo": function () { arrange.undo() },
+        "edit.undo": function () { if (view === "mixer" && mx.undoSnap) mx.undoMix(); else arrange.undo() },   // F6: en el Mezclador deshace la mezcla automática
         "edit.redo": function () { arrange.redo() },
         "edit.split": function () { arrange.splitAt(arrange.clipUid, arrange.clipSel, posSec) },
         "edit.duplicate": function () { arrange.dupSel() },
@@ -236,7 +237,7 @@ Window {
         "clip.toProjectKey": function () { tempoKey("clip.toProjectKey") },
         "clip.projectToKey": function () { tempoKey("clip.projectToKey") },
         "clip.original": function () { tempoKey("clip.original") },
-        "mix.auto": function () { mx.mix(false) },
+        "mix.auto": function () { view = "mixer"; mixBox.open() },          // F6: orden del Mezclador con sus ajustes
         "mix.remix": function () { mx.mix(true) },
         "mix.abA": function () { mx.bypass("A") },
         "mix.abB": function () { mx.bypass("B") },
@@ -611,6 +612,19 @@ Window {
         // F4 (autoprueba): órdenes del secuenciador, estado de tomas y carpetas, y el cuadro de IA del clip
         if (what === "seq") return sq[a].apply(sq, b || [])
         if (what === "seqSet") { sq[a] = b; return true }
+        if (what === "f6") {                         // autoprueba F6: un solo mezclador
+            if (a === "close") mixBox.close(); else if (a === "masterA" || a === "masterB") mx.bypassMaster(a.slice(-1)); else if (a) runAction(a)
+            var autoOn = 0, autoAll = 0
+            tracks.forEach(function (t) {
+                if (t.id < 0) return
+                ;(call("fxList", t.id).chain || []).forEach(function (e) { if (e.auto) { autoAll++; if (e.enabled) autoOn++ } })
+            })
+            var ma = (call("fxList", 0).chain || []).filter(function (e) { return e.auto })
+            return { insp: inspZ.tabs.map(function (t) { return t[0] }), bar: mixBody.barTexts(), box: mixBox.opened, view: view,
+                     ab: mx.abState, masterAb: mx.masterAb, autoOn: autoOn, autoAll: autoAll,
+                     masterAuto: ma.length, masterOn: ma.filter(function (e) { return e.enabled }).length,
+                     undo: mx.undoSnap ? mx.undoSnap.vols : null, runs: mx.runs, busy: mx.busy }
+        }
         if (what === "newTrack") { if (a === "close") { newBox.close(); return true }
                                    newTrack(a); return { opened: newBox.opened, page: newBox.page,
                                                          kinds: newBox.kinds.map(function (k) { return k[0] }),
@@ -665,17 +679,18 @@ Window {
     // Cada cuerpo de módulo vive en una página de una zona fija (DISENO_DAW §2). goTo abre su zona y su
     // pestaña; la consola es la vista Mezclador.
     readonly property var pageZone: ({ audios: "nav", add: "nav", fxlist: "nav", recent: "nav",
-                                       pista: "insp", asist: "insp", master: "insp", cinta: "insp",
+                                       pista: "insp", master: "insp", cinta: "insp",
                                        inst: "detail", piano: "detail", drums: "detail",
                                        fx: "detail", tono: "detail", afina: "detail" })
     function zoneOf(id) { return ({ nav: navZ, insp: inspZ, detail: detZ })[pageZone[id]] || null }
     function titleOf(id) {
-        return ({ audios: "Archivos", add: "Añadir", fxlist: "Efectos", recent: "Inicio", pista: "Pista", asist: "Asistente IA",
-                  master: "Versiones", cinta: "Grabar", pistas: "Arreglo", inst: "Instrumento", piano: "Piano roll",
+        return ({ audios: "Archivos", add: "Añadir", fxlist: "Efectos", recent: "Inicio", pista: "Pista",
+                  master: "Master", cinta: "Grabar", pistas: "Arreglo", inst: "Instrumento", piano: "Piano roll",
                   drums: "Batería", fx: "Efectos", tono: "Tono", afina: "Afinador", mezcla: "Mezclador" })[id] || id
     }
     function goTo(id) {
-        if (id === "mastia" || id === "antes") id = "asist"     // Master IA y A/B están en el Asistente IA (X17)
+        if (id === "mastia") id = "fxm"                         // F6: Master IA es un dispositivo del master (Efectos)
+        if (id === "antes") id = "fx"                           // F6: Antes / Después va bajo el rack en Efectos
         if (id === "fxm") { rackTrack = 0; id = "fx" }          // el master es un canal más de Efectos
         if (id === "ia" || id === "lab") { newTrack(id === "ia" ? "gen" : "lab"); return }   // F5: en «Pista nueva»
         currentId = id
@@ -974,6 +989,8 @@ Window {
     AiClipBox { id: aiBox; objectName: "aiClipBox"; studio: win }
     // F5: Pista nueva (Audio, Instrumento, Batería, Voz, Intérprete IA, Generar con IA, Por piezas)
     NewTrackBox { id: newBox; objectName: "newTrackBox"; studio: win }
+    // F6: Mezcla automática, orden del Mezclador (barra del Mezclador y menú Mezcla)
+    MixAutoBox { id: mixBox; objectName: "mixAutoBox"; studio: win; mixer: mx }
     function newTrack(page) { newBox.openFor(page || "") }
     // Clic derecho en el Arreglo: el clip (o la pista) ya está elegido; sale su menú donde está el ratón
     function openContext(ctx, item, x, y) { ctxMenu.ctx = ctx; ctxMenu.items = actionsCtx(ctx); ctxMenu.openAt(item, x, y) }
@@ -1138,7 +1155,8 @@ Window {
         ZonePage { zid: "audios"; tint: "audios"; minWidth: 246; AudiosBody { mixer: mx; studio: win } }
     }
 
-    // Inspector (derecha): asistente de mezcla y master, versiones y grabación
+    // Inspector: pista elegida, master (medidores, proceso y versiones) y grabación. Sin Asistente IA (F6):
+    // la mezcla automática es una orden del Mezclador y Master IA un dispositivo del master.
     Zone {
         id: inspZ
         z: 4
@@ -1147,33 +1165,27 @@ Window {
         width: folded ? 34 : win.inspW
         foldTip: folded ? "Mostrar el inspector (Ctrl+I)" : "Plegar el inspector (Ctrl+I)"
         tabs: [["pista", "Pista", "Volumen, paneo, envíos y efectos de la pista elegida"],
-               ["asist", "Asistente IA", "Mezcla IA, Master IA y Antes / Después en un sitio"],
-               ["master", "Versiones", "Versiones del master guardadas (Rebobinado)"],
+               ["master", "Master", "Sonoridad, saturación, tono, limitador y versiones del master"],
                ["cinta", "Grabar", "Grabador de voz: entrada, monitor y tomas de la pista de voz"]]
         current: "pista"
         extra: srcToggle
         help: ({
             pista: ["Pista", "Volumen, paneo, Solo y Mute, rol de voz para la Mezcla IA, envíos a los buses Aux y efectos de la pista elegida en el Arreglo o en el Mezclador."],
-            asist: ["Asistente IA", "<b>Mezcla IA</b> (V4.2) deja en cada canal su fader, paneo y cadena de efectos reales (se ven en Efectos); no masteriza ni genera WAV.<br><b>Master IA</b> ajusta el master hacia el objetivo elegido.<br><b>Antes / Después</b> compara las dos versiones."],
-            master: ["Versiones", "Versiones del master (Rebobinado). Clic en una versión: se carga en el master y suena al reproducir, para compararlas. Doble clic en el nombre: renombrarla. Se guardan con el proyecto."],
+            master: ["Master", "VU y sonoridad del master, saturación, tono y limitador. <b>Master IA</b> es un dispositivo del master (Efectos › Master) y su A/B está en la tira MASTER.<br>Versiones del master (Rebobinado). Clic en una versión: se carga en el master y suena al reproducir, para compararlas. Doble clic en el nombre: renombrarla. Se guardan con el proyecto."],
             cinta: ["Grabar", "Grabador de voz: elige la entrada, escucha el monitor y graba tomas en la pista de voz."]
         })
         onFoldedChanged: if (!win.loading) win.saveLayout()
         onPicked: if (!win.loading) win.saveLayout()
         ZonePage { id: pistaPage; zid: "pista"; tint: "mezcla"; minWidth: 306; Inspector { objectName: "inspector"; studio: win; mixer: mx; shown: pistaPage.shown } }
         ZonePage {
-            id: abPage; zid: "asist"; tint: "mastia"; minWidth: 306
+            zid: "master"; tint: "master"; minWidth: 306
             Column {
-                width: parent ? parent.width : 400; spacing: 14
-                MixAiBody { mixer: mx; studio: win }
-                Rectangle { width: parent.width; height: 3; color: Theme.ink }
+                width: parent ? parent.width : 400; spacing: 12
                 MasteringBody { mixer: mx; studio: win }
-                Rectangle { width: parent.width; height: 3; color: Theme.ink }
-                Text { text: "ANTES / DESPUÉS"; color: Theme.ink; font.family: Theme.font; font.pixelSize: 13; font.weight: 700; font.letterSpacing: 0.52 }
-                ReviewBody { mixer: mx; studio: win; shown: abPage.shown }
+                Rectangle { width: parent.width; height: 1; color: Theme.line }
+                MasterBody { studio: win; mixer: mx }
             }
         }
-        ZonePage { zid: "master"; tint: "master"; minWidth: 306; MasterBody { studio: win; mixer: mx } }
         ZonePage { zid: "cinta"; tint: "cinta"; minWidth: 306; CintaBody { seq: sq; studio: win } }
     }
 
@@ -1269,8 +1281,11 @@ Window {
             id: fxPage; zid: "fx"; tint: "fx"; minWidth: 860
             Column {
                 width: parent ? parent.width : 860
+                spacing: 10
                 FxBody { id: fxMain; studio: win; shown: fxPage.visible }
-                AutoMasterBox { mixer: mx; visible: fxMain.target === 0 }
+                AutoMasterBox { objectName: "masterIa"; mixer: mx; visible: fxMain.target === 0 }   // F6: Master IA
+                Text { text: "Antes / Después"; color: Theme.ink; font.family: Theme.font; font.pixelSize: 13; font.weight: 700 }
+                ReviewBody { mixer: mx; studio: win; shown: fxPage.visible }
             }
         }
         ZonePage { zid: "tono"; tint: "afina"; minWidth: 620; PitchEditor { id: pitchEd; mixer: mx } }

@@ -45,6 +45,10 @@ ideas comunes son de interacción, no de aspecto: no se copia la apariencia de n
      con IA y Por piezas. Lo generado entra como pista y se regenera desde el Inspector como toma
      nueva; las variantes del laboratorio son las tomas de su pista. El Navegador ya no tiene IA y
      no hay vista Crear IA.
+   - Un solo mezclador (F6): la mezcla automática es una orden del Mezclador (barra y menú Mezcla,
+     ajustes en su diálogo, A/B en la barra, Ctrl+Z la deshace) y lo que pone se ve en las tiras con
+     la marca «IA». Master IA es un dispositivo más del master, con su A/B en la tira MASTER. El
+     Inspector ya no tiene Asistente IA.
    - El usuario nunca busca dónde está algo: está donde está lo seleccionado.
 4. **Cadena de efectos como fila de dispositivos**, en el orden en que suena. Cada uno lleva el
    mismo marco: nombre, encendido/puenteo, preset, A/B y quitar. Se reordena arrastrando. Los
@@ -94,8 +98,8 @@ ideas comunes son de interacción, no de aspecto: no se copia la apariencia de n
 | Arreglo (`ArrangeView`) | Vista principal |
 | Mezcla (`MixBody`) | Vista Mezclador (Tab) |
 | Efectos (`FxBody`) | Panel de detalle: cadena de la pista elegida y editor del efecto elegido |
-| Afinador (`TuneBody`) | **Editor del efecto nativo AF-60** dentro del panel de detalle (sale al elegir AF-60 en la cadena). La parte de la Mezcla IA (voces e intensidad) pasa al Asistente IA |
-| Master (`MasterBody`), Master IA (`MasteringBody`), Antes/Después (`ReviewBody`) | Pista Master en el Mezclador + Asistente IA |
+| Afinador (`TuneBody`) | **Editor del efecto nativo AF-60** dentro del panel de detalle (sale al elegir AF-60 en la cadena). La parte de la Mezcla IA (voces e intensidad) va en la orden «Mezcla automática» (F6) |
+| Master (`MasterBody`, `MasteringBody`), Master IA (`AutoMasterBox`), Antes/Después (`ReviewBody`) | Tira MASTER del Mezclador, Inspector › Master y, en Efectos › Master, el dispositivo Master IA y el Antes / Después (F6) |
 | Instrumentos, Batería, Piano (`InstBody`, `DrumsBody`, `PianoBody`) | Panel de detalle al elegir una pista de instrumento o un clip MIDI |
 | Cinta (`CintaBody`) | Grabación desde la cabecera de pista (armar ● y R); la cinta queda como medidor de entrada en el Inspector |
 | IA (`IaBody`): canción, MIDI, **parte para el proyecto** | Navegador › IA (las generaciones entran como pistas) |
@@ -143,8 +147,8 @@ Todos salen del catálogo del motor C++ (`afo_audio.effect_catalog()`). El naveg
    `TuneBody` actual, sin la parte de Mezcla IA.
 3. **Navegador** (X16): efectos por categoría (tabla de arriba), VST3, IA, Archivos e Inicio; doble
    clic añade a la pista elegida.
-4. **Inspector y Asistente IA** (X17): ajustes de la pista, envíos y la Mezcla IA / Master IA /
-   A/B en un mismo sitio.
+4. **Inspector** (X17; F6 quitó el Asistente IA): ajustes de la pista, envíos, master y grabación;
+   la IA de mezcla vive en el Mezclador y en el master.
 5. **Editores de clip** (X18): piano roll, patrón de batería y audio en el panel de detalle.
 
 Cada fase deja el programa usable y pasa el selftest (contraste ≥ 4,5:1, objetivos ≥ 24 px, nada

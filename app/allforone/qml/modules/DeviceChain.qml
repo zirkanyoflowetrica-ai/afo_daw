@@ -118,15 +118,10 @@ Rectangle {
                             id: devBtns
                             anchors.right: parent.right; anchors.rightMargin: 4; anchors.verticalCenter: parent.verticalCenter
                             spacing: 0
-                            Rectangle {              // lo puso la mezcla automática (antes, un texto al pie que pisaba los valores)
+                            AiMark {                 // F6: lo puso la IA (mezcla automática o Master IA)
                                 visible: !!card.modelData.auto
-                                width: autoTxt.implicitWidth + 8; height: 18; radius: 2
                                 anchors.verticalCenter: parent.verticalCenter
-                                color: Theme.knobArc
-                                Text { id: autoTxt; anchors.centerIn: parent; text: "AUTO"; color: Theme.inkOnColor
-                                       font.family: Theme.font; font.pixelSize: 11; font.weight: 700 }
-                                MouseArea { id: autoM; anchors.fill: parent; hoverEnabled: true }
-                                ToolTipLite { text: "Lo puso la mezcla automática; puedes cambiarlo"; show: autoM.containsMouse }
+                                tip: "Lo puso la IA (mezcla automática o Master IA); puedes cambiarlo"
                             }
                             HelpButton {
                                 id: hbtn

@@ -7,7 +7,7 @@ import "../state/mixdata.js" as MD
 // de voz, inserts en orden de la señal, envíos a los buses Aux, paneo, fader con medidor estéreo del
 // motor en dB de pico, LUFS o RMS, Solo y Mute) y la tira del master con sus inserts. Clic en el nombre
 // de una tira = su rack en Efectos (el master es un canal más); doble clic en un insert lo abre ahí.
-// Inserts y envíos se leen del motor (puente: dawLanes). La mezcla IA V4.2 está en el Inspector › Asistente IA.
+// Inserts y envíos se leen del motor (puente: dawLanes). La mezcla automática (V4.2) es una orden de su barra (F6).
 Column {
     id: root
     property var studio
@@ -17,6 +17,14 @@ Column {
 
     // ---------------- inserts y envíos (del motor) ----------------
     property var lanes: ({})                    // id de pista (0 = master) → {inserts, sends}
+    function barTexts() {                       // autoprueba (F6): lo que hay en la barra del Mezclador
+        var o = []
+        for (var i = 0; i < barRow.children.length; i++) { var c = barRow.children[i]; if (c.visible && c.text !== undefined) o.push(String(c.text)) }
+        return o
+    }
+    // F6: Ctrl+Z en el Mezclador deshace la mezcla automática
+    Shortcut { sequences: [StandardKey.Undo]; enabled: root.visible && !!root.mixer && !!root.mixer.undoSnap && !root.mixer.busy && !root.studio.typing
+               onActivated: root.mixer.undoMix() }
     property var sends: ({})                    // id de pista → [{aux, db, pre}]
     readonly property var auxes: (studio ? studio.tracks : []).filter(function (t) { return t.type === "aux" && t.id >= 0 })
     readonly property int sendRows: Math.min(4, auxes.length)
@@ -93,12 +101,23 @@ Column {
                 Text { x: 12; anchors.verticalCenter: parent.verticalCenter; text: "CANALES / MIXER"; color: Theme.ink
                        font.family: Theme.font; font.pixelSize: 15; font.weight: 700; font.letterSpacing: 0.6 }
                 Row {
+                    id: barRow
                     anchors.right: parent.right; anchors.rightMargin: 10; anchors.verticalCenter: parent.verticalCenter
                     spacing: 6
-                    Chip {                           // la Mezcla IA vive en el Inspector › Asistente IA (X17)
-                        text: "MEZCLA IA"; fill: Theme.pc.mezcla; ink: Theme.inkOnColor
-                        tip: "Mezcla IA y Master IA: abre el Asistente IA en el Inspector"
-                        onClicked: root.studio.goTo("asist")
+                    Chip {                           // F6: la mezcla automática es una orden del Mezclador
+                        objectName: "mixAutoBtn"
+                        text: root.mixer.busy ? "Mezclando…" : "Mezcla automática…"
+                        tip: "La IA pone fader, paneo y efectos en las tiras (marca «IA»). Ctrl+Z la deshace · menú Mezcla"
+                        onClicked: root.studio.runAction("mix.auto")
+                    }
+                    Chip {
+                        objectName: "mixAbBtn"
+                        readonly property bool off: root.mixer.abState === "A"
+                        visible: root.mixer.runs > 0
+                        text: off ? "A/B: sin mezcla auto" : "A/B: con mezcla auto"
+                        fill: off ? Theme.pressedBg : Theme.button; ink: off ? Theme.pressedInk : Theme.ink
+                        tip: "Escuchar con o sin los efectos de la mezcla automática (faders y paneo se quedan)"
+                        onClicked: root.mixer.bypass(off ? "B" : "A")
                     }
                     Chip {
                         objectName: "mixAddAux"
@@ -155,12 +174,23 @@ Column {
                             border.width: ms.racked ? 3 : Theme.buttonBorder; border.color: Theme.line
                             Rectangle {
                                 x: 2; y: 2; width: parent.width - 4; height: 30; color: Theme.pc.mezcla
-                                Text { anchors.centerIn: parent; text: "MASTER"; color: Theme.inkOnColor
+                                Text { x: masterAbVis ? 6 : (parent.width - width) / 2; anchors.verticalCenter: parent.verticalCenter
+                                       readonly property bool masterAbVis: !!root.mixer.masterStats
+                                       text: "MASTER"; color: Theme.inkOnColor
                                        font.family: Theme.font; font.pixelSize: 13; font.weight: 700 }
                                 Rectangle { y: parent.height; width: parent.width; height: 2; color: Theme.line }
                                 MouseArea { id: msMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
                                             onClicked: root.studio.rackTrack = 0 }
                                 ToolTipLite { text: "Clic: ver el rack del master en Efectos"; show: msMouse.containsMouse }
+                                Chip {                   // F6: A/B del Master IA en la tira MASTER
+                                    objectName: "masterAbBtn"
+                                    readonly property bool off: root.mixer.masterAb === "A"
+                                    visible: !!root.mixer.masterStats
+                                    x: parent.width - width - 3; y: 3
+                                    text: "A/B"; fill: off ? Theme.pressedBg : Theme.button; ink: off ? Theme.pressedInk : Theme.ink
+                                    tip: off ? "Sonando sin Master IA (A). Clic: con Master IA (B)" : "Sonando con Master IA (B). Clic: sin Master IA (A)"
+                                    onClicked: root.mixer.bypassMaster(off ? "B" : "A")
+                                }
                             }
                             Column {
                                 x: 6; y: 38; width: parent.width - 12; spacing: 6
@@ -345,19 +375,21 @@ Column {
                         border.width: 1; border.color: Theme.line
                         Rectangle { x: 5; anchors.verticalCenter: parent.verticalCenter; width: 8; height: 8; radius: 4
                                     color: modelData.enabled ? Theme.meterOk : Theme.inkDim; border.width: 1; border.color: Theme.line }
-                        Text { x: 17; width: parent.width - 21 - (aut.visible ? aut.width + 2 : 0); anchors.verticalCenter: parent.verticalCenter
+                        Text { x: 17; width: parent.width - 21 - (aut.visible ? aut.width + 2 : 0) - (aim.visible ? aim.width + 3 : 0); anchors.verticalCenter: parent.verticalCenter
                                elide: Text.ElideRight; text: modelData.label; color: Theme.ink
                                font.family: Theme.font; font.pixelSize: 11; font.weight: 600
                                font.strikeout: !modelData.enabled }
                         Text { id: aut; visible: modelData.automated > 0; anchors.right: parent.right; anchors.rightMargin: 4
                                anchors.verticalCenter: parent.verticalCenter; text: "∿"; color: Theme.ink
                                font.pixelSize: 13; font.weight: 800 }
+                        AiMark { id: aim; visible: !!modelData.auto; size: 10; tip: ""   // F6: lo puso la mezcla automática
+                                 anchors.right: aut.visible ? aut.left : parent.right; anchors.rightMargin: 3; anchors.verticalCenter: parent.verticalCenter }
                         MouseArea { id: ima; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
                                     onDoubleClicked: root.openInFx(ins.tid, false) }
                         ToolTipLite { show: ima.containsMouse
                                       text: modelData.label + (modelData.enabled ? "" : " (puenteado)")
                                             + (modelData.automated ? " · " + modelData.automated + " parámetro(s) automatizado(s)" : "")
-                                            + (modelData.auto ? " · puesto por la mezcla automática" : "") + ". Doble clic: abrirlo en Efectos" }
+                                            + (modelData.auto ? " · IA: puesto por la mezcla automática (Ctrl+Z en el Mezclador lo quita)" : "") + ". Doble clic: abrirlo en Efectos" }
                     }
                 }
                 Text { visible: ins.list.length === 0; width: insCol.width; wrapMode: Text.Wrap

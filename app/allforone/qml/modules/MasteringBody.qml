@@ -3,25 +3,19 @@ import "../theme"
 import "../controls"
 import "../state/mixdata.js" as MD
 
-// Módulo Mastering (Master M-4): la mesa del master. VU, sonoridad en vivo (LUFS, RMS, pico), fader
-// master con medidores L/R del motor, saturación, tono y limitador, y A/B de la cadena automática.
-// Los efectos del master están en Efectos, canal Master (allí, abajo, Masterizar automáticamente); cada
-// master se guarda como versión en «Rebobinado», donde se elige y se exporta.
+// Inspector › Master: VU, sonoridad en vivo (LUFS, RMS, pico), fader master con medidores L/R del
+// motor, saturación, tono y limitador. Master IA es un dispositivo del master en Efectos y su A/B está
+// en la tira MASTER (F6); cada master se guarda como versión, debajo, donde se elige y se exporta.
 Column {
     id: root
     property var mixer
     property var studio
     readonly property var st: mixer.masterStats
     readonly property var ml: studio.masterLoud            // [pico, RMS, LUFS M, LUFS S, LUFS I]
-    property string ab: "B"
     width: parent ? parent.width : 400
     spacing: 0
 
     function f(v) { return v > -99 ? v.toFixed(1) : "—" }
-    function bypassMaster(which) {
-        var r = mixer.call("bypass", { bypass: which === "A", track: 0 })
-        if (r.ok) { ab = which; studio.refreshRacks() } else mixer.fail(r)
-    }
 
     VuMeter { width: Math.min(root.width, 300); vu: root.studio.vu; anchors.horizontalCenter: parent.horizontalCenter }
 
@@ -71,32 +65,19 @@ Column {
         }
     }
 
-    Row {                                       // A/B: puentear la cadena del master automático
-        width: root.width; spacing: 6; bottomPadding: 8 + 3
-        Repeater {
-            model: [["A", "A · sin master auto"], ["B", "B · con master auto"]]
-            NeoButton {
-                required property var modelData
-                readonly property bool on: root.ab === modelData[0]
-                width: (root.width - 6) / 2 - 1; text: modelData[1]; fontWeight: 700
-                color: on ? Theme.pressedBg : Theme.button; textColor: on ? Theme.pressedInk : Theme.ink; pressedState: on
-                opacity: root.st ? 1 : 0.5
-                onClicked: if (root.st) root.bypassMaster(modelData[0])
-            }
-        }
-    }
     Flow {
         width: root.width; spacing: 6; bottomPadding: 8
-        NeoButton { text: "Guardar versión → Rebobinado"; fontWeight: 700; color: Theme.accent; textColor: Theme.inkOnAccent
+        NeoButton { text: "Guardar versión"
                     tip: "Guarda el master tal como suena ahora (efectos, fader, saturación, tono, limitador) como versión manual"
                     onClicked: root.mixer.saveVersion("", "manual", null) }
-        NeoButton { text: "Quitar master auto"; opacity: root.st ? 1 : 0.5; onClicked: if (root.st) root.mixer.unmaster() }
+        NeoButton { text: "Master IA…"; tip: "Abre el dispositivo Master IA del master en Efectos"
+                    onClicked: root.studio.goTo("mastia") }
     }
     Note {
         width: root.width
         text: root.st ? "Último master automático: entrada " + (root.st.input_lufs).toFixed(1) + " LUFS → " + root.st.lufs_i.toFixed(1) +
                         " LUFS, pico " + root.st.max_peak_db.toFixed(1) + " dB, techo " + root.st.ceiling_db.toFixed(1) + " dB" +
                         (root.st.compressed ? ", con compresión de master" : "") + ". " + root.st.note
-                      : "Los efectos del master están en Efectos, canal Master; abajo de ese rack, «Masterizar automáticamente». Cada master queda en «Rebobinado» para elegirlo y exportarlo."
+                      : "Los efectos del master están en Efectos, canal Master, con el dispositivo Master IA. Cada master queda como versión, aquí debajo, para elegirlo y exportarlo."
     }
 }
